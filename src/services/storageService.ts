@@ -68,7 +68,6 @@ let lastSyncedState: AppState = { ...INITIAL_STATE };
 let isInitialLoad = true;
 
 // --- SAVE STATE ---
-// Defined before loadState so we can call it inside loadState for migration
 const syncCollection = async (tableName: string, newItems: any[], oldItems: any[]) => {
     if (!supabase) return;
     
@@ -97,7 +96,6 @@ const syncCollection = async (tableName: string, newItems: any[], oldItems: any[
 };
 
 export const saveState = async (newState: AppState) => {
-  // Always update session user locally
   if (newState.currentUser) {
       localStorage.setItem('gvp_current_user', JSON.stringify(newState.currentUser));
   } else {
@@ -111,7 +109,6 @@ export const saveState = async (newState: AppState) => {
   }
 
   // 2. ONLINE MODE
-  // Fire and forget sync (don't await to keep UI responsive)
   Promise.all([
     syncCollection('members', newState.members, lastSyncedState.members),
     syncCollection('hospitals', newState.hospitals, lastSyncedState.hospitals),
@@ -127,7 +124,7 @@ export const saveState = async (newState: AppState) => {
 
 // --- LOAD STATE ---
 export const loadState = async (): Promise<AppState> => {
-  // 1. OFFLINE MODE (Fallback if supabase is null)
+  // 1. OFFLINE MODE
   if (!supabase) {
     console.log("Using LocalStorage (Offline Mode).");
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -144,7 +141,7 @@ export const loadState = async (): Promise<AppState> => {
     return INITIAL_STATE;
   }
 
-  // 2. ONLINE MODE (Supabase)
+  // 2. ONLINE MODE
   try {
     console.log("Loading data from Supabase...");
 
@@ -166,7 +163,6 @@ export const loadState = async (): Promise<AppState> => {
         supabase.from('notifications').select('*')
     ]);
 
-    // Check if Database is empty (Fresh Install)
     const isDbEmpty = (!members || members.length === 0) && (!routes || routes.length === 0);
 
     if (isDbEmpty) {
@@ -175,14 +171,11 @@ export const loadState = async (): Promise<AppState> => {
         if (stored) {
             try {
                 const localData = JSON.parse(stored);
-                // MIGRATION: Upload local data to Supabase immediately
                 console.log("🚀 Migrating local data to Supabase...");
-                // Note: We deliberately don't set lastSyncedState here so saveState sees everything as "new" and uploads it.
                 lastSyncedState = INITIAL_STATE; 
                 await saveState(localData);
                 
                 isInitialLoad = false;
-                // Restore session user logic
                 const storedUser = localStorage.getItem('gvp_current_user');
                 if (storedUser) {
                     const parsedUser = JSON.parse(storedUser);
@@ -209,7 +202,6 @@ export const loadState = async (): Promise<AppState> => {
     lastSyncedState = JSON.parse(JSON.stringify(loadedState));
     isInitialLoad = false;
     
-    // Attempt session restore
     const storedUser = localStorage.getItem('gvp_current_user');
     if (storedUser) {
         const parsedUser = JSON.parse(storedUser);
@@ -221,7 +213,6 @@ export const loadState = async (): Promise<AppState> => {
 
   } catch (error) {
     console.error("Critical error loading state from Supabase:", error);
-    // Fallback to local storage if network fails but Supabase client exists
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) return JSON.parse(stored);
     return INITIAL_STATE;
