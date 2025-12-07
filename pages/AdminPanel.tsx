@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { AppState, Member, VisitRoute, UserRole, LogEntry, Hospital } from '@/types';
 import { Button } from '../components/Button';
@@ -23,6 +24,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ state, onUpdateState }) 
   const [editingHospital, setEditingHospital] = useState<Partial<Hospital> | null>(null);
 
   const isOnline = !!supabase;
+  const pendingMembers = state.members.filter(m => !m.active);
 
   // Helper to create Log
   const addLog = (action: string, details: string, currentLogs: LogEntry[]): LogEntry[] => {
@@ -88,7 +90,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ state, onUpdateState }) 
     const newMembers = state.members.map(m => 
       m.id === id ? { ...m, active: !m.active } : m
     );
-    const logs = addLog('Status Membro', `${member.active ? 'Desativou' : 'Ativou'} membro ${member.name}`, state.logs);
+    const logs = addLog('Status Membro', `${member.active ? 'Desativou' : 'Ativou/Aprovou'} membro ${member.name}`, state.logs);
     
     onUpdateState({ ...state, members: newMembers, logs });
   };
@@ -219,10 +221,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ state, onUpdateState }) 
       {/* Navigation Tabs */}
       <div className="flex border-b border-gray-200 overflow-x-auto">
         <button
-          className={`px-4 py-2 font-medium text-sm whitespace-nowrap transition-colors ${activeTab === 'members' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+          className={`px-4 py-2 font-medium text-sm whitespace-nowrap transition-colors flex items-center gap-2 ${activeTab === 'members' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
           onClick={() => setActiveTab('members')}
         >
           Membros
+          {pendingMembers.length > 0 && (
+            <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">{pendingMembers.length}</span>
+          )}
         </button>
         <button
           className={`px-4 py-2 font-medium text-sm whitespace-nowrap transition-colors ${activeTab === 'hospitals' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
@@ -364,18 +369,52 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ state, onUpdateState }) 
             </div>
           )}
 
+          {/* Pending Members Section */}
+          {pendingMembers.length > 0 && (
+             <div className="mb-6 border border-yellow-200 bg-yellow-50 rounded-lg overflow-hidden">
+                <div className="bg-yellow-100 px-4 py-2 border-b border-yellow-200 flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-yellow-800 flex items-center gap-2">
+                        ⚠️ Cadastros Pendentes de Aprovação ({pendingMembers.length})
+                    </h4>
+                </div>
+                <ul className="divide-y divide-yellow-200">
+                    {pendingMembers.map(member => (
+                        <li key={member.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-yellow-100/50">
+                             <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-yellow-200 flex items-center justify-center text-yellow-800 font-bold text-xs">
+                                    ?
+                                </div>
+                                <div>
+                                    <p className="font-bold text-gray-900">{member.name}</p>
+                                    <p className="text-xs text-gray-600">{member.email} • {member.congregation}</p>
+                                    <p className="text-[10px] text-gray-500">Tel: {member.phone}</p>
+                                </div>
+                             </div>
+                             <div className="mt-2 sm:mt-0">
+                                 <button 
+                                    onClick={() => handleToggleMemberActive(member.id)}
+                                    className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-1.5 rounded shadow-sm"
+                                 >
+                                     ✅ Aprovar Acesso
+                                 </button>
+                             </div>
+                        </li>
+                    ))}
+                </ul>
+             </div>
+          )}
+
           <div className="bg-white shadow-sm border border-gray-200 rounded-lg overflow-hidden">
             <ul className="divide-y divide-gray-100">
-              {state.members.sort((a,b) => a.name.localeCompare(b.name)).map(member => (
-                <li key={member.id} className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-gray-50 transition-colors ${!member.active ? 'bg-gray-50' : ''}`}>
-                  <div className={`flex items-center gap-3 ${!member.active ? 'opacity-50 grayscale' : ''}`}>
+              {state.members.filter(m => m.active).sort((a,b) => a.name.localeCompare(b.name)).map(member => (
+                <li key={member.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-bold text-sm">
                         {member.name.substring(0,2).toUpperCase()}
                     </div>
                     <div>
                         <p className="font-medium text-gray-900 flex items-center gap-2">
                             {member.name}
-                            {!member.active && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold uppercase">Inativo</span>}
                         </p>
                         <p className="text-xs text-gray-500">
                           {member.email} • CEP: {member.cep || 'N/A'}
@@ -391,10 +430,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ state, onUpdateState }) 
                     </button>
                     <div className="w-px h-4 bg-gray-300 self-center"></div>
                     <button 
-                        className={`${member.active ? 'text-gray-500 hover:text-gray-700' : 'text-green-600 hover:text-green-800'} text-sm font-medium px-2 py-1 rounded hover:bg-gray-100`} 
+                        className="text-gray-500 hover:text-gray-700 text-sm font-medium px-2 py-1 rounded hover:bg-gray-100" 
                         onClick={() => handleToggleMemberActive(member.id)}
                     >
-                      {member.active ? 'Desativar' : 'Reativar'}
+                      Desativar
                     </button>
                     <div className="w-px h-4 bg-gray-300 self-center"></div>
                     <button 

@@ -12,27 +12,39 @@ interface LoginPageProps {
 export const LoginPage: React.FC<LoginPageProps> = ({ state, onLogin }) => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    // Find active user by email
+    // 1. Find user by email (case insensitive)
     const user = state.members.find(
-      m => m.email?.toLowerCase() === email.toLowerCase().trim() && m.active
+      m => m.email?.toLowerCase() === email.toLowerCase().trim()
     );
 
-    // No password check needed for now
-    if (user) {
-      onLogin(user);
-      navigate('/dashboard');
-    } else {
-      setError('Email não encontrado.');
+    if (!user) {
+      setError('Email não encontrado. Verifique ou faça seu cadastro.');
+      return;
     }
-  };
 
-  const handleQuickLogin = (user: Member) => {
+    // 2. Check Password
+    // Default fallback to '123456' if user has no password set in DB
+    const storedPassword = user.password || '123456';
+    
+    if (storedPassword !== password) {
+        setError('Senha incorreta.');
+        return;
+    }
+
+    // 3. Check Active Status
+    if (!user.active) {
+        setError('Seu cadastro está pendente de aprovação pelo Administrador.');
+        return;
+    }
+
+    // Success
     onLogin(user);
     navigate('/dashboard');
   };
@@ -51,50 +63,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ state, onLogin }) => {
           GVP Soft-CRM
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
-          Acesso Rápido de Desenvolvimento
+          Acesso Restrito aos Membros
         </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
           
-          <div className="mb-8">
-             <h3 className="text-xs font-bold text-gray-500 mb-3 text-center uppercase tracking-wide">Selecione um usuário para entrar</h3>
-             <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
-                {state.members.filter(m => m.active).map(member => (
-                    <button
-                        key={member.id}
-                        onClick={() => handleQuickLogin(member)}
-                        className="w-full flex items-center p-3 rounded-lg border border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition-all text-left group bg-white"
-                    >
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white mr-3 flex-shrink-0 ${member.role === UserRole.ADMIN ? 'bg-purple-600' : 'bg-gray-400 group-hover:bg-blue-500'}`}>
-                            {member.name.substring(0,2).toUpperCase()}
-                        </div>
-                        <div className="flex-grow min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{member.name}</p>
-                            <p className="text-xs text-gray-500 truncate">{member.role === UserRole.ADMIN ? 'Administrador' : 'Membro'}</p>
-                        </div>
-                        <div className="ml-2 opacity-0 group-hover:opacity-100 text-blue-600 transition-opacity">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                                <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-                            </svg>
-                        </div>
-                    </button>
-                ))}
-             </div>
-          </div>
-
-          <div className="relative mb-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">
-                  Ou digite o email
-                </span>
-              </div>
-          </div>
-
           <form className="space-y-6" onSubmit={handleLogin}>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
@@ -106,9 +81,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({ state, onLogin }) => {
                   name="email"
                   type="email"
                   autoComplete="email"
-                  placeholder="Seu email de cadastro"
+                  required
+                  placeholder="Seu email cadastrado"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                Senha
+              </label>
+              <div className="mt-1">
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  placeholder="Sua senha"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 />
               </div>
@@ -125,10 +120,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({ state, onLogin }) => {
 
             <div>
               <Button type="submit" className="w-full flex justify-center py-2 px-4">
-                Entrar (Sem Senha)
+                Entrar
               </Button>
             </div>
           </form>
+
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white text-gray-500">
+                  Novo no grupo?
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-6">
+               <button
+                 onClick={() => navigate('/signup')}
+                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100"
+               >
+                 Primeiro Acesso / Criar Conta
+               </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
