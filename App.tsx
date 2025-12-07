@@ -1,8 +1,7 @@
-
 import React, { useEffect, useState, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { loadState, saveState } from './services/storageService';
-import { AppState, UserRole, Member } from './types';
+import { AppState, UserRole, Member } from '@/types';
 import { Dashboard } from './pages/Dashboard';
 import { AdminPanel } from './pages/AdminPanel';
 import { PatientRegistry } from './pages/PatientRegistry';
