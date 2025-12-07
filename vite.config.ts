@@ -6,10 +6,10 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   root: './',
-  base: './', // Garante caminhos relativos no build
+  base: './',
   resolve: {
     alias: {
-      '@': path.resolve('./'),
+      '@': path.resolve('.'), // Garante que @ aponte para a raiz absoluta
     },
   },
   build: {
