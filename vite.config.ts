@@ -1,16 +1,22 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  // Dizer ao Vite que os arquivos estão na raiz, não em src/
   root: './',
+  base: './', // Garante caminhos relativos no build
+  resolve: {
+    alias: {
+      '@': path.resolve('./'),
+    },
+  },
   build: {
     outDir: 'dist',
+    emptyOutDir: true,
   },
   define: {
-    // Evita erro "process is not defined" no navegador
     'process.env': {} 
   }
 })
