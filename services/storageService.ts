@@ -1,5 +1,4 @@
-
-import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital } from '../types';
+import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital } from '@/types';
 import { supabase } from './supabaseClient';
 
 // --- INITIAL DEFAULT DATA (Fallback) ---
