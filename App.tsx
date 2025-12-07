@@ -1,7 +1,8 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { loadState, saveState } from './services/storageService';
-import { AppState, UserRole, Member } from '@/types';
+import { AppState, UserRole, Member, LogEntry } from '@/types';
 import { Dashboard } from './pages/Dashboard';
 import { AdminPanel } from './pages/AdminPanel';
 import { PatientRegistry } from './pages/PatientRegistry';
@@ -10,9 +11,11 @@ import { StatsReport } from './pages/StatsReport';
 import { LogsPage } from './pages/LogsPage';
 import { Welcome } from './pages/Welcome';
 import { LoginPage } from './pages/LoginPage';
+import { SignUpPage } from './pages/SignUpPage';
 import { MapPage } from './pages/MapPage';
 import { NotificationCenter } from './components/NotificationCenter';
 import { GlobalSearch } from './components/GlobalSearch';
+import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { supabase } from './services/supabaseClient';
 
 // Helper for highlighting active link
@@ -37,7 +40,8 @@ const Layout: React.FC<{
   children: React.ReactNode;
   isPrivacyMode: boolean;
   onTogglePrivacy: () => void;
-}> = ({ state, onUpdateState, children, isPrivacyMode, onTogglePrivacy }) => {
+  onChangePasswordClick: () => void;
+}> = ({ state, onUpdateState, children, isPrivacyMode, onTogglePrivacy, onChangePasswordClick }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   const isOnline = !!supabase;
@@ -140,6 +144,16 @@ const Layout: React.FC<{
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
                         </svg>
                     </button>
+                    {/* Change Pwd shortcut */}
+                    <button
+                        onClick={onChangePasswordClick}
+                        className="p-2 text-gray-400 hover:text-blue-600 rounded-full hover:bg-gray-100 transition-colors"
+                        title="Trocar Senha"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                        </svg>
+                    </button>
                  </div>
                  
                  <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="md:hidden text-gray-500 hover:text-gray-700">
@@ -165,6 +179,12 @@ const Layout: React.FC<{
                   <div className="border-t border-gray-100 pt-3 mt-2 px-3">
                      <p className="text-sm font-bold text-gray-800">{state.currentUser.name}</p>
                      <p className="text-xs text-gray-500 mb-3">{state.currentUser.role}</p>
+                     <button
+                        onClick={() => { onChangePasswordClick(); setIsMenuOpen(false); }}
+                        className="w-full text-center text-sm bg-blue-50 text-blue-600 font-medium py-2 rounded hover:bg-blue-100 mb-2"
+                     >
+                         Trocar Senha
+                     </button>
                      <button 
                         onClick={() => { handleLogout(); setIsMenuOpen(false); }}
                         className="w-full text-center text-sm bg-red-50 text-red-600 font-medium py-2 rounded hover:bg-red-100"
@@ -212,6 +232,7 @@ const App: React.FC = () => {
   const [state, setState] = useState<AppState | null>(null); // Null initially
   const [isLoading, setIsLoading] = useState(true);
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   
   // Initialize Data
   useEffect(() => {
@@ -259,7 +280,41 @@ const App: React.FC = () => {
   const handleLogin = (user: Member) => {
       if (state) {
         setState({ ...state, currentUser: user });
+        // REGRA DE PRIMEIRO ACESSO: Se a senha for a padrão, sugerir troca.
+        if (user.password === '123456') {
+            setTimeout(() => {
+                alert("Olá! Percebemos que você está usando a senha padrão (123456). Por segurança, por favor, altere sua senha agora.");
+                setIsChangePasswordOpen(true);
+            }, 1000);
+        }
       }
+  };
+
+  const handleChangePasswordConfirm = (newPass: string) => {
+    if (!state || !state.currentUser) return;
+    
+    // Update user in state
+    const updatedUser = { ...state.currentUser, password: newPass };
+    const updatedMembers = state.members.map(m => m.id === updatedUser.id ? updatedUser : m);
+    
+    // Log
+    const newLog: LogEntry = {
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        userId: updatedUser.id,
+        userName: updatedUser.name,
+        action: 'Troca de Senha',
+        details: 'Usuário alterou sua própria senha.'
+    };
+
+    setState({ 
+        ...state, 
+        currentUser: updatedUser, 
+        members: updatedMembers,
+        logs: [newLog, ...state.logs]
+    });
+    setIsChangePasswordOpen(false);
+    alert("Senha alterada com sucesso!");
   };
 
   if (isLoading || !state) {
@@ -273,43 +328,53 @@ const App: React.FC = () => {
 
   return (
     <Router>
+      {state.currentUser && (
+        <ChangePasswordModal 
+            isOpen={isChangePasswordOpen}
+            onClose={() => setIsChangePasswordOpen(false)}
+            currentUser={state.currentUser}
+            onConfirm={handleChangePasswordConfirm}
+        />
+      )}
+
       <Routes>
         <Route path="/" element={<Welcome />} />
         <Route path="/welcome" element={<Welcome />} />
         <Route path="/login" element={<LoginPage state={state} onLogin={handleLogin} />} />
+        <Route path="/signup" element={<SignUpPage state={state} onUpdateState={setState} />} />
         
         <Route path="/dashboard" element={
-            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}>
+            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)} onChangePasswordClick={() => setIsChangePasswordOpen(true)}>
                 <Dashboard state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} />
             </Layout>
         } />
         <Route path="/patients" element={
-            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}>
+            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)} onChangePasswordClick={() => setIsChangePasswordOpen(true)}>
                 <PatientRegistry state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} />
             </Layout>
         } />
         <Route path="/history" element={
-            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}>
+            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)} onChangePasswordClick={() => setIsChangePasswordOpen(true)}>
                 <PatientHistory state={state} />
             </Layout>
         } />
         <Route path="/map" element={
-            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}>
+            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)} onChangePasswordClick={() => setIsChangePasswordOpen(true)}>
                 <MapPage state={state} />
             </Layout>
         } />
         <Route path="/stats" element={
-            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}>
+            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)} onChangePasswordClick={() => setIsChangePasswordOpen(true)}>
                 <StatsReport state={state} />
             </Layout>
         } />
         <Route path="/logs" element={
-            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}>
+            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)} onChangePasswordClick={() => setIsChangePasswordOpen(true)}>
                 <LogsPage state={state} />
             </Layout>
         } />
         <Route path="/admin" element={
-            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}>
+            <Layout state={state} onUpdateState={setState} isPrivacyMode={isPrivacyMode} onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)} onChangePasswordClick={() => setIsChangePasswordOpen(true)}>
                 <AdminPanel state={state} onUpdateState={setState} />
             </Layout>
         } />
