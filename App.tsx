@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { loadState, saveState, createDefaultState } from './services/storageService';
-import { AppState, UserRole, Member } from './types';
+import { AppState, UserRole, Member, Notification } from './types';
 import { Dashboard } from './pages/Dashboard';
 import { AdminPanel } from './pages/AdminPanel';
 import { PatientRegistry } from './pages/PatientRegistry';
@@ -16,6 +16,7 @@ import { MapPage } from './pages/MapPage';
 import { GlobalSearch } from './components/GlobalSearch';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { OnboardingModal } from './components/OnboardingModal';
+import { NotificationCenter } from './components/NotificationCenter';
 
 const Layout: React.FC<{ 
   state: AppState; 
@@ -33,11 +34,52 @@ const Layout: React.FC<{
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const location = useLocation();
 
+  // 1. Controle de Onboarding
   useEffect(() => {
-    if (state.currentUser && !state.currentUser.hasSeenOnboarding) {
+    if (state.currentUser && state.currentUser.hasSeenOnboarding === false) {
       setIsOnboardingOpen(true);
     }
   }, [state.currentUser]);
+
+  // 2. Sistema de Lembretes Automáticos (24h)
+  useEffect(() => {
+    if (!state.currentUser) return;
+
+    const checkUpcomingVisits = () => {
+      const now = new Date();
+      const tomorrow = new Date();
+      tomorrow.setDate(now.getDate() + 1);
+
+      const upcoming = state.visits.filter(v => {
+        const vDate = new Date(v.date + 'T00:00:00');
+        const isNext24h = vDate >= now && vDate <= tomorrow;
+        const isMine = v.memberIds.includes(state.currentUser!.id);
+        const alreadyNotified = state.notifications.some(n => 
+          n.userId === state.currentUser!.id && n.message.includes(v.date)
+        );
+        return isNext24h && isMine && !alreadyNotified && !v.report;
+      });
+
+      if (upcoming.length > 0) {
+        const newNotifications: Notification[] = upcoming.map(v => ({
+          id: crypto.randomUUID(),
+          userId: state.currentUser!.id,
+          message: `Lembrete: Você tem uma visita agendada para amanhã (${v.date}). Prepare seu coração!`,
+          type: 'warning',
+          read: false,
+          timestamp: new Date().toISOString()
+        }));
+
+        onUpdateState({
+          ...state,
+          notifications: [...newNotifications, ...state.notifications]
+        });
+      }
+    };
+
+    const timer = setTimeout(checkUpcomingVisits, 3000); // Roda 3s após o boot
+    return () => clearTimeout(timer);
+  }, [state.visits, state.currentUser]);
 
   if (!state.currentUser) return <Navigate to="/login" replace />;
 
@@ -55,6 +97,15 @@ const Layout: React.FC<{
       });
     }
     setIsOnboardingOpen(false);
+  };
+
+  const handleMarkAsRead = (id: string) => {
+    const updated = state.notifications.map(n => n.id === id ? { ...n, read: true } : n);
+    onUpdateState({ ...state, notifications: updated });
+  };
+
+  const handleClearNotifications = () => {
+    onUpdateState({ ...state, notifications: [] });
   };
 
   const menuItems = [
@@ -129,48 +180,36 @@ const Layout: React.FC<{
           </div>
 
           <div className="flex items-center gap-1 md:gap-2 shrink-0">
-            {/* Toggle Modo Hospitalar (Dark Mode) */}
-            <button 
-              onClick={onToggleHospitalMode} 
-              title={isHospitalMode ? "Modo Padrão" : "Modo Hospitalar (Discreto)"}
-              className={`p-2 rounded-full transition-all ${isHospitalMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}
-            >
-              {isHospitalMode ? (
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M16.95 16.95l.707.707M7.05 7.05l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" /></svg>
-              ) : (
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
-              )}
+            {/* Notificações */}
+            <NotificationCenter 
+              notifications={state.notifications.filter(n => n.userId === state.currentUser?.id)} 
+              onMarkAsRead={handleMarkAsRead} 
+              onClearAll={handleClearNotifications} 
+            />
+
+            <button onClick={onToggleHospitalMode} title={isHospitalMode ? "Modo Padrão" : "Modo Hospitalar (Discreto)"} className={`p-2 rounded-full transition-all ${isHospitalMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
+              {isHospitalMode ? <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M16.95 16.95l.707.707M7.05 7.05l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" /></svg> : <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>}
             </button>
 
-            {/* Toggle Night Shift (Filtro Âmbar) */}
-            <button 
-              onClick={onToggleNightMode} 
-              title="Night Shift (Filtro Noturno)"
-              className={`p-2 rounded-full transition-all ${isNightMode ? 'bg-orange-500 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}
-            >
+            <button onClick={onToggleNightMode} title="Night Shift (Filtro Noturno)" className={`p-2 rounded-full transition-all ${isNightMode ? 'bg-orange-500 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </button>
 
-            {/* Toggle Privacidade */}
-            <button 
-              onClick={onTogglePrivacy} 
-              title="Modo Privacidade (Blur)" 
-              className={`p-2 rounded-full transition-colors ${isPrivacyMode ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}
-            >
+            <button onClick={onTogglePrivacy} title="Modo Privacidade (Blur)" className={`p-2 rounded-full transition-colors ${isPrivacyMode ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             </button>
             
             <div className={`flex items-center gap-3 border-l pl-3 md:pl-4 ${isHospitalMode ? 'border-gray-800' : 'border-gray-200'}`}>
               <div className="flex flex-col items-end">
                 <span className={`text-xs md:text-sm font-bold leading-none ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                  {state.currentUser.name.split(' ')[0]} {state.currentUser.name.split(' ').length > 1 ? state.currentUser.name.split(' ').slice(-1)[0] : ''}
+                  {state.currentUser.name.split(' ')[0]}
                 </span>
-                <span className="text-[9px] md:text-[10px] font-bold text-blue-500 uppercase tracking-widest mt-1">
-                  {state.currentUser.role === UserRole.ADMIN ? 'ADMINISTRADOR' : 'VOLUNTÁRIO GVP'}
+                <span className="text-[9px] md:text-[10px] font-bold text-blue-500 uppercase mt-1 tracking-widest">
+                  {state.currentUser.role === UserRole.ADMIN ? 'ADMIN' : 'VOLUNTÁRIO'}
                 </span>
               </div>
-              <div className="w-8 h-8 md:w-9 md:h-9 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs uppercase shadow-lg select-none">
-                {state.currentUser.name.substring(0,2)}
+              <div className="w-8 h-8 md:w-9 md:h-9 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-lg select-none">
+                {state.currentUser.name.substring(0,2).toUpperCase()}
               </div>
             </div>
           </div>
@@ -224,7 +263,7 @@ const App: React.FC = () => {
   if (!state) return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50">
       <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-      <div className="font-bold text-blue-600 text-xl animate-pulse">Carregando SOFT-CRM Enterprise...</div>
+      <div className="font-bold text-blue-600 text-xl animate-pulse">SOFT-CRM GVP</div>
     </div>
   );
 

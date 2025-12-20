@@ -33,7 +33,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const [detailPatient, setDetailPatient] = useState<Patient | null>(null);
   const [myVisitDetails, setMyVisitDetails] = useState<{ visit: VisitSlot, route: VisitRoute, partner: Member | null, hospitals: Hospital[] } | null>(null);
 
-  // Filtro inteligente: Visitas onde o usuário participa, que não foram finalizadas e são de hoje ou futuro
   const myUpcomingVisits = useMemo(() => {
     if (!state.currentUser) return [];
     const today = new Date();
@@ -43,7 +42,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       .filter(v => v.memberIds.includes(state.currentUser!.id))
       .filter(v => {
           const visitDate = new Date(v.date + 'T12:00:00');
-          // Mostra se for hoje ou futuro E não tiver relatório concluído
           return visitDate >= today && !v.report;
       })
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -74,10 +72,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
     setIsQuickScaleOpen(false);
   };
 
-  // Fixed status parameter type to VisitStatus to ensure correct inference in state updates
   const handleStatusUpdate = (visitId: string, status: VisitStatus) => {
+    const visit = state.visits.find(v => v.id === visitId);
+    if (!visit || !state.currentUser) return;
+
+    const partnerId = visit.memberIds.find(id => id !== state.currentUser?.id);
+    let newNotifications = [...state.notifications];
+
+    if (status === 'ON_THE_WAY' && partnerId) {
+        const routeName = state.routes.find(r => r.id === visit.routeId)?.name || 'Rota';
+        newNotifications.push({
+            id: crypto.randomUUID(),
+            userId: partnerId,
+            message: `${state.currentUser.name} já está a caminho da visita (${routeName}).`,
+            type: 'info',
+            read: false,
+            timestamp: new Date().toISOString()
+        });
+    }
+
     const updatedVisits = state.visits.map(v => v.id === visitId ? { ...v, status } : v);
-    onUpdateState({ ...state, visits: updatedVisits });
+    onUpdateState({ ...state, visits: updatedVisits, notifications: newNotifications });
   };
 
   const handleFinishVisit = (generalNote: string, patientUpdates: Record<string, any>) => {
@@ -99,7 +114,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                     agentsNotified: update.agentsNotified 
                   };
               } else if (update.notPerformedReason === 'alta') {
-                  // LÓGICA DE ALTA NO RELATÓRIO
                   newPatients[patientIdx] = { ...patient, active: false };
                   compiledNote += `\n- ALTA CONFIRMADA: ${patient.name}`;
               } else if (update.notPerformedReason) {
@@ -108,7 +122,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
           }
       });
 
-      // Fixed updatedVisits type inference by explicitly casting 'FINISHED' to VisitStatus and declaring the array type
       const updatedVisits: VisitSlot[] = state.visits.map(v => 
         v.id === finishVisitSlot.id 
           ? { 

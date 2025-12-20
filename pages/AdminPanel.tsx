@@ -3,11 +3,14 @@ import React, { useState } from 'react';
 import { AppState, Member, VisitRoute, UserRole, Hospital, VisitSlot } from '../types';
 import { Button } from '../components/Button';
 import { MapPicker } from '../components/MapPicker';
+import { getCoordsFromCep } from '../services/geoService';
 
 export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
   const [activeTab, setActiveTab] = useState<'members' | 'hospitals' | 'routes' | 'reports' | 'balance'>('members');
   const [editingHospital, setEditingHospital] = useState<Partial<Hospital> | null>(null);
   const [editingRoute, setEditingRoute] = useState<Partial<VisitRoute> | null>(null);
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [isValidatingMemberCep, setIsValidatingMemberCep] = useState(false);
 
   // Stats for Balance Tab
   const memberActivity = state.members.map(m => {
@@ -25,6 +28,32 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
   const handleToggleMember = (id: string) => {
     const updated = state.members.map(m => m.id === id ? { ...m, active: !m.active } : m);
     onUpdateState({ ...state, members: updated });
+  };
+
+  const handleUpdateMember = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMember) return;
+    const updated = state.members.map(m => m.id === editingMember.id ? editingMember : m);
+    onUpdateState({ ...state, members: updated });
+    setEditingMember(null);
+  };
+
+  const handleLookupMemberCep = async () => {
+    if (!editingMember?.cep) return;
+    setIsValidatingMemberCep(true);
+    try {
+        const result = await getCoordsFromCep(editingMember.cep);
+        setEditingMember({
+            ...editingMember,
+            lat: result.lat,
+            lng: result.lng,
+            address: result.address
+        });
+    } catch (e) {
+        alert("Falha ao localizar CEP.");
+    } finally {
+        setIsValidatingMemberCep(false);
+    }
   };
 
   const handleDeleteMember = (id: string, name: string) => {
@@ -46,12 +75,12 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
   // --- HOSPITAL ACTIONS ---
   const handleSaveHospital = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingHospital?.name) return;
+    if (!editingHospital?.name || !editingHospital?.city) return;
     let newHospitals = [...state.hospitals];
     if (editingHospital.id) {
         newHospitals = newHospitals.map(h => h.id === editingHospital.id ? { ...h, ...editingHospital } as Hospital : h);
     } else {
-        newHospitals.push({ id: crypto.randomUUID(), ...editingHospital, city: 'Santos' } as Hospital);
+        newHospitals.push({ id: crypto.randomUUID(), ...editingHospital } as Hospital);
     }
     onUpdateState({ ...state, hospitals: newHospitals });
     setEditingHospital(null);
@@ -81,7 +110,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
             <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Gestão de equipe, infraestrutura hospitalar e auditoria de visitas.</p>
          </div>
          <div className="flex gap-2">
-            {activeTab === 'hospitals' && <Button size="sm" onClick={() => setEditingHospital({ lat: -23.9608, lng: -46.3331, importantInfo: '' })}>+ Novo Hospital</Button>}
+            {activeTab === 'hospitals' && <Button size="sm" onClick={() => setEditingHospital({ lat: -23.9608, lng: -46.3331, city: '', importantInfo: '' })}>+ Novo Hospital</Button>}
             {activeTab === 'routes' && <Button size="sm" onClick={() => setEditingRoute({ hospitals: [] })}>+ Nova Rota</Button>}
          </div>
       </div>
@@ -117,6 +146,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                         <tr>
                             <th className="px-6 py-4 text-left">Membro</th>
                             <th className="px-6 py-4 text-left">Função</th>
+                            <th className="px-6 py-4 text-left">Localização</th>
                             <th className="px-6 py-4 text-left">Status</th>
                             <th className="px-6 py-4 text-right">Ações</th>
                         </tr>
@@ -139,11 +169,21 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                                     </select>
                                 </td>
                                 <td className="px-6 py-4">
+                                   {m.lat && m.lng ? (
+                                       <span className="text-[10px] text-green-500 font-bold uppercase flex items-center gap-1">📍 Mapeado</span>
+                                   ) : (
+                                       <span className="text-[10px] text-orange-400 font-bold uppercase italic">Sem Mapa</span>
+                                   )}
+                                </td>
+                                <td className="px-6 py-4">
                                     <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${m.active ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
                                         {m.active ? 'Ativo' : 'Inativo'}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 text-right flex items-center justify-end gap-4">
+                                <td className="px-6 py-4 text-right flex items-center justify-end gap-3">
+                                    <button onClick={() => setEditingMember(m)} className="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg" title="Editar Detalhes">
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                    </button>
                                     <button onClick={() => handleToggleMember(m.id)} className={`text-xs font-bold underline ${m.active ? 'text-orange-500' : 'text-green-500'}`}>
                                         {m.active ? 'Suspender' : 'Aprovar'}
                                     </button>
@@ -291,6 +331,58 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       )}
 
       {/* --- MODAIS DE EDIÇÃO --- */}
+      {editingMember && (
+          <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
+              <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-fade-in`}>
+                  <div className="bg-blue-600 p-5 text-white font-bold flex justify-between items-center">
+                      <span className="text-lg">Editar Membro</span>
+                      <button onClick={() => setEditingMember(null)} className="text-2xl leading-none">&times;</button>
+                  </div>
+                  <form onSubmit={handleUpdateMember} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
+                      <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Nome</label>
+                              <input required type="text" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingMember.name} onChange={e => setEditingMember({...editingMember, name: e.target.value})} />
+                          </div>
+                          <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Congregação</label>
+                              <input required type="text" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingMember.congregation || ''} onChange={e => setEditingMember({...editingMember, congregation: e.target.value})} />
+                          </div>
+                      </div>
+                      
+                      <div className="pt-2 border-t border-gray-800/10">
+                        <label className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-2 block">Atualizar Localização (CEP)</label>
+                        <div className="flex gap-2">
+                            <input 
+                                type="text" className={`flex-grow border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} 
+                                value={editingMember.cep || ''} onChange={e => setEditingMember({...editingMember, cep: e.target.value})} 
+                                placeholder="00000-000"
+                            />
+                            <Button type="button" size="sm" variant="secondary" onClick={handleLookupMemberCep} disabled={isValidatingMemberCep}>
+                                {isValidatingMemberCep ? '...' : 'Buscar'}
+                            </Button>
+                        </div>
+                        {editingMember.address && <p className="mt-2 text-[10px] text-gray-500 italic">{editingMember.address}</p>}
+                      </div>
+
+                      <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Localização Manual</label>
+                          <MapPicker 
+                            initialLat={editingMember.lat} 
+                            initialLng={editingMember.lng} 
+                            onLocationSelect={(lat, lng) => setEditingMember({...editingMember, lat, lng})} 
+                          />
+                      </div>
+
+                      <div className="flex justify-end gap-3 pt-4 border-t border-gray-800 mt-2">
+                          <Button variant="secondary" type="button" onClick={() => setEditingMember(null)}>Cancelar</Button>
+                          <Button type="submit">Salvar Alterações</Button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+      )}
+
       {editingHospital && (
           <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
               <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800 shadow-black' : 'bg-white border-gray-100'} w-full max-w-lg rounded-2xl overflow-hidden animate-fade-in shadow-2xl`}>
@@ -299,12 +391,18 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                       <button onClick={() => setEditingHospital(null)} className="text-2xl leading-none">&times;</button>
                   </div>
                   <form onSubmit={handleSaveHospital} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
-                      <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Nome da Unidade</label>
-                          <input required type="text" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingHospital.name || ''} onChange={e => setEditingHospital({...editingHospital, name: e.target.value})} />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Nome da Unidade</label>
+                              <input required type="text" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingHospital.name || ''} onChange={e => setEditingHospital({...editingHospital, name: e.target.value})} />
+                          </div>
+                          <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Cidade</label>
+                              <input required type="text" placeholder="Ex: Santos, Guarujá..." className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingHospital.city || ''} onChange={e => setEditingHospital({...editingHospital, city: e.target.value})} />
+                          </div>
                       </div>
                       <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Endereço</label>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Endereço Completo</label>
                           <input required type="text" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingHospital.address || ''} onChange={e => setEditingHospital({...editingHospital, address: e.target.value})} />
                       </div>
                       <div className="space-y-1">
