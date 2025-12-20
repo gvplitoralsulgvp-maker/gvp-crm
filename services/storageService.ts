@@ -1,5 +1,5 @@
 
-import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital, TrainingMaterial, Experience } from '../types';
+import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital } from '../types';
 import { supabase } from './supabaseClient';
 
 const INITIAL_HOSPITALS: Hospital[] = [
@@ -28,10 +28,6 @@ const INITIAL_ROUTES: VisitRoute[] = [
   { id: 'r1', name: 'Rota Santos - Zona Leste', hospitals: ['Santa Casa de Santos'], active: true },
 ];
 
-/**
- * FABRICAÇÃO DE ESTADO INICIAL (Factory Pattern)
- * Garante que o objeto retornado sempre tenha as 10 propriedades exigidas pela interface AppState.
- */
 export const createDefaultState = (): AppState => {
   return {
     currentUser: null,
@@ -41,9 +37,7 @@ export const createDefaultState = (): AppState => {
     visits: [] as VisitSlot[],
     patients: [] as Patient[],
     logs: [] as LogEntry[],
-    notifications: [] as Notification[],
-    trainingMaterials: [] as TrainingMaterial[],
-    experiences: [] as Experience[]
+    notifications: [] as Notification[]
   };
 };
 
@@ -79,7 +73,6 @@ const syncCollection = async (tableName: string, newItems: any[], oldItems: any[
 };
 
 export const saveState = async (newState: AppState) => {
-  // Persistência Local
   if (newState.currentUser) {
       localStorage.setItem('gvp_current_user', JSON.stringify(newState.currentUser));
   } else {
@@ -87,7 +80,6 @@ export const saveState = async (newState: AppState) => {
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
 
-  // Persistência Nuvem (Supabase)
   if (!supabase || isSaving) {
       if (isSaving) pendingSave = newState;
       return;
@@ -101,9 +93,7 @@ export const saveState = async (newState: AppState) => {
         syncCollection('visits', newState.visits, lastSyncedState.visits),
         syncCollection('patients', newState.patients, lastSyncedState.patients),
         syncCollection('notifications', newState.notifications, lastSyncedState.notifications),
-        syncCollection('logs', newState.logs, lastSyncedState.logs),
-        syncCollection('trainingMaterials', newState.trainingMaterials, lastSyncedState.trainingMaterials),
-        syncCollection('experiences', newState.experiences, lastSyncedState.experiences)
+        syncCollection('logs', newState.logs, lastSyncedState.logs)
       ]);
       lastSyncedState = JSON.parse(JSON.stringify(newState));
   } finally {
@@ -123,14 +113,7 @@ export const loadState = async (): Promise<AppState> => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
         try {
-            const parsed = JSON.parse(stored);
-            // Higienização: Garante que propriedades novas existam mesmo em dados antigos
-            return {
-                ...baseState,
-                ...parsed,
-                trainingMaterials: parsed.trainingMaterials || [],
-                experiences: parsed.experiences || []
-            } as AppState;
+            return { ...baseState, ...JSON.parse(stored) } as AppState;
         } catch (e) {
             return baseState;
         }
@@ -139,7 +122,7 @@ export const loadState = async (): Promise<AppState> => {
   }
 
   try {
-    const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'trainingMaterials', 'experiences'];
+    const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications'];
     const results = await Promise.all(collections.map(col => supabase!.from(col).select('*')));
     
     const dataMap: Record<string, any[]> = {};
@@ -155,9 +138,7 @@ export const loadState = async (): Promise<AppState> => {
         visits: (dataMap.visits || []) as VisitSlot[],
         patients: (dataMap.patients || []) as Patient[],
         logs: (dataMap.logs || []) as LogEntry[],
-        notifications: (dataMap.notifications || []) as Notification[],
-        trainingMaterials: (dataMap.trainingMaterials || []) as TrainingMaterial[],
-        experiences: (dataMap.experiences || []) as Experience[]
+        notifications: (dataMap.notifications || []) as Notification[]
     };
     
     const storedUser = localStorage.getItem('gvp_current_user');
@@ -170,17 +151,10 @@ export const loadState = async (): Promise<AppState> => {
     lastSyncedState = JSON.parse(JSON.stringify(loaded));
     return loaded;
   } catch (e) {
-    console.error("Supabase load error, falling back to local:", e);
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
         try {
-            const parsed = JSON.parse(stored);
-            return {
-                ...baseState,
-                ...parsed,
-                trainingMaterials: parsed.trainingMaterials || [],
-                experiences: parsed.experiences || []
-            } as AppState;
+            return { ...baseState, ...JSON.parse(stored) } as AppState;
         } catch (err) {}
     }
     return baseState;

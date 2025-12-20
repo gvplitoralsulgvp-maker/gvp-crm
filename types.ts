@@ -13,8 +13,6 @@ export interface AppState {
   patients: Patient[];
   logs: LogEntry[];
   notifications: Notification[];
-  trainingMaterials: TrainingMaterial[];
-  experiences: Experience[];
 }
 
 export interface Member {
