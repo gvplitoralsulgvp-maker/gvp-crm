@@ -4,6 +4,7 @@ import { VisitRoute, Member, Hospital, Patient } from '../types';
 import { HistoryItem } from './ReportModal';
 import { Button } from './Button';
 import { generateRouteBriefing } from '../services/geminiService';
+import { getGoogleCalendarUrl, downloadIcsFile } from '../services/calendarService';
 
 interface MyVisitModalProps {
   isOpen: boolean;
@@ -57,15 +58,20 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
       setSentOnTheWay(true);
   };
 
+  const handleAddToGoogle = () => {
+    const url = getGoogleCalendarUrl(date, route);
+    window.open(url, '_blank');
+  };
+
   if (!isOpen) return null;
 
   const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
   const routePatients = patients.filter(p => p.active && route.hospitals.includes(p.hospitalName));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div className={`rounded-lg shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
-        <div className="bg-blue-600 px-6 py-4 flex justify-between items-start shrink-0">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 backdrop-blur-sm">
+      <div className={`rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+        <div className="bg-blue-600 px-6 py-5 flex justify-between items-start shrink-0">
           <div>
             <h3 className="text-white font-bold text-lg">Detalhes da Visita</h3>
             <p className="text-blue-100 text-sm capitalize">{formattedDate}</p>
@@ -101,6 +107,28 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
              >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                 Finalizar Visita
+             </button>
+          </div>
+
+          {/* Atalhos de Calendário */}
+          <div className="flex gap-2">
+             <button 
+                onClick={handleAddToGoogle}
+                className={`flex-grow flex items-center justify-center gap-2 p-2.5 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border shadow-sm ${
+                    isHospitalMode ? 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+             >
+                <svg className="w-4 h-4 text-[#4285F4]" fill="currentColor" viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5z"/></svg>
+                Google Agenda
+             </button>
+             <button 
+                onClick={() => downloadIcsFile(date, route)}
+                className={`flex-grow flex items-center justify-center gap-2 p-2.5 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border shadow-sm ${
+                    isHospitalMode ? 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+             >
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                Arquivo .ICS
              </button>
           </div>
 

@@ -1,11 +1,28 @@
 
-import { VisitSlot, VisitRoute } from '@/types';
+import { VisitRoute } from '@/types';
 
-export const downloadIcsFile = (date: string, route: VisitRoute) => {
-  // Converte data YYYY-MM-DD para o formato ICS YYYYMMDD
+/**
+ * Gera um link direto para criar um evento no Google Agenda
+ */
+export const getGoogleCalendarUrl = (date: string, route: VisitRoute) => {
   const cleanDate = date.replace(/-/g, '');
-  const startTime = '090000'; // Assume 9:00 AM
-  const endTime = '100000';   // Assume 10:00 AM
+  const startTime = '090000'; // 09:00 AM
+  const endTime = '100000';   // 10:00 AM
+  
+  const title = encodeURIComponent(`GVP: Visita - ${route.name}`);
+  const details = encodeURIComponent(`Visita hospitalar do Grupo GVP.\n\nHospitais incluídos nesta rota:\n- ${route.hospitals.join('\n- ')}`);
+  const dates = `${cleanDate}T${startTime}Z/${cleanDate}T${endTime}Z`;
+
+  return `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&sf=true&output=xml`;
+};
+
+/**
+ * Gera e faz o download de um arquivo .ics (padrão universal)
+ */
+export const downloadIcsFile = (date: string, route: VisitRoute) => {
+  const cleanDate = date.replace(/-/g, '');
+  const startTime = '090000';
+  const endTime = '100000';
   
   const title = `GVP: Visita - ${route.name}`;
   const description = `Visita hospitalar do Grupo GVP.\nHospitais: ${route.hospitals.join(', ')}`;
@@ -21,7 +38,7 @@ export const downloadIcsFile = (date: string, route: VisitRoute) => {
     `DESCRIPTION:${description}`,
     'STATUS:CONFIRMED',
     'BEGIN:VALARM',
-    'TRIGGER:-P1D', // Alarme 1 dia antes
+    'TRIGGER:-P1D',
     'DESCRIPTION:Lembrete de Visita GVP',
     'ACTION:DISPLAY',
     'END:VALARM',
