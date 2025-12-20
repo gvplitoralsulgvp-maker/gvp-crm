@@ -1,5 +1,5 @@
 
-import { Member, VisitRoute, VisitSlot, AppState, Patient, LogEntry, Notification, Hospital, TrainingMaterial, Experience, UserRole } from '../types';
+import { Member, VisitRoute, VisitSlot, AppState, Patient, LogEntry, Notification, Hospital, TrainingMaterial, Experience, UserRole } from '@/types';
 import { supabase } from './supabaseClient';
 
 const INITIAL_HOSPITALS: Hospital[] = [
@@ -65,7 +65,6 @@ const syncCollection = async (tableName: string, newItems: any[], oldItems: any[
 };
 
 export const saveState = async (newState: AppState) => {
-  // Persistência local imediata
   if (newState.currentUser) localStorage.setItem('gvp_current_user', JSON.stringify(newState.currentUser));
   else localStorage.removeItem('gvp_current_user');
   localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
@@ -114,7 +113,7 @@ export const loadState = async (): Promise<AppState> => {
             notifications: parsed.notifications || [],
             experiences: parsed.experiences || [],
             trainingMaterials: parsed.trainingMaterials || INITIAL_TRAINING
-          };
+          } as AppState;
           return mergedState;
       }
       return INITIAL_STATE;
@@ -136,7 +135,7 @@ export const loadState = async (): Promise<AppState> => {
         notifications: (n.data?.map(i => i.data) || []) as Notification[],
         experiences: (ex.data?.map(i => i.data) || []) as Experience[],
         trainingMaterials: (tr.data?.map(i => i.data) || INITIAL_TRAINING) as TrainingMaterial[]
-    };
+    } as AppState;
 
     lastSyncedState = JSON.parse(JSON.stringify(loadedState));
     
@@ -164,7 +163,7 @@ export const loadState = async (): Promise<AppState> => {
             notifications: parsed.notifications || [],
             experiences: parsed.experiences || [],
             trainingMaterials: parsed.trainingMaterials || INITIAL_TRAINING
-        };
+        } as AppState;
         return fallbackState;
     }
     return INITIAL_STATE;
