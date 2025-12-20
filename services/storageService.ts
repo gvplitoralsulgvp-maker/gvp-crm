@@ -28,8 +28,8 @@ const INITIAL_ROUTES: VisitRoute[] = [
   { id: 'r1', name: 'Rota Santos - Zona Leste', hospitals: ['Santa Casa de Santos'], active: true },
 ];
 
-// Tipagem explícita em cada campo para evitar 'never[]'
-const INITIAL_STATE: AppState = {
+// Forçando a tipagem do objeto literal para evitar inferência incompleta do TSC
+export const INITIAL_STATE: AppState = {
   currentUser: null,
   members: INITIAL_MEMBERS,
   hospitals: INITIAL_HOSPITALS,
@@ -111,7 +111,7 @@ export const loadState = async (): Promise<AppState> => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
         const parsed = JSON.parse(stored);
-        return { ...INITIAL_STATE, ...parsed };
+        return { ...INITIAL_STATE, ...parsed } as AppState;
     }
     return INITIAL_STATE;
   }
@@ -124,11 +124,12 @@ export const loadState = async (): Promise<AppState> => {
       dataMap[col] = results[idx].data ? results[idx].data!.map((r: any) => r.data) : [];
     });
 
+    // Construção explícita para garantir que o TSC encontre todas as 10 propriedades
     const loaded: AppState = {
         currentUser: null,
-        members: dataMap.members && dataMap.members.length > 0 ? dataMap.members : INITIAL_MEMBERS,
-        hospitals: dataMap.hospitals && dataMap.hospitals.length > 0 ? dataMap.hospitals : INITIAL_HOSPITALS,
-        routes: dataMap.routes && dataMap.routes.length > 0 ? dataMap.routes : INITIAL_ROUTES,
+        members: (dataMap.members && dataMap.members.length > 0 ? dataMap.members : INITIAL_MEMBERS) as Member[],
+        hospitals: (dataMap.hospitals && dataMap.hospitals.length > 0 ? dataMap.hospitals : INITIAL_HOSPITALS) as Hospital[],
+        routes: (dataMap.routes && dataMap.routes.length > 0 ? dataMap.routes : INITIAL_ROUTES) as VisitRoute[],
         visits: (dataMap.visits || []) as VisitSlot[],
         patients: (dataMap.patients || []) as Patient[],
         logs: (dataMap.logs || []) as LogEntry[],
@@ -147,7 +148,7 @@ export const loadState = async (): Promise<AppState> => {
   } catch (e) {
     console.error("Error loading state from Supabase:", e);
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return { ...INITIAL_STATE, ...JSON.parse(stored) };
+    if (stored) return { ...INITIAL_STATE, ...JSON.parse(stored) } as AppState;
     return INITIAL_STATE;
   }
 };
