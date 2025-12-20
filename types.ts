@@ -13,8 +13,6 @@ export interface AppState {
   patients: Patient[];
   logs: LogEntry[];
   notifications: Notification[];
-  experiences: Experience[];
-  trainingMaterials: TrainingMaterial[];
 }
 
 export interface Member {
@@ -101,24 +99,4 @@ export interface Notification {
   type: 'info' | 'success' | 'warning';
   read: boolean;
   timestamp: string;
-}
-
-export interface TrainingMaterial {
-  id: string;
-  title: string;
-  description: string;
-  category: 'Protocolos' | 'Bioética' | 'Abordagem' | 'Geral';
-  type: 'video' | 'pdf' | 'artigo';
-  url: string;
-  duration?: string;
-}
-
-export interface Experience {
-  id: string;
-  memberId: string;
-  memberName: string;
-  content: string;
-  date: string;
-  likes: number;
-  category: 'Encorajamento' | 'Gratidão' | 'Aprendizado';
 }

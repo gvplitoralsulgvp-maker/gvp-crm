@@ -1,5 +1,5 @@
 
-import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital, Experience, TrainingMaterial } from '../types';
+import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital } from '../types';
 import { supabase } from './supabaseClient';
 
 const INITIAL_HOSPITALS: Hospital[] = [
@@ -24,12 +24,6 @@ const INITIAL_MEMBERS: Member[] = [
   }
 ];
 
-const INITIAL_TRAININGS: TrainingMaterial[] = [
-  { id: 't1', title: 'Protocolo de Entrada Hospitalar', description: 'Como se identificar e portar nas recepções.', category: 'Protocolos', type: 'video', url: '#', duration: '5 min' },
-  { id: 't2', title: 'Bioética e Autodeterminação', description: 'Fundamentos jurídicos e éticos do paciente.', category: 'Bioética', type: 'artigo', url: '#' },
-  { id: 't3', title: 'Abordagem Empática', description: 'Dicas de conversação e escuta ativa.', category: 'Abordagem', type: 'video', url: '#', duration: '12 min' },
-];
-
 export const createDefaultState = (): AppState => {
   return {
     currentUser: null,
@@ -41,13 +35,11 @@ export const createDefaultState = (): AppState => {
     visits: [],
     patients: [],
     logs: [],
-    notifications: [],
-    experiences: [],
-    trainingMaterials: [...INITIAL_TRAININGS]
+    notifications: []
   };
 };
 
-const STORAGE_KEY = 'soft_crm_gvp_enterprise_v2';
+const STORAGE_KEY = 'soft_crm_gvp_enterprise_v3';
 let lastSyncedState: AppState = createDefaultState();
 let isSaving = false;
 let pendingSave: AppState | null = null;
@@ -97,8 +89,6 @@ export const saveState = async (newState: AppState) => {
         syncCollection('hospitals', newState.hospitals, lastSyncedState.hospitals),
         syncCollection('visits', newState.visits, lastSyncedState.visits),
         syncCollection('patients', newState.patients, lastSyncedState.patients),
-        syncCollection('experiences', newState.experiences, lastSyncedState.experiences),
-        syncCollection('trainingMaterials', newState.trainingMaterials, lastSyncedState.trainingMaterials),
         syncCollection('logs', newState.logs, lastSyncedState.logs)
       ]);
       lastSyncedState = JSON.parse(JSON.stringify(newState));
@@ -122,9 +112,7 @@ export const loadState = async (): Promise<AppState> => {
             const parsed = JSON.parse(stored);
             return { 
               ...baseState, 
-              ...parsed, 
-              experiences: parsed.experiences || [],
-              trainingMaterials: parsed.trainingMaterials || INITIAL_TRAININGS
+              ...parsed
             } as AppState;
         } catch (e) {
             return baseState;
@@ -134,7 +122,7 @@ export const loadState = async (): Promise<AppState> => {
   }
 
   try {
-    const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'experiences', 'trainingMaterials'];
+    const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications'];
     const results = await Promise.all(collections.map(col => supabase!.from(col).select('*')));
     
     const dataMap: Record<string, any[]> = {};
@@ -148,8 +136,6 @@ export const loadState = async (): Promise<AppState> => {
         hospitals: (dataMap.hospitals && dataMap.hospitals.length > 0 ? dataMap.hospitals : INITIAL_HOSPITALS) as Hospital[],
         visits: (dataMap.visits || []) as VisitSlot[],
         patients: (dataMap.patients || []) as Patient[],
-        experiences: (dataMap.experiences || []) as Experience[],
-        trainingMaterials: (dataMap.trainingMaterials && dataMap.trainingMaterials.length > 0 ? dataMap.trainingMaterials : INITIAL_TRAININGS) as TrainingMaterial[],
         logs: (dataMap.logs || []) as LogEntry[],
         notifications: (dataMap.notifications || []) as Notification[]
     };
