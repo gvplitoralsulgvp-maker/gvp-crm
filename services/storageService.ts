@@ -42,7 +42,8 @@ const INITIAL_STATE: AppState = {
 };
 
 const STORAGE_KEY = 'gvp_app_state_v4';
-let lastSyncedState: AppState = JSON.parse(JSON.stringify(INITIAL_STATE));
+// Inicialização explícita para evitar perda de propriedades no rastro do TS
+let lastSyncedState: AppState = { ...INITIAL_STATE };
 let isSaving = false;
 let pendingSave: AppState | null = null;
 
@@ -106,14 +107,18 @@ export const saveState = async (newState: AppState) => {
 };
 
 export const loadState = async (): Promise<AppState> => {
+  // Caso sem Supabase (Local)
   if (!supabase) {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
+      // Mescla com INITIAL_STATE para garantir que novas propriedades existam mesmo em saves antigos
       return { ...INITIAL_STATE, ...parsed };
     }
-    return INITIAL_STATE;
+    return { ...INITIAL_STATE };
   }
+
+  // Caso com Supabase
   try {
     const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'trainingMaterials', 'experiences'];
     const results = await Promise.all(collections.map(col => supabase!.from(col).select('*')));
@@ -123,11 +128,12 @@ export const loadState = async (): Promise<AppState> => {
       dataMap[col] = results[idx].data ? results[idx].data!.map((r: any) => r.data) : [];
     });
 
+    // Mapeamento explícito de todas as 10 propriedades da interface AppState
     const loaded: AppState = {
         currentUser: null,
-        members: dataMap.members?.length ? dataMap.members : INITIAL_MEMBERS,
-        hospitals: dataMap.hospitals?.length ? dataMap.hospitals : INITIAL_HOSPITALS,
-        routes: dataMap.routes?.length ? dataMap.routes : INITIAL_ROUTES,
+        members: dataMap.members && dataMap.members.length > 0 ? dataMap.members : INITIAL_MEMBERS,
+        hospitals: dataMap.hospitals && dataMap.hospitals.length > 0 ? dataMap.hospitals : INITIAL_HOSPITALS,
+        routes: dataMap.routes && dataMap.routes.length > 0 ? dataMap.routes : INITIAL_ROUTES,
         visits: dataMap.visits || [],
         patients: dataMap.patients || [],
         logs: dataMap.logs || [],
@@ -141,12 +147,13 @@ export const loadState = async (): Promise<AppState> => {
         const parsed = JSON.parse(storedUser);
         loaded.currentUser = loaded.members.find(m => m.id === parsed.id) || null;
     }
+    
     lastSyncedState = JSON.parse(JSON.stringify(loaded));
     return loaded;
   } catch (e) {
     console.error("Error loading state from Supabase:", e);
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) return { ...INITIAL_STATE, ...JSON.parse(stored) };
-    return INITIAL_STATE;
+    return { ...INITIAL_STATE };
   }
 };
