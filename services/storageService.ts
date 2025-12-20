@@ -28,8 +28,7 @@ const INITIAL_ROUTES: VisitRoute[] = [
   { id: 'r1', name: 'Rota Santos - Zona Leste', hospitals: ['Santa Casa de Santos'], active: true },
 ];
 
-// Forçando a tipagem do objeto literal para evitar inferência incompleta do TSC
-export const INITIAL_STATE: AppState = {
+export const createInitialState = (): AppState => ({
   currentUser: null,
   members: INITIAL_MEMBERS,
   hospitals: INITIAL_HOSPITALS,
@@ -40,10 +39,10 @@ export const INITIAL_STATE: AppState = {
   notifications: [] as Notification[],
   trainingMaterials: [] as TrainingMaterial[],
   experiences: [] as Experience[],
-};
+});
 
 const STORAGE_KEY = 'gvp_app_state_v4';
-let lastSyncedState: AppState = { ...INITIAL_STATE };
+let lastSyncedState: AppState = createInitialState();
 let isSaving = false;
 let pendingSave: AppState | null = null;
 
@@ -109,11 +108,16 @@ export const saveState = async (newState: AppState) => {
 export const loadState = async (): Promise<AppState> => {
   if (!supabase) {
     const stored = localStorage.getItem(STORAGE_KEY);
+    const initial = createInitialState();
     if (stored) {
-        const parsed = JSON.parse(stored);
-        return { ...INITIAL_STATE, ...parsed } as AppState;
+        try {
+            const parsed = JSON.parse(stored);
+            return { ...initial, ...parsed } as AppState;
+        } catch (e) {
+            return initial;
+        }
     }
-    return INITIAL_STATE;
+    return initial;
   }
   try {
     const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'trainingMaterials', 'experiences'];
@@ -124,7 +128,7 @@ export const loadState = async (): Promise<AppState> => {
       dataMap[col] = results[idx].data ? results[idx].data!.map((r: any) => r.data) : [];
     });
 
-    // Construção explícita para garantir que o TSC encontre todas as 10 propriedades
+    const initial = createInitialState();
     const loaded: AppState = {
         currentUser: null,
         members: (dataMap.members && dataMap.members.length > 0 ? dataMap.members : INITIAL_MEMBERS) as Member[],
@@ -140,15 +144,22 @@ export const loadState = async (): Promise<AppState> => {
     
     const storedUser = localStorage.getItem('gvp_current_user');
     if (storedUser) {
-        const parsed = JSON.parse(storedUser);
-        loaded.currentUser = loaded.members.find(m => m.id === parsed.id) || null;
+        try {
+            const parsed = JSON.parse(storedUser);
+            loaded.currentUser = loaded.members.find(m => m.id === parsed.id) || null;
+        } catch (e) {}
     }
     lastSyncedState = JSON.parse(JSON.stringify(loaded));
     return loaded;
   } catch (e) {
     console.error("Error loading state from Supabase:", e);
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return { ...INITIAL_STATE, ...JSON.parse(stored) } as AppState;
-    return INITIAL_STATE;
+    const initial = createInitialState();
+    if (stored) {
+        try {
+            return { ...initial, ...JSON.parse(stored) } as AppState;
+        } catch (err) {}
+    }
+    return initial;
   }
 };

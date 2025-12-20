@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { AppState, VisitRoute, VisitSlot, UserRole, Member, Hospital, Notification, Patient } from '@/types';
+import { AppState, VisitRoute, VisitSlot, UserRole, Member, Hospital, Notification, Patient } from '../types';
 import { ReportModal, HistoryItem } from '../components/ReportModal';
 import { FullCalendar } from '../components/FullCalendar';
 import { SlotModal } from '../components/SlotModal';
@@ -45,11 +45,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   };
 
   const getPatientLastVisit = (patient: Patient): VisitSlot | null => {
-      // Acha a rota que contém o hospital do paciente
       const route = state.routes.find(r => r.hospitals.includes(patient.hospitalName));
       if (!route) return null;
 
-      // Retorna a visita mais recente desta rota que possui um relato
       const pastVisitsWithReports = state.visits
         .filter(v => v.routeId === route.id && v.report)
         .sort((a,b) => b.date.localeCompare(a.date));
@@ -74,7 +72,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const handleFinishVisit = (generalNote: string, patientUpdates: Record<string, any>) => {
       if (!finishVisitSlot || !state.currentUser) return;
 
-      // Append patient-specific info to the general note for the visit record
       let compiledNote = generalNote;
       let newPatients = [...state.patients];
 
@@ -85,7 +82,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
               
               if (update.performed) {
                   compiledNote += `\n- Visita Realizada em ${patient.name}: ${update.notes || 'Sem detalhes específicos.'}`;
-                  // Update patient flags
                   newPatients[patientIdx] = {
                       ...patient,
                       hasDirectivesCard: update.hasDirectivesCard,
@@ -127,7 +123,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
 
       onUpdateState({ ...state, visits: updatedVisits, patients: newPatients });
       setFinishVisitSlot(null);
-      alert("Visita finalizada e dados atualizados!");
   };
 
   const handleSwapRequest = (newDate: string, note: string) => {
@@ -143,7 +138,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       };
       onUpdateState({ ...state, logs: [newLog, ...state.logs] });
       setSwapVisitSlot(null);
-      alert("Sua solicitação de troca foi registrada.");
   };
 
   const handleCancelVisit = (justification: string) => {
