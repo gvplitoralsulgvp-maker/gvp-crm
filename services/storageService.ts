@@ -62,18 +62,18 @@ const syncCollection = async (tableName: string, newItems: any[], oldItems: any[
         const itemsToProcess = newItems || [];
         const oldItemsToProcess = oldItems || [];
         
-        const upserts = itemsToProcess.filter(newItem => {
+        const upserts = itemsToProcess.filter((newItem: any) => {
             const oldItem = oldItemsToProcess.find((o: any) => o.id === newItem.id);
             return !oldItem || JSON.stringify(oldItem) !== JSON.stringify(newItem);
         });
-        const deletes = oldItemsToProcess.filter(oldItem => !itemsToProcess.find(n => n.id === oldItem.id));
+        const deletes = oldItemsToProcess.filter((oldItem: any) => !itemsToProcess.find((n: any) => n.id === oldItem.id));
         
         if (upserts.length > 0) {
-            const rows = upserts.map(item => ({ id: item.id, data: item }));
+            const rows = upserts.map((item: any) => ({ id: item.id, data: item }));
             await supabase.from(tableName).upsert(rows);
         }
         if (deletes.length > 0) {
-            const idsToDelete = deletes.map(d => d.id);
+            const idsToDelete = deletes.map((d: any) => d.id);
             await supabase.from(tableName).delete().in('id', idsToDelete);
         }
     } catch (err) {
@@ -143,15 +143,15 @@ export const loadState = async (): Promise<GvpState> => {
 
     const loadedState: GvpState = {
         currentUser: null,
-        members: (m.data?.map(i => i.data) || []) as Member[],
-        hospitals: (h.data?.map(i => i.data) || INITIAL_HOSPITALS) as Hospital[],
-        routes: (r.data?.map(i => i.data) || []) as VisitRoute[],
-        visits: (v.data?.map(i => i.data) || []) as VisitSlot[],
-        patients: (p.data?.map(i => i.data) || []) as Patient[],
-        logs: (l.data?.map(i => i.data) || []) as LogEntry[],
-        notifications: (n.data?.map(i => i.data) || []) as Notification[],
-        experiences: (ex.data?.map(i => i.data) || []) as Experience[],
-        trainingMaterials: (tr.data?.map(i => i.data) || INITIAL_TRAINING) as TrainingMaterial[]
+        members: (m.data?.map((i: any) => i.data) || []) as Member[],
+        hospitals: (h.data?.map((i: any) => i.data) || INITIAL_HOSPITALS) as Hospital[],
+        routes: (r.data?.map((i: any) => i.data) || []) as VisitRoute[],
+        visits: (v.data?.map((i: any) => i.data) || []) as VisitSlot[],
+        patients: (p.data?.map((i: any) => i.data) || []) as Patient[],
+        logs: (l.data?.map((i: any) => i.data) || []) as LogEntry[],
+        notifications: (n.data?.map((i: any) => i.data) || []) as Notification[],
+        experiences: (ex.data?.map((i: any) => i.data) || []) as Experience[],
+        trainingMaterials: (tr.data?.map((i: any) => i.data) || INITIAL_TRAINING) as TrainingMaterial[]
     };
 
     lastSyncedState = JSON.parse(JSON.stringify(loadedState));
@@ -159,7 +159,7 @@ export const loadState = async (): Promise<GvpState> => {
     const storedUser = localStorage.getItem('gvp_current_user');
     if (storedUser) {
         const parsed = JSON.parse(storedUser);
-        const valid = loadedState.members.find(member => member.id === parsed.id);
+        const valid = loadedState.members.find((member: Member) => member.id === parsed.id);
         if (valid) loadedState.currentUser = valid;
     }
     
