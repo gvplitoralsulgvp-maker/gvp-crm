@@ -1,10 +1,13 @@
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AppState, Member, UserRole } from '../types';
+// Fix: Changed AppState to GvpState to match the exported interface in types.ts
+import { GvpState, Member, UserRole } from '../types';
 import { Button } from '../components/Button';
 
 interface LoginPageProps {
-  state: AppState;
+  // Fix: Changed AppState to GvpState
+  state: GvpState;
   onLogin: (user: Member) => void;
 }
 

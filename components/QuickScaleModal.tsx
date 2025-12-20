@@ -1,13 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppState, VisitRoute, VisitSlot, Member, UserRole } from '../types';
+// Fix: Changed AppState to GvpState to match the exported interface in types.ts
+import { GvpState, VisitRoute, VisitSlot, Member, UserRole } from '../types';
 import { Button } from './Button';
 import { downloadIcsFile, getGoogleCalendarUrl } from '../services/calendarService';
 
 interface QuickScaleModalProps {
   isOpen: boolean;
   onClose: () => void;
-  state: AppState;
+  // Fix: Changed AppState to GvpState
+  state: GvpState;
   onSave: (newMemberIds: string[], date: string, route: VisitRoute, slot?: VisitSlot) => void;
   isHospitalMode?: boolean;
 }
@@ -82,7 +84,7 @@ export const QuickScaleModal: React.FC<QuickScaleModalProps> = ({ isOpen, onClos
   if (isSuccess && selectedRoute) {
     return (
       <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black bg-opacity-50 p-4 backdrop-blur-sm">
-        <div className={`rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in flex flex-col ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+        <div className={`rounded-3xl shadow-2xl w-full max-sm overflow-hidden animate-fade-in flex flex-col ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
            <div className="p-8 text-center space-y-4">
               <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4 text-white shadow-xl shadow-green-500/20 ring-8 ring-green-500/10">
                 <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>

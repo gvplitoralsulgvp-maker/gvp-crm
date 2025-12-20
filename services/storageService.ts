@@ -3,7 +3,7 @@ import {
   Member, 
   VisitRoute, 
   VisitSlot, 
-  AppState, 
+  GvpState, 
   Patient, 
   LogEntry, 
   Notification, 
@@ -32,7 +32,10 @@ const INITIAL_TRAINING: TrainingMaterial[] = [
   { id: 't4', title: 'Bioética e Autonomia', category: 'Bioética', type: 'pdf', description: 'Conceitos básicos sobre o direito do paciente.', url: '#', isRestricted: false },
 ];
 
-export const INITIAL_STATE: AppState = {
+/**
+ * Função de fábrica para garantir que um objeto GvpState sempre contenha todas as propriedades obrigatórias.
+ */
+export const createInitialState = (): GvpState => ({
   currentUser: null,
   members: [],
   hospitals: INITIAL_HOSPITALS,
@@ -43,25 +46,15 @@ export const INITIAL_STATE: AppState = {
   notifications: [],
   experiences: [],
   trainingMaterials: INITIAL_TRAINING,
-};
+});
 
-const STORAGE_KEY = 'gvp_app_state_v10';
+export const INITIAL_STATE: GvpState = createInitialState();
 
-let lastSyncedState: AppState = {
-  currentUser: null,
-  members: [],
-  hospitals: INITIAL_HOSPITALS,
-  routes: [],
-  visits: [],
-  patients: [],
-  logs: [],
-  notifications: [],
-  experiences: [],
-  trainingMaterials: INITIAL_TRAINING
-};
+const STORAGE_KEY = 'gvp_app_state_v12';
 
+let lastSyncedState: GvpState = createInitialState();
 let isSaving = false;
-let pendingSave: AppState | null = null;
+let pendingSave: GvpState | null = null;
 
 const syncCollection = async (tableName: string, newItems: any[], oldItems: any[]) => {
     if (!supabase) return;
@@ -88,7 +81,7 @@ const syncCollection = async (tableName: string, newItems: any[], oldItems: any[
     }
 };
 
-export const saveState = async (newState: AppState) => {
+export const saveState = async (newState: GvpState) => {
   if (newState.currentUser) localStorage.setItem('gvp_current_user', JSON.stringify(newState.currentUser));
   else localStorage.removeItem('gvp_current_user');
   localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
@@ -109,7 +102,7 @@ export const saveState = async (newState: AppState) => {
         syncCollection('training', newState.trainingMaterials, lastSyncedState.trainingMaterials),
         syncCollection('logs', newState.logs, lastSyncedState.logs)
       ]);
-      lastSyncedState = JSON.parse(JSON.stringify(newState)) as AppState;
+      lastSyncedState = JSON.parse(JSON.stringify(newState));
   } finally {
       isSaving = false;
       if (pendingSave) {
@@ -120,14 +113,14 @@ export const saveState = async (newState: AppState) => {
   }
 };
 
-export const loadState = async (): Promise<AppState> => {
+export const loadState = async (): Promise<GvpState> => {
   try {
     if (!supabase) {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
           const parsed = JSON.parse(stored);
-          const mergedState: AppState = {
-            currentUser: null,
+          const mergedState: GvpState = {
+            ...createInitialState(),
             members: parsed.members || [],
             hospitals: parsed.hospitals || INITIAL_HOSPITALS,
             routes: parsed.routes || [],
@@ -140,7 +133,7 @@ export const loadState = async (): Promise<AppState> => {
           };
           return mergedState;
       }
-      return INITIAL_STATE;
+      return createInitialState();
     }
 
     const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'experiences', 'training'];
@@ -148,7 +141,7 @@ export const loadState = async (): Promise<AppState> => {
     
     const [m, h, r, v, p, l, n, ex, tr] = results;
 
-    const loadedState: AppState = {
+    const loadedState: GvpState = {
         currentUser: null,
         members: (m.data?.map(i => i.data) || []) as Member[],
         hospitals: (h.data?.map(i => i.data) || INITIAL_HOSPITALS) as Hospital[],
@@ -161,7 +154,7 @@ export const loadState = async (): Promise<AppState> => {
         trainingMaterials: (tr.data?.map(i => i.data) || INITIAL_TRAINING) as TrainingMaterial[]
     };
 
-    lastSyncedState = JSON.parse(JSON.stringify(loadedState)) as AppState;
+    lastSyncedState = JSON.parse(JSON.stringify(loadedState));
     
     const storedUser = localStorage.getItem('gvp_current_user');
     if (storedUser) {
@@ -176,8 +169,8 @@ export const loadState = async (): Promise<AppState> => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
         const parsed = JSON.parse(stored);
-        const fallbackState: AppState = {
-            currentUser: null,
+        const fallbackState: GvpState = {
+            ...createInitialState(),
             members: parsed.members || [],
             hospitals: parsed.hospitals || INITIAL_HOSPITALS,
             routes: parsed.routes || [],
@@ -190,6 +183,6 @@ export const loadState = async (): Promise<AppState> => {
         };
         return fallbackState;
     }
-    return INITIAL_STATE;
+    return createInitialState();
   }
 };

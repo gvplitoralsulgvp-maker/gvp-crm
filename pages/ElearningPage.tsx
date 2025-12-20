@@ -1,9 +1,11 @@
 
 import React, { useState } from 'react';
-import { AppState, TrainingMaterial } from '../types';
+// Fix: Changed AppState to GvpState to match the exported interface in types.ts
+import { GvpState, TrainingMaterial } from '../types';
 import { Button } from '../components/Button';
 
-export const ElearningPage: React.FC<{ state: AppState, isHospitalMode?: boolean }> = ({ state, isHospitalMode }) => {
+// Fix: Changed AppState to GvpState
+export const ElearningPage: React.FC<{ state: GvpState, isHospitalMode?: boolean }> = ({ state, isHospitalMode }) => {
   const [filter, setFilter] = useState<string>('Todos');
 
   const categories = ['Todos', 'Bioética', 'Segurança', 'Abordagem', 'Protocolos'];

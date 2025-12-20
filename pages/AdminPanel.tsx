@@ -1,10 +1,12 @@
 
 import React, { useState, useMemo } from 'react';
-import { AppState, Member, VisitRoute, UserRole, Hospital, TrainingMaterial } from '@/types';
+// Fix: Changed AppState to GvpState to match the exported interface in types.ts
+import { GvpState, Member, VisitRoute, UserRole, Hospital, TrainingMaterial } from '@/types';
 import { Button } from '../components/Button';
 import { MapPicker } from '../components/MapPicker';
 
-export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
+// Fix: Changed AppState to GvpState
+export const AdminPanel: React.FC<{ state: GvpState, onUpdateState: (newState: GvpState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
   const [activeTab, setActiveTab] = useState<'metrics' | 'members' | 'hospitals' | 'routes' | 'training'>('metrics');
   const [editingHospital, setEditingHospital] = useState<Partial<Hospital> | null>(null);
   const [editingRoute, setEditingRoute] = useState<Partial<VisitRoute> | null>(null);

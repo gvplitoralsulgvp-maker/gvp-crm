@@ -1,12 +1,14 @@
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AppState, Patient } from '../types';
+// Fix: Changed AppState to GvpState to match the exported interface in types.ts
+import { GvpState, Patient } from '../types';
 import { Button } from '../components/Button';
 
 interface PatientRegistryProps {
-  state: AppState;
-  onUpdateState: (newState: AppState) => void;
+  // Fix: Changed AppState to GvpState
+  state: GvpState;
+  onUpdateState: (newState: GvpState) => void;
   isPrivacyMode: boolean;
   isHospitalMode?: boolean;
 }

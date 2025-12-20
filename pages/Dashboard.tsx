@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AppState, VisitRoute, VisitSlot, UserRole, Member, Hospital, Notification, Patient } from '@/types';
+// Fix: Changed AppState to GvpState to match the exported interface in types.ts
+import { GvpState, VisitRoute, VisitSlot, UserRole, Member, Hospital, Notification, Patient } from '@/types';
 import { ReportModal, HistoryItem } from '../components/ReportModal';
 import { FullCalendar } from '../components/FullCalendar';
 import { SlotModal } from '../components/SlotModal';
@@ -17,8 +18,9 @@ import { Button } from '../components/Button';
 import { downloadIcsFile } from '../services/calendarService';
 
 export interface DashboardProps {
-  state: AppState;
-  onUpdateState: (newState: AppState) => void;
+  // Fix: Changed AppState to GvpState
+  state: GvpState;
+  onUpdateState: (newState: GvpState) => void;
   isPrivacyMode: boolean;
   isHospitalMode: boolean;
 }

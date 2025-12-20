@@ -1,9 +1,11 @@
 
 import React, { useState } from 'react';
-import { AppState, Experience } from '../types';
+// Fix: Changed AppState to GvpState to match the exported interface in types.ts
+import { GvpState, Experience } from '../types';
 import { Button } from '../components/Button';
 
-export const MuralPage: React.FC<{ state: AppState, onUpdateState: (s: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
+// Fix: Changed AppState to GvpState
+export const MuralPage: React.FC<{ state: GvpState, onUpdateState: (s: GvpState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
   const [isPosting, setIsPosting] = useState(false);
   const [newPost, setNewPost] = useState({ content: '', category: 'Encorajamento' as any });
 

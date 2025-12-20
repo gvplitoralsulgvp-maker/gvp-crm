@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { loadState, saveState } from './services/storageService';
-import { AppState, UserRole, Member, LogEntry } from '@/types';
+import { GvpState, UserRole, Member, LogEntry } from './types';
 import { Dashboard } from './pages/Dashboard';
 import { AdminPanel } from './pages/AdminPanel';
 import { PatientRegistry } from './pages/PatientRegistry';
@@ -21,8 +21,8 @@ import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { supabase } from './services/supabaseClient';
 
 const Layout: React.FC<{ 
-  state: AppState; 
-  onUpdateState: (s: AppState) => void; 
+  state: GvpState; 
+  onUpdateState: (s: GvpState) => void; 
   children: React.ReactNode;
   isPrivacyMode: boolean;
   onTogglePrivacy: () => void;
@@ -33,11 +33,8 @@ const Layout: React.FC<{
   onChangePasswordClick: () => void;
 }> = ({ state, onUpdateState, children, isPrivacyMode, onTogglePrivacy, isHospitalMode, onToggleHospitalMode, isNightMode, onToggleNightMode, onChangePasswordClick }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [showNotifyBanner, setShowNotifyBanner] = useState(false);
   const location = useLocation();
-  const isOnline = !!supabase;
   
-  // Lembrete automático de visita próxima
   useEffect(() => {
     if (state.currentUser) {
         const today = new Date().toISOString().split('T')[0];
@@ -184,7 +181,7 @@ const Layout: React.FC<{
 };
 
 const App: React.FC = () => {
-  const [state, setState] = useState<AppState | null>(null);
+  const [state, setState] = useState<GvpState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
   const [isHospitalMode, setIsHospitalMode] = useState(false);

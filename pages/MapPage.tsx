@@ -1,9 +1,11 @@
 
 import React, { useEffect, useRef } from 'react';
-import { AppState } from '../types';
+// Fix: Changed AppState to GvpState to match the exported interface in types.ts
+import { GvpState } from '../types';
 
 interface MapPageProps {
-  state: AppState;
+  // Fix: Changed AppState to GvpState
+  state: GvpState;
   isHospitalMode?: boolean;
 }
 

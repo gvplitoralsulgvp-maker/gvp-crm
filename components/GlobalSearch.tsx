@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AppState, Member, Patient, VisitRoute, Hospital } from '../types';
+// Fix: Changed AppState to GvpState to match the exported interface in types.ts
+import { GvpState, Member, Patient, VisitRoute, Hospital } from '../types';
 
 interface GlobalSearchProps {
-  state: AppState;
+  // Fix: Changed AppState to GvpState
+  state: GvpState;
   isHospitalMode?: boolean;
 }
 
