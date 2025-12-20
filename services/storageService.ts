@@ -1,5 +1,5 @@
 
-import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital, TrainingMaterial, Experience } from '@/types';
+import { Member, VisitRoute, VisitSlot, AppState, Patient, LogEntry, Notification, Hospital, TrainingMaterial, Experience, UserRole } from '../types';
 import { supabase } from './supabaseClient';
 
 const INITIAL_HOSPITALS: Hospital[] = [
@@ -46,7 +46,7 @@ const syncCollection = async (tableName: string, newItems: any[], oldItems: any[
         const oldItemsToProcess = oldItems || [];
         
         const upserts = itemsToProcess.filter(newItem => {
-            const oldItem = oldItemsToProcess.find(o => o.id === newItem.id);
+            const oldItem = oldItemsToProcess.find((o: any) => o.id === newItem.id);
             return !oldItem || JSON.stringify(oldItem) !== JSON.stringify(newItem);
         });
         const deletes = oldItemsToProcess.filter(oldItem => !itemsToProcess.find(n => n.id === oldItem.id));
@@ -103,7 +103,19 @@ export const loadState = async (): Promise<AppState> => {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
           const parsed = JSON.parse(stored);
-          return { ...INITIAL_STATE, ...parsed, currentUser: INITIAL_STATE.currentUser } as AppState;
+          const mergedState: AppState = {
+            currentUser: null,
+            members: parsed.members || [],
+            hospitals: parsed.hospitals || INITIAL_HOSPITALS,
+            routes: parsed.routes || [],
+            visits: parsed.visits || [],
+            patients: parsed.patients || [],
+            logs: parsed.logs || [],
+            notifications: parsed.notifications || [],
+            experiences: parsed.experiences || [],
+            trainingMaterials: parsed.trainingMaterials || INITIAL_TRAINING
+          };
+          return mergedState;
       }
       return INITIAL_STATE;
     }
@@ -141,7 +153,19 @@ export const loadState = async (): Promise<AppState> => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
         const parsed = JSON.parse(stored);
-        return { ...INITIAL_STATE, ...parsed } as AppState;
+        const fallbackState: AppState = {
+            currentUser: null,
+            members: parsed.members || [],
+            hospitals: parsed.hospitals || INITIAL_HOSPITALS,
+            routes: parsed.routes || [],
+            visits: parsed.visits || [],
+            patients: parsed.patients || [],
+            logs: parsed.logs || [],
+            notifications: parsed.notifications || [],
+            experiences: parsed.experiences || [],
+            trainingMaterials: parsed.trainingMaterials || INITIAL_TRAINING
+        };
+        return fallbackState;
     }
     return INITIAL_STATE;
   }
