@@ -1,5 +1,16 @@
 
-import { Member, VisitRoute, VisitSlot, AppState, Patient, LogEntry, Notification, Hospital, TrainingMaterial, Experience, UserRole } from '../types';
+import { 
+  Member, 
+  VisitRoute, 
+  VisitSlot, 
+  AppState, 
+  Patient, 
+  LogEntry, 
+  Notification, 
+  Hospital, 
+  TrainingMaterial, 
+  Experience 
+} from '@/types';
 import { supabase } from './supabaseClient';
 
 const INITIAL_HOSPITALS: Hospital[] = [
@@ -32,10 +43,22 @@ export const INITIAL_STATE: AppState = {
   notifications: [],
   experiences: [],
   trainingMaterials: INITIAL_TRAINING,
-} as AppState;
+};
 
-const STORAGE_KEY = 'gvp_app_state_v7';
-let lastSyncedState: AppState = { ...INITIAL_STATE };
+const STORAGE_KEY = 'gvp_app_state_v8';
+let lastSyncedState: AppState = {
+  currentUser: INITIAL_STATE.currentUser,
+  members: INITIAL_STATE.members,
+  hospitals: INITIAL_STATE.hospitals,
+  routes: INITIAL_STATE.routes,
+  visits: INITIAL_STATE.visits,
+  patients: INITIAL_STATE.patients,
+  logs: INITIAL_STATE.logs,
+  notifications: INITIAL_STATE.notifications,
+  experiences: INITIAL_STATE.experiences,
+  trainingMaterials: INITIAL_STATE.trainingMaterials,
+};
+
 let isSaving = false;
 let pendingSave: AppState | null = null;
 
@@ -85,6 +108,7 @@ export const saveState = async (newState: AppState) => {
         syncCollection('training', newState.trainingMaterials, lastSyncedState.trainingMaterials),
         syncCollection('logs', newState.logs, lastSyncedState.logs)
       ]);
+      // Profunda cópia para evitar referências circulares ou mutações inesperadas
       lastSyncedState = JSON.parse(JSON.stringify(newState));
   } finally {
       isSaving = false;
@@ -113,7 +137,7 @@ export const loadState = async (): Promise<AppState> => {
             notifications: parsed.notifications || [],
             experiences: parsed.experiences || [],
             trainingMaterials: parsed.trainingMaterials || INITIAL_TRAINING
-          } as AppState;
+          };
           return mergedState;
       }
       return INITIAL_STATE;
@@ -135,7 +159,7 @@ export const loadState = async (): Promise<AppState> => {
         notifications: (n.data?.map(i => i.data) || []) as Notification[],
         experiences: (ex.data?.map(i => i.data) || []) as Experience[],
         trainingMaterials: (tr.data?.map(i => i.data) || INITIAL_TRAINING) as TrainingMaterial[]
-    } as AppState;
+    };
 
     lastSyncedState = JSON.parse(JSON.stringify(loadedState));
     
@@ -163,7 +187,7 @@ export const loadState = async (): Promise<AppState> => {
             notifications: parsed.notifications || [],
             experiences: parsed.experiences || [],
             trainingMaterials: parsed.trainingMaterials || INITIAL_TRAINING
-        } as AppState;
+        };
         return fallbackState;
     }
     return INITIAL_STATE;
