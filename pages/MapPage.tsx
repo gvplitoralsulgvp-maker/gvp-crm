@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef } from 'react';
-import { AppState } from '../types';
+import { AppState, UserRole } from '../types';
 
 interface MapPageProps {
   state: AppState;
@@ -44,8 +44,8 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
 
     const today = new Date();
 
+    // Renderizar Hospitais
     state.hospitals.forEach(h => {
-      // Calcular recência da visita para este hospital
       const hospitalVisits = state.visits.filter(v => 
         state.routes.find(r => r.id === v.routeId)?.hospitals.includes(h.name)
       );
@@ -53,7 +53,7 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
       const lastVisit = hospitalVisits
         .sort((a,b) => b.date.localeCompare(a.date))[0];
       
-      let color = 'blue'; // Padrão
+      let color = 'blue'; 
       let statusText = 'Sem registros recentes';
 
       if (lastVisit) {
@@ -95,19 +95,31 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
         `);
     });
 
-    state.members.filter(m => m.active && m.lat && m.lng).forEach(m => {
+    // Renderizar Membros (Ativos e Pendentes para Admins)
+    const isAdmin = state.currentUser?.role === UserRole.ADMIN;
+    
+    state.members.filter(m => m.lat && m.lng).forEach(m => {
+      // Se não for admin, só vê membros ativos
+      if (!m.active && !isAdmin) return;
+
+      const markerColor = m.active ? '#2563eb' : '#94a3b8'; // Azul para ativo, cinza para pendente
+      const shadowColor = m.active ? 'rgba(59, 130, 246, 0.4)' : 'rgba(148, 163, 184, 0.2)';
+
       window.L.circleMarker([m.lat, m.lng], {
-        color: '#2563eb',
-        fillColor: '#3b82f6',
+        color: markerColor,
+        fillColor: markerColor,
         fillOpacity: 0.6,
-        radius: 7,
+        radius: 8,
         weight: 2
       })
       .addTo(map)
       .bindPopup(`
-        <div class="p-1">
-          <h4 class="font-bold text-blue-700 text-sm mb-0">${m.name}</h4>
-          <p class="text-[10px] text-gray-500">Membro da Equipe</p>
+        <div class="p-1 text-center">
+          <h4 class="font-bold text-sm mb-0 ${m.active ? 'text-blue-700' : 'text-gray-500'}">${m.name}</h4>
+          <p class="text-[9px] uppercase font-black tracking-widest mt-1 ${m.active ? 'text-blue-500' : 'text-gray-400'}">
+            ${m.active ? 'Voluntário Ativo' : 'Solicitação Pendente'}
+          </p>
+          <p class="text-[10px] text-gray-400 mt-2">${m.congregation || 'GVP Litoral'}</p>
         </div>
       `);
     });
@@ -116,7 +128,7 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
       clearTimeout(timer);
     };
 
-  }, [state.hospitals, state.members, state.visits, state.routes]);
+  }, [state.hospitals, state.members, state.visits, state.routes, state.currentUser]);
 
   return (
     <div className="space-y-6 h-[calc(100vh-160px)] flex flex-col animate-fade-in">
@@ -125,17 +137,19 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
       }`}>
         <div>
            <h2 className={`text-xl font-bold tracking-tight ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Mapa de Cobertura</h2>
-           <p className={`text-xs ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Identifique hospitais prioritários com base na recência das visitas.</p>
+           <p className={`text-xs ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Identifique a proximidade dos membros em relação aos hospitais.</p>
         </div>
         <div className="flex gap-4 text-[10px] font-bold uppercase tracking-wider text-gray-400">
            <div className="flex items-center gap-2">
-             <span className="w-3 h-3 rounded-full bg-red-50 shadow-sm"></span> Prioridade ({'>'}5d)
+             <span className="w-3 h-3 rounded-full bg-blue-600 shadow-sm"></span> Equipe
            </div>
+           {state.currentUser?.role === UserRole.ADMIN && (
+               <div className="flex items-center gap-2">
+                 <span className="w-3 h-3 rounded-full bg-gray-400 shadow-sm"></span> Pendente
+               </div>
+           )}
            <div className="flex items-center gap-2">
-             <span className="w-3 h-3 rounded-full bg-orange-50 shadow-sm"></span> Alerta ({'>'}3d)
-           </div>
-           <div className="flex items-center gap-2">
-             <span className="w-3 h-3 rounded-full bg-green-500 shadow-sm"></span> Recente
+             <span className="w-3 h-3 rounded-full bg-red-500 shadow-sm"></span> Prioridade Visita
            </div>
         </div>
       </div>

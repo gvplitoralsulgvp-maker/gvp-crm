@@ -6,58 +6,93 @@ export interface GeoLocation {
   city: string;
 }
 
+/**
+ * Obtém coordenadas geográficas a partir de um CEP brasileiro.
+ * Utiliza BrasilAPI v2 (preferencial) ou fallback Nominatim.
+ */
 export const getCoordsFromCep = async (cep: string): Promise<GeoLocation> => {
   const cleanCep = cep.replace(/\D/g, '');
-  if (cleanCep.length !== 8) throw new Error("O CEP deve conter 8 números.");
-
-  // 1. Busca endereço no ViaCEP
-  const viaCepRes = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
-  if (!viaCepRes.ok) throw new Error("Erro de conexão com o serviço de CEP.");
-  
-  const addressData = await viaCepRes.json();
-  if (addressData.erro) throw new Error("CEP não encontrado na base de dados dos Correios.");
-
-  // 2. Construção inteligente da string de busca para o Nominatim
-  // Filtramos apenas partes que não são vazias
-  const searchParts = [];
-  if (addressData.logradouro) searchParts.push(addressData.logradouro);
-  if (addressData.localidade) searchParts.push(addressData.localidade);
-  if (addressData.uf) searchParts.push(addressData.uf);
-  searchParts.push("Brasil");
-  
-  const fullSearchQuery = searchParts.join(', ');
+  if (cleanCep.length !== 8) throw new Error("O CEP deve conter exatamente 8 números.");
 
   try {
-    // 3. Geocodificação no Nominatim (OpenStreetMap)
-    const nominatimRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullSearchQuery)}&limit=1`);
-    const geoData = await nominatimRes.json();
-
-    if (geoData && geoData.length > 0) {
-      return {
-        lat: parseFloat(geoData[0].lat),
-        lng: parseFloat(geoData[0].lon),
-        address: `${addressData.logradouro || 'Área sem logradouro'}, ${addressData.bairro || ''}, ${addressData.localidade} - ${addressData.uf}`,
-        city: addressData.localidade
-      };
+    // 1. Tenta BrasilAPI v2 (Retorna coordenadas diretamente em muitos casos)
+    const res = await fetch(`https://brasilapi.com.br/api/cep/v2/${cleanCep}`);
+    
+    if (res.ok) {
+      const data = await res.json();
+      
+      // Se a BrasilAPI já retornou as coordenadas
+      if (data.location && data.location.coordinates) {
+        const { longitude, latitude } = data.location.coordinates;
+        return {
+          lat: parseFloat(latitude),
+          lng: parseFloat(longitude),
+          address: `${data.street || 'Logradouro não informado'}, ${data.neighborhood || 'Bairro não informado'}, ${data.city} - ${data.state}`,
+          city: data.city
+        };
+      }
+      
+      // Se não retornou coordenadas, mas retornou endereço, tentamos Nominatim como fallback
+      return await fallbackGeocoding(data.street, data.neighborhood, data.city, data.state, cleanCep);
     }
+    
+    // 2. Se BrasilAPI falhar, tenta ViaCEP + Nominatim como última instância
+    const viaCepRes = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+    const viaData = await viaCepRes.json();
+    
+    if (viaData.erro) throw new Error("CEP não encontrado.");
+    
+    return await fallbackGeocoding(viaData.logradouro, viaData.bairro, viaData.localidade, viaData.uf, cleanCep);
 
-    // 4. Fallback: Se falhou com a rua, tenta apenas Cidade + Estado + Brasil
-    const fallbackQuery = `${addressData.localidade}, ${addressData.uf}, Brasil`;
-    const fallbackRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fallbackQuery)}&limit=1`);
-    const fallbackData = await fallbackRes.json();
-
-    if (fallbackData && fallbackData.length > 0) {
-      return {
-        lat: parseFloat(fallbackData[0].lat),
-        lng: parseFloat(fallbackData[0].lon),
-        address: `Aprox: ${addressData.bairro || 'Centro'}, ${addressData.localidade} - ${addressData.uf}`,
-        city: addressData.localidade
-      };
-    }
-
-    throw new Error("Endereço validado, mas não foi possível marcar no mapa. Tente um CEP próximo ou ajuste manualmente no Admin.");
   } catch (err: any) {
-    if (err.message.includes("Endereço validado")) throw err;
-    throw new Error("Falha ao conectar com o serviço de mapas. Verifique sua internet.");
+    console.error("GeoService Error:", err);
+    if (err.message === 'Failed to fetch') {
+      throw new Error("Erro de conexão. Verifique sua internet ou tente novamente em instantes.");
+    }
+    throw new Error(err.message || "Não foi possível localizar este CEP.");
   }
 };
+
+/**
+ * Fallback para transformar endereço em coordenadas via Nominatim
+ */
+async function fallbackGeocoding(street: string, neighborhood: string, city: string, state: string, cep: string): Promise<GeoLocation> {
+  const baseUrl = "https://nominatim.openstreetmap.org/search";
+  const query = `${street}, ${neighborhood}, ${city}, ${state}, Brasil`;
+  
+  const params = new URLSearchParams({
+    format: 'json',
+    q: query,
+    limit: '1',
+    'accept-language': 'pt-BR',
+    email: 'gvp-app@gvp-litoral.com'
+  });
+
+  const res = await fetch(`${baseUrl}?${params.toString()}`);
+  const data = await res.json();
+
+  if (data && data.length > 0) {
+    return {
+      lat: parseFloat(data[0].lat),
+      lng: parseFloat(data[0].lon),
+      address: `${street || 'Área s/ logradouro'}, ${neighborhood || 'Centro'}, ${city} - ${state}`,
+      city: city
+    };
+  }
+
+  // Fallback para o centro da cidade se a rua falhar
+  const cityQuery = `${city}, ${state}, Brasil`;
+  const cityRes = await fetch(`${baseUrl}?format=json&q=${encodeURIComponent(cityQuery)}&limit=1`);
+  const cityData = await cityRes.json();
+
+  if (cityData && cityData.length > 0) {
+    return {
+      lat: parseFloat(cityData[0].lat),
+      lng: parseFloat(cityData[0].lon),
+      address: `${street || 'Rua não localizada'}, ${city} - ${state}`,
+      city: city
+    };
+  }
+
+  throw new Error("Endereço validado, mas não conseguimos gerar o ponto no mapa.");
+}

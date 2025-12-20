@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { AppState, Member, VisitRoute, UserRole, Hospital, VisitSlot } from '../types';
+import { AppState, Member, VisitRoute, UserRole, Hospital, VisitSlot, LogEntry } from '../types';
 import { Button } from '../components/Button';
 import { MapPicker } from '../components/MapPicker';
 import { getCoordsFromCep } from '../services/geoService';
@@ -9,7 +9,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
   const [activeTab, setActiveTab] = useState<'members' | 'hospitals' | 'routes' | 'reports' | 'balance'>('members');
   const [editingHospital, setEditingHospital] = useState<Partial<Hospital> | null>(null);
   const [editingRoute, setEditingRoute] = useState<Partial<VisitRoute> | null>(null);
-  const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [editingMember, setEditingMember] = useState<Partial<Member> | null>(null);
   const [isValidatingMemberCep, setIsValidatingMemberCep] = useState(false);
 
   // Stats for Balance Tab
@@ -19,7 +19,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
   }).sort((a,b) => b.visitCount - a.visitCount);
   const maxVisits = Math.max(...memberActivity.map(m => m.visitCount), 1);
 
-  // Filtered visits with reports for the Reports tab
   const visitsWithReports = state.visits
     .filter(v => !!v.report)
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -30,11 +29,39 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     onUpdateState({ ...state, members: updated });
   };
 
-  const handleUpdateMember = (e: React.FormEvent) => {
+  const handleSaveMember = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingMember) return;
-    const updated = state.members.map(m => m.id === editingMember.id ? editingMember : m);
-    onUpdateState({ ...state, members: updated });
+    if (!editingMember?.name || !editingMember?.email) return;
+
+    let updatedMembers = [...state.members];
+    if (editingMember.id) {
+        updatedMembers = updatedMembers.map(m => m.id === editingMember.id ? { ...m, ...editingMember } as Member : m);
+    } else {
+        const newMember: Member = {
+            ...editingMember,
+            id: crypto.randomUUID(),
+            role: editingMember.role || UserRole.MEMBER,
+            active: true,
+            password: editingMember.password || '123456',
+            hasSeenOnboarding: false
+        } as Member;
+        updatedMembers.push(newMember);
+        
+        // Log the manual creation
+        const log: LogEntry = {
+            id: crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+            userId: state.currentUser?.id || 'admin',
+            userName: state.currentUser?.name || 'Admin',
+            action: 'Membro Criado',
+            details: `Admin criou manualmente o membro ${newMember.name}`
+        };
+        onUpdateState({ ...state, members: updatedMembers, logs: [log, ...state.logs] });
+        setEditingMember(null);
+        return;
+    }
+
+    onUpdateState({ ...state, members: updatedMembers });
     setEditingMember(null);
   };
 
@@ -49,8 +76,8 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
             lng: result.lng,
             address: result.address
         });
-    } catch (e) {
-        alert("Falha ao localizar CEP.");
+    } catch (e: any) {
+        alert(e.message || "Falha ao localizar CEP.");
     } finally {
         setIsValidatingMemberCep(false);
     }
@@ -110,6 +137,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
             <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Gestão de equipe, infraestrutura hospitalar e auditoria de visitas.</p>
          </div>
          <div className="flex gap-2">
+            {activeTab === 'members' && <Button size="sm" onClick={() => setEditingMember({ active: true, role: UserRole.MEMBER })}>+ Novo Membro</Button>}
             {activeTab === 'hospitals' && <Button size="sm" onClick={() => setEditingHospital({ lat: -23.9608, lng: -46.3331, city: '', importantInfo: '' })}>+ Novo Hospital</Button>}
             {activeTab === 'routes' && <Button size="sm" onClick={() => setEditingRoute({ hospitals: [] })}>+ Nova Rota</Button>}
          </div>
@@ -251,7 +279,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
           </div>
       )}
 
-      {/* --- ABA RELATÓRIOS (AUDITORIA) --- */}
+      {/* --- ABA RELATÓRIOS --- */}
       {activeTab === 'reports' && (
           <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-xl shadow-sm border overflow-hidden`}>
             <div className="p-4 border-b border-gray-800/10 flex justify-between items-center">
@@ -283,18 +311,10 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                           <div className={`p-3 rounded-lg text-xs leading-relaxed max-w-lg ${isHospitalMode ? 'bg-[#1a1c1e] text-gray-400' : 'bg-gray-50 text-gray-600'}`}>
                             {visit.report?.notes}
                           </div>
-                          {visit.report?.followUpNeeded && (
-                            <span className="mt-2 inline-block px-2 py-0.5 bg-red-500/10 text-red-500 text-[8px] font-bold uppercase rounded border border-red-500/20">Urgente</span>
-                          )}
                         </td>
                       </tr>
                     );
                   })}
-                  {visitsWithReports.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="px-6 py-10 text-center text-gray-500 italic">Nenhum relatório finalizado até o momento.</td>
-                    </tr>
-                  )}
                 </tbody>
               </table>
             </div>
@@ -323,7 +343,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                                   ></div>
                               </div>
                           </div>
-                          {m.visitCount === 0 && <span className="bg-red-500/10 text-red-500 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase border border-red-500/20">Inativo</span>}
                       </div>
                   ))}
               </div>
@@ -335,23 +354,34 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
           <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
               <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-fade-in`}>
                   <div className="bg-blue-600 p-5 text-white font-bold flex justify-between items-center">
-                      <span className="text-lg">Editar Membro</span>
+                      <span className="text-lg">{editingMember.id ? 'Editar Membro' : 'Novo Membro'}</span>
                       <button onClick={() => setEditingMember(null)} className="text-2xl leading-none">&times;</button>
                   </div>
-                  <form onSubmit={handleUpdateMember} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
+                  <form onSubmit={handleSaveMember} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
                       <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-1">
                               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Nome</label>
-                              <input required type="text" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingMember.name} onChange={e => setEditingMember({...editingMember, name: e.target.value})} />
+                              <input required type="text" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingMember.name || ''} onChange={e => setEditingMember({...editingMember, name: e.target.value})} />
                           </div>
                           <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Email</label>
+                              <input required type="email" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingMember.email || ''} onChange={e => setEditingMember({...editingMember, email: e.target.value})} />
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
                               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Congregação</label>
-                              <input required type="text" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingMember.congregation || ''} onChange={e => setEditingMember({...editingMember, congregation: e.target.value})} />
+                              <input type="text" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingMember.congregation || ''} onChange={e => setEditingMember({...editingMember, congregation: e.target.value})} />
+                          </div>
+                          <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">WhatsApp</label>
+                              <input type="text" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingMember.phone || ''} onChange={e => setEditingMember({...editingMember, phone: e.target.value})} />
                           </div>
                       </div>
                       
                       <div className="pt-2 border-t border-gray-800/10">
-                        <label className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-2 block">Atualizar Localização (CEP)</label>
+                        <label className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-2 block">Localização (CEP)</label>
                         <div className="flex gap-2">
                             <input 
                                 type="text" className={`flex-grow border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} 
@@ -376,7 +406,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
 
                       <div className="flex justify-end gap-3 pt-4 border-t border-gray-800 mt-2">
                           <Button variant="secondary" type="button" onClick={() => setEditingMember(null)}>Cancelar</Button>
-                          <Button type="submit">Salvar Alterações</Button>
+                          <Button type="submit">Salvar Membro</Button>
                       </div>
                   </form>
               </div>
@@ -406,10 +436,9 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                           <input required type="text" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingHospital.address || ''} onChange={e => setEditingHospital({...editingHospital, address: e.target.value})} />
                       </div>
                       <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Instruções Importantes (Regras da Instituição)</label>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Instruções Importantes</label>
                           <textarea 
                             rows={3}
-                            placeholder="Ex: Entrada pela lateral, estacionamento gratuito no local, exige máscara PFF2..."
                             className={`w-full border p-3 rounded-xl text-sm resize-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} 
                             value={editingHospital.importantInfo || ''} 
                             onChange={e => setEditingHospital({...editingHospital, importantInfo: e.target.value})} 
