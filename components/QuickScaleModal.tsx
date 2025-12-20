@@ -1,15 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
-// Fix: Changed AppState to GvpState to match the exported interface in types.ts
-import { GvpState, VisitRoute, VisitSlot, Member, UserRole } from '../types';
+import { AppState, VisitRoute, VisitSlot, Member, UserRole } from '../types';
 import { Button } from './Button';
-import { downloadIcsFile, getGoogleCalendarUrl } from '../services/calendarService';
+import { downloadIcsFile } from '../services/calendarService';
 
 interface QuickScaleModalProps {
   isOpen: boolean;
   onClose: () => void;
-  // Fix: Changed AppState to GvpState
-  state: GvpState;
+  state: AppState;
   onSave: (newMemberIds: string[], date: string, route: VisitRoute, slot?: VisitSlot) => void;
   isHospitalMode?: boolean;
 }
@@ -68,14 +66,7 @@ export const QuickScaleModal: React.FC<QuickScaleModalProps> = ({ isOpen, onClos
     setIsSuccess(true);
   };
 
-  const handleAddToGoogle = () => {
-    if (selectedRoute) {
-      const url = getGoogleCalendarUrl(selectedDate, selectedRoute);
-      window.open(url, '_blank');
-    }
-  };
-
-  const handleDownloadIcs = () => {
+  const handleAddToCalendar = () => {
     if (selectedRoute) {
       downloadIcsFile(selectedDate, selectedRoute);
     }
@@ -83,34 +74,24 @@ export const QuickScaleModal: React.FC<QuickScaleModalProps> = ({ isOpen, onClos
 
   if (isSuccess && selectedRoute) {
     return (
-      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black bg-opacity-50 p-4 backdrop-blur-sm">
-        <div className={`rounded-3xl shadow-2xl w-full max-sm overflow-hidden animate-fade-in flex flex-col ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black bg-opacity-50 p-4">
+        <div className={`rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in flex flex-col ${isHospitalMode ? 'bg-[#212327]' : 'bg-white'}`}>
            <div className="p-8 text-center space-y-4">
-              <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4 text-white shadow-xl shadow-green-500/20 ring-8 ring-green-500/10">
-                <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+              <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-2 text-white shadow-lg">
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
               </div>
-              <h3 className={`text-2xl font-bold ${isHospitalMode ? 'text-white' : 'text-gray-900'}`}>Tudo Pronto!</h3>
-              <p className={`text-sm leading-relaxed ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Sua escala para <strong>{new Date(selectedDate + 'T12:00:00').toLocaleDateString()}</strong> foi confirmada. Gostaria de salvar o lembrete?</p>
+              <h3 className={`text-xl font-bold ${isHospitalMode ? 'text-white' : 'text-gray-900'}`}>Visita Agendada!</h3>
+              <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Sua escala para <strong>{new Date(selectedDate + 'T12:00:00').toLocaleDateString()}</strong> na rota <strong>{selectedRoute.name}</strong> foi confirmada.</p>
               
-              <div className="pt-6 space-y-3">
+              <div className="pt-4 space-y-2">
                 <button 
-                  onClick={handleAddToGoogle}
-                  className="w-full bg-[#4285F4] hover:bg-[#357ae8] text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-3 shadow-lg transition-all active:scale-95"
+                  onClick={handleAddToCalendar}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-md transition-all active:scale-95"
                 >
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5z"/></svg>
-                  Salvar no Google Agenda
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  Adicionar à minha Agenda
                 </button>
-                
-                <button 
-                  onClick={handleDownloadIcs}
-                  className={`w-full py-3 rounded-2xl border-2 font-bold text-xs uppercase tracking-widest transition-all active:scale-95 ${
-                    isHospitalMode ? 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10' : 'bg-white border-gray-100 text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Baixar arquivo .ics
-                </button>
-
-                <button onClick={onClose} className={`w-full py-2 font-bold text-[10px] uppercase tracking-[0.2em] ${isHospitalMode ? 'text-gray-600 hover:text-gray-400' : 'text-gray-400 hover:text-gray-600'}`}>Concluído</button>
+                <button onClick={onClose} className={`w-full py-3 font-bold text-sm ${isHospitalMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}>Fechar</button>
               </div>
            </div>
         </div>

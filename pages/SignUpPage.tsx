@@ -1,14 +1,12 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-// Fix: Changed AppState to GvpState to match the exported interface in types.ts
-import { GvpState, Member, UserRole, LogEntry } from '../types';
+import { AppState, Member, UserRole, LogEntry } from '../types';
 import { Button } from '../components/Button';
 
 interface SignUpPageProps {
-  // Fix: Changed AppState to GvpState
-  state: GvpState;
-  onUpdateState: (newState: GvpState) => void;
+  state: AppState;
+  onUpdateState: (newState: AppState) => void;
 }
 
 export const SignUpPage: React.FC<SignUpPageProps> = ({ state, onUpdateState }) => {

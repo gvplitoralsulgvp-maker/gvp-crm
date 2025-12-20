@@ -1,18 +1,8 @@
 
-import { 
-  Member, 
-  VisitRoute, 
-  VisitSlot, 
-  GvpState, 
-  Patient, 
-  LogEntry, 
-  Notification, 
-  Hospital, 
-  TrainingMaterial, 
-  Experience 
-} from '../types';
+import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital } from '@/types';
 import { supabase } from './supabaseClient';
 
+// --- INITIAL DEFAULT DATA (Fallback) ---
 const INITIAL_HOSPITALS: Hospital[] = [
   { id: 'h1', name: 'Santa Casa de Santos', address: 'Av. Dr. Cláudio Luís da Costa, 50', city: 'Santos', lat: -23.9446, lng: -46.3235 },
   { id: 'h2', name: 'Hosp. Guilherme Álvaro', address: 'R. Oswaldo Cruz, 197', city: 'Santos', lat: -23.9667, lng: -46.3359 },
@@ -25,72 +15,121 @@ const INITIAL_HOSPITALS: Hospital[] = [
   { id: 'h9', name: 'Hospital Municipal de Cubatão', address: 'Av. Henry Borden, s/n', city: 'Cubatão', lat: -23.8864, lng: -46.4262 },
 ];
 
-const INITIAL_TRAINING: TrainingMaterial[] = [
-  { id: 't1', title: 'Abordagem em Estados Terminais', category: 'Abordagem', type: 'texto', description: 'Guia de como oferecer consolo e manter a serenidade.', url: '#', isRestricted: true },
-  { id: 't2', title: 'Higienização e EPIs', category: 'Segurança', type: 'video', description: 'Protocolos fundamentais de segurança hospitalar.', url: 'https://www.youtube.com/watch?v=dQw4w9XcQ', isRestricted: false },
-  { id: 't3', title: 'Preenchimento do S-55', category: 'Protocolos', type: 'texto', description: 'Passo a passo para o relatório de assistência jurídica.', url: '#', isRestricted: true },
-  { id: 't4', title: 'Bioética e Autonomia', category: 'Bioética', type: 'pdf', description: 'Conceitos básicos sobre o direito do paciente.', url: '#', isRestricted: false },
+const INITIAL_MEMBERS: Member[] = [
+  { 
+    id: '1', 
+    name: 'Carlos Silva', 
+    email: 'admin@gvp.com',
+    password: '123456',
+    role: UserRole.ADMIN, 
+    phone: '5513999999999', 
+    congregation: 'Jardim das Flores',
+    circuit: 'SP-10',
+    address: 'Gonzaga, Santos',
+    lat: -23.9645, lng: -46.3350, 
+    active: true 
+  },
+  { 
+    id: '2', 
+    name: 'João Santos', 
+    email: 'joao@gvp.com',
+    password: '123456',
+    role: UserRole.MEMBER, 
+    phone: '5513988888888', 
+    congregation: 'Centro',
+    circuit: 'SP-10',
+    address: 'Centro, São Vicente',
+    lat: -23.9620, lng: -46.3900, 
+    active: true 
+  },
 ];
 
-/**
- * Função de fábrica para garantir que um objeto GvpState sempre contenha todas as propriedades obrigatórias.
- */
-export const createInitialState = (): GvpState => ({
+const INITIAL_ROUTES: VisitRoute[] = [
+  { id: 'r1', name: 'Rota Santos - Zona Leste', hospitals: ['Santa Casa de Santos', 'Beneficência Portuguesa'], active: true },
+  { id: 'r2', name: 'Rota Santos - Praia', hospitals: ['Hosp. Guilherme Álvaro', 'Hospital Ana Costa', 'Hospital São Lucas'], active: true },
+  { id: 'r3', name: 'Rota São Vicente / PG', hospitals: ['Hospital Municipal de São Vicente', 'Hospital Irmã Dulce'], active: true },
+  { id: 'r4', name: 'Rota Guarujá / Cubatão', hospitals: ['Hospital Santo Amaro', 'Hospital Municipal de Cubatão'], active: true },
+];
+
+const INITIAL_PATIENTS: Patient[] = [];
+
+const INITIAL_STATE: AppState = {
   currentUser: null,
-  members: [],
+  members: INITIAL_MEMBERS,
   hospitals: INITIAL_HOSPITALS,
-  routes: [],
+  routes: INITIAL_ROUTES,
   visits: [],
-  patients: [],
+  patients: INITIAL_PATIENTS,
   logs: [],
   notifications: [],
-  experiences: [],
-  trainingMaterials: INITIAL_TRAINING,
-});
+};
 
-export const INITIAL_STATE: GvpState = createInitialState();
-
-const STORAGE_KEY = 'gvp_app_state_v12';
-
-let lastSyncedState: GvpState = createInitialState();
+const STORAGE_KEY = 'gvp_app_state_v3';
+let lastSyncedState: AppState = { ...INITIAL_STATE };
 let isSaving = false;
-let pendingSave: GvpState | null = null;
+let pendingSave: AppState | null = null;
 
+// --- SYNC COLLECTION HELPER ---
 const syncCollection = async (tableName: string, newItems: any[], oldItems: any[]) => {
     if (!supabase) return;
+    
     try {
-        const itemsToProcess = newItems || [];
-        const oldItemsToProcess = oldItems || [];
-        
-        const upserts = itemsToProcess.filter((newItem: any) => {
-            const oldItem = oldItemsToProcess.find((o: any) => o.id === newItem.id);
+        // Find items that need to be updated or inserted
+        const upserts = newItems.filter(newItem => {
+            const oldItem = oldItems.find(o => o.id === newItem.id);
+            // Deep comparison to only sync changes
             return !oldItem || JSON.stringify(oldItem) !== JSON.stringify(newItem);
         });
-        const deletes = oldItemsToProcess.filter((oldItem: any) => !itemsToProcess.find((n: any) => n.id === oldItem.id));
-        
+
+        // Find items that need to be deleted
+        const deletes = oldItems.filter(oldItem => !newItems.find(n => n.id === oldItem.id));
+
         if (upserts.length > 0) {
-            const rows = upserts.map((item: any) => ({ id: item.id, data: item }));
-            await supabase.from(tableName).upsert(rows);
+            const rows = upserts.map(item => ({ id: item.id, data: item }));
+            const { error } = await supabase.from(tableName).upsert(rows);
+            if (error) {
+              console.error(`Error syncing ${tableName}:`, error.message || error);
+              throw error;
+            }
         }
+
         if (deletes.length > 0) {
-            const idsToDelete = deletes.map((d: any) => d.id);
-            await supabase.from(tableName).delete().in('id', idsToDelete);
+            const idsToDelete = deletes.map(d => d.id);
+            const { error } = await supabase.from(tableName).delete().in('id', idsToDelete);
+            if (error) {
+              console.error(`Error deleting from ${tableName}:`, error.message || error);
+              throw error;
+            }
         }
-    } catch (err) {
-        console.error(`Error syncing ${tableName}`, err);
+    } catch (err: any) {
+        console.error(`Exception syncing ${tableName}:`, err.message || err);
+        throw err;
     }
 };
 
-export const saveState = async (newState: GvpState) => {
-  if (newState.currentUser) localStorage.setItem('gvp_current_user', JSON.stringify(newState.currentUser));
-  else localStorage.removeItem('gvp_current_user');
+// --- SAVE STATE ---
+export const saveState = async (newState: AppState) => {
+  // Always update LocalStorage first for responsiveness and offline support
+  if (newState.currentUser) {
+      localStorage.setItem('gvp_current_user', JSON.stringify(newState.currentUser));
+  } else {
+      localStorage.removeItem('gvp_current_user');
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
 
+  // If Supabase isn't available, we stop here
   if (!supabase) return;
-  if (isSaving) { pendingSave = newState; return; }
+
+  // Queue handling to prevent race conditions on lastSyncedState
+  if (isSaving) {
+      pendingSave = newState;
+      return;
+  }
+
   isSaving = true;
 
   try {
+      // Sync all collections
       await Promise.all([
         syncCollection('members', newState.members, lastSyncedState.members),
         syncCollection('hospitals', newState.hospitals, lastSyncedState.hospitals),
@@ -98,13 +137,16 @@ export const saveState = async (newState: GvpState) => {
         syncCollection('visits', newState.visits, lastSyncedState.visits),
         syncCollection('patients', newState.patients, lastSyncedState.patients),
         syncCollection('notifications', newState.notifications, lastSyncedState.notifications),
-        syncCollection('experiences', newState.experiences, lastSyncedState.experiences),
-        syncCollection('training', newState.trainingMaterials, lastSyncedState.trainingMaterials),
         syncCollection('logs', newState.logs, lastSyncedState.logs)
       ]);
+
+      // Update the reference point for the next sync
       lastSyncedState = JSON.parse(JSON.stringify(newState));
+  } catch (err) {
+      console.error("Critical Sync error:", err);
   } finally {
       isSaving = false;
+      // If a save request came in while we were working, handle the latest one now
       if (pendingSave) {
           const nextState = pendingSave;
           pendingSave = null;
@@ -113,76 +155,101 @@ export const saveState = async (newState: GvpState) => {
   }
 };
 
-export const loadState = async (): Promise<GvpState> => {
-  try {
-    if (!supabase) {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-          const parsed = JSON.parse(stored);
-          const mergedState: GvpState = {
-            ...createInitialState(),
-            members: parsed.members || [],
-            hospitals: parsed.hospitals || INITIAL_HOSPITALS,
-            routes: parsed.routes || [],
-            visits: parsed.visits || [],
-            patients: parsed.patients || [],
-            logs: parsed.logs || [],
-            notifications: parsed.notifications || [],
-            experiences: parsed.experiences || [],
-            trainingMaterials: parsed.trainingMaterials || INITIAL_TRAINING
-          };
-          return mergedState;
-      }
-      return createInitialState();
-    }
-
-    const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'experiences', 'training'];
-    const results = await Promise.all(collections.map(col => supabase!.from(col).select('*')));
-    
-    const [m, h, r, v, p, l, n, ex, tr] = results;
-
-    const loadedState: GvpState = {
-        currentUser: null,
-        members: (m.data?.map((i: any) => i.data) || []) as Member[],
-        hospitals: (h.data?.map((i: any) => i.data) || INITIAL_HOSPITALS) as Hospital[],
-        routes: (r.data?.map((i: any) => i.data) || []) as VisitRoute[],
-        visits: (v.data?.map((i: any) => i.data) || []) as VisitSlot[],
-        patients: (p.data?.map((i: any) => i.data) || []) as Patient[],
-        logs: (l.data?.map((i: any) => i.data) || []) as LogEntry[],
-        notifications: (n.data?.map((i: any) => i.data) || []) as Notification[],
-        experiences: (ex.data?.map((i: any) => i.data) || []) as Experience[],
-        trainingMaterials: (tr.data?.map((i: any) => i.data) || INITIAL_TRAINING) as TrainingMaterial[]
-    };
-
-    lastSyncedState = JSON.parse(JSON.stringify(loadedState));
-    
-    const storedUser = localStorage.getItem('gvp_current_user');
-    if (storedUser) {
-        const parsed = JSON.parse(storedUser);
-        const valid = loadedState.members.find((member: Member) => member.id === parsed.id);
-        if (valid) loadedState.currentUser = valid;
-    }
-    
-    return loadedState;
-  } catch (error) {
-    console.error("Erro ao carregar estado do Supabase, tentando LocalStorage...", error);
+// --- LOAD STATE ---
+export const loadState = async (): Promise<AppState> => {
+  // 1. Check LocalStorage first for immediate UI update (optional, but we'll prioritize cloud if online)
+  if (!supabase) {
+    console.log("Using LocalStorage (Offline Mode).");
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-        const parsed = JSON.parse(stored);
-        const fallbackState: GvpState = {
-            ...createInitialState(),
-            members: parsed.members || [],
-            hospitals: parsed.hospitals || INITIAL_HOSPITALS,
-            routes: parsed.routes || [],
-            visits: parsed.visits || [],
-            patients: parsed.patients || [],
-            logs: parsed.logs || [],
-            notifications: parsed.notifications || [],
-            experiences: parsed.experiences || [],
-            trainingMaterials: parsed.trainingMaterials || INITIAL_TRAINING
-        };
-        return fallbackState;
+        try {
+            const parsed = JSON.parse(stored);
+            return {
+              ...INITIAL_STATE,
+              ...parsed,
+              currentUser: localStorage.getItem('gvp_current_user') ? JSON.parse(localStorage.getItem('gvp_current_user')!) : null
+            };
+        } catch (e) {
+            console.error("Error parsing local state", e);
+        }
     }
-    return createInitialState();
+    return INITIAL_STATE;
+  }
+
+  // 2. ONLINE MODE: Fetch from Supabase
+  try {
+    console.log("Loading data from Supabase...");
+
+    const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications'];
+    const results = await Promise.all(
+        collections.map(col => {
+            let query = supabase!.from(col).select('*');
+            if (col === 'logs') query = query.limit(100).order('id', { ascending: false });
+            return query;
+        })
+    );
+
+    const [
+        { data: members },
+        { data: hospitals },
+        { data: routes },
+        { data: visits },
+        { data: patients },
+        { data: logs },
+        { data: notifications }
+    ] = results;
+
+    const isDbEmpty = (!members || members.length === 0) && (!routes || routes.length === 0);
+
+    if (isDbEmpty) {
+        console.log("⚠️ Database is empty. Attempting migration from LocalStorage...");
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+            try {
+                const localData = JSON.parse(stored);
+                console.log("🚀 Migrating local data to Supabase...");
+                // Reset sync reference to empty to force all uploads
+                lastSyncedState = { ...INITIAL_STATE, members: [], hospitals: [], routes: [], visits: [], patients: [], logs: [], notifications: [] };
+                await saveState(localData);
+                return localData;
+            } catch (e) {
+                console.error("Migration failed", e);
+            }
+        }
+    }
+
+    const loadedState: AppState = {
+        currentUser: null, 
+        members: members && members.length > 0 ? members.map((r: any) => r.data) : INITIAL_MEMBERS,
+        hospitals: hospitals && hospitals.length > 0 ? hospitals.map((r: any) => r.data) : INITIAL_HOSPITALS,
+        routes: routes && routes.length > 0 ? routes.map((r: any) => r.data) : INITIAL_ROUTES,
+        visits: visits ? visits.map((r: any) => r.data) : [],
+        patients: patients ? patients.map((r: any) => r.data) : INITIAL_PATIENTS,
+        logs: logs ? logs.map((r: any) => r.data) : [],
+        notifications: notifications ? notifications.map((r: any) => r.data) : []
+    };
+
+    // Keep memory of what we loaded
+    lastSyncedState = JSON.parse(JSON.stringify(loadedState));
+    
+    // Auth Persistence
+    const storedUser = localStorage.getItem('gvp_current_user');
+    if (storedUser) {
+        try {
+            const parsedUser = JSON.parse(storedUser);
+            const validUser = loadedState.members.find(m => m.id === parsedUser.id && m.active);
+            if (validUser) loadedState.currentUser = validUser;
+        } catch (e) {
+            console.error("Error restoring user session", e);
+        }
+    }
+
+    return loadedState;
+
+  } catch (error: any) {
+    console.error("Critical error loading state from Supabase:", error.message || error);
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) return JSON.parse(stored);
+    return INITIAL_STATE;
   }
 };

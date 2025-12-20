@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { loadState, saveState } from './services/storageService';
-import { GvpState, UserRole, Member, LogEntry } from './types';
+import { AppState, UserRole, Member, LogEntry } from '@/types';
 import { Dashboard } from './pages/Dashboard';
 import { AdminPanel } from './pages/AdminPanel';
 import { PatientRegistry } from './pages/PatientRegistry';
@@ -13,16 +13,14 @@ import { Welcome } from './pages/Welcome';
 import { LoginPage } from './pages/LoginPage';
 import { SignUpPage } from './pages/SignUpPage';
 import { MapPage } from './pages/MapPage';
-import { ElearningPage } from './pages/ElearningPage';
-import { MuralPage } from './pages/MuralPage';
 import { NotificationCenter } from './components/NotificationCenter';
 import { GlobalSearch } from './components/GlobalSearch';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { supabase } from './services/supabaseClient';
 
 const Layout: React.FC<{ 
-  state: GvpState; 
-  onUpdateState: (s: GvpState) => void; 
+  state: AppState; 
+  onUpdateState: (s: AppState) => void; 
   children: React.ReactNode;
   isPrivacyMode: boolean;
   onTogglePrivacy: () => void;
@@ -33,33 +31,28 @@ const Layout: React.FC<{
   onChangePasswordClick: () => void;
 }> = ({ state, onUpdateState, children, isPrivacyMode, onTogglePrivacy, isHospitalMode, onToggleHospitalMode, isNightMode, onToggleNightMode, onChangePasswordClick }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showNotifyBanner, setShowNotifyBanner] = useState(false);
   const location = useLocation();
+  const isOnline = !!supabase;
   
   useEffect(() => {
-    if (state.currentUser) {
-        const today = new Date().toISOString().split('T')[0];
-        const myVisitsToday = state.visits.filter(v => v.memberIds.includes(state.currentUser!.id) && v.date === today && !v.report);
-        
-        if (myVisitsToday.length > 0) {
-            const hasNotified = sessionStorage.getItem(`notified_visit_${today}`);
-            if (!hasNotified) {
-                const route = state.routes.find(r => r.id === myVisitsToday[0].routeId);
-                onUpdateState({
-                    ...state,
-                    notifications: [{
-                        id: crypto.randomUUID(),
-                        userId: state.currentUser!.id,
-                        message: `Lembrete: Você tem uma visita hoje na ${route?.name || 'Rota'}. Começa em breve!`,
-                        type: 'info',
-                        read: false,
-                        timestamp: new Date().toISOString()
-                    }, ...state.notifications]
-                });
-                sessionStorage.setItem(`notified_visit_${today}`, 'true');
-            }
-        }
+    if (state.currentUser && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        setShowNotifyBanner(true);
+      }
     }
-  }, [state.currentUser, state.visits]);
+  }, [state.currentUser]);
+
+  const requestNotificationPermission = async () => {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      new Notification("Lembretes Ativos!", {
+        body: "Você receberá lembretes 24h antes das suas visitas.",
+        icon: "/favicon.ico"
+      });
+    }
+    setShowNotifyBanner(false);
+  };
 
   if (!state.currentUser) {
       return <Navigate to="/login" state={{ from: location }} replace />;
@@ -75,9 +68,8 @@ const Layout: React.FC<{
     { to: "/dashboard", label: "Agenda", icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> },
     { to: "/patients", label: "Pacientes", icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> },
     { to: "/map", label: "Mapa", icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg> },
-    { to: "/elearning", label: "Capacitação", icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg> },
-    { to: "/mural", label: "Mural", icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg> },
     { to: "/stats", label: "Relatórios", icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg> },
+    { to: "/logs", label: "Logs", icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
   ];
 
   if (state.currentUser?.role === UserRole.ADMIN) {
@@ -87,15 +79,27 @@ const Layout: React.FC<{
   return (
     <div className={`min-h-screen flex overflow-hidden ${isHospitalMode ? 'bg-[#1a1c1e] text-gray-200' : 'bg-gray-50 text-gray-900'} ${isNightMode ? 'night-shift-filter' : ''}`}>
       <style>{`
-        .night-shift-filter { position: relative; }
-        .night-shift-filter::after { content: ""; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 100, 0, 0.15); pointer-events: none; z-index: 9999; mix-blend-mode: multiply; }
+        .night-shift-filter {
+          position: relative;
+        }
+        .night-shift-filter::after {
+          content: "";
+          position: fixed;
+          top: 0; left: 0; width: 100%; height: 100%;
+          background: rgba(255, 100, 0, 0.15);
+          pointer-events: none;
+          z-index: 9999;
+          mix-blend-mode: multiply;
+        }
       `}</style>
 
       <aside className={`fixed inset-y-0 left-0 shadow-xl z-40 w-64 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col ${isHospitalMode ? 'bg-[#212327] border-r border-gray-800' : 'bg-white'}`}>
         <div className={`p-6 border-b flex items-center justify-between ${isHospitalMode ? 'border-gray-800' : 'border-gray-100'}`}>
           <Link to="/dashboard" className="flex items-center gap-2">
             <div className="bg-blue-600 text-white p-1.5 rounded-lg shadow-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+              </svg>
             </div>
             <span className={`font-bold text-lg tracking-tight ${isHospitalMode ? 'text-blue-400' : 'text-gray-800'}`}>GVP Litoral</span>
           </Link>
@@ -161,19 +165,37 @@ const Layout: React.FC<{
           </div>
         </header>
 
+        {showNotifyBanner && (
+          <div className={`p-4 border-b flex items-center justify-between animate-fade-in ${isHospitalMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-100'}`}>
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+              <p className={`text-sm font-medium ${isHospitalMode ? 'text-blue-300' : 'text-blue-800'}`}>Ative as notificações para receber lembretes de visitas 24h antes.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setShowNotifyBanner(false)} className={`text-xs px-3 py-1.5 font-bold ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Depois</button>
+              <button onClick={requestNotificationPermission} className="bg-blue-600 text-white text-xs px-4 py-1.5 rounded-lg font-bold shadow-md">Ativar Agora</button>
+            </div>
+          </div>
+        )}
+
         <main className="flex-grow overflow-y-auto custom-scrollbar p-4 md:p-8">
            <Routes>
              <Route path="/dashboard" element={<Dashboard state={state} onUpdateState={onUpdateState} isPrivacyMode={isPrivacyMode} isHospitalMode={isHospitalMode} />} />
              <Route path="/patients" element={<PatientRegistry state={state} onUpdateState={onUpdateState} isPrivacyMode={isPrivacyMode} isHospitalMode={isHospitalMode} />} />
              <Route path="/history" element={<PatientHistory state={state} isHospitalMode={isHospitalMode} />} />
              <Route path="/map" element={<MapPage state={state} isHospitalMode={isHospitalMode} />} />
-             <Route path="/elearning" element={<ElearningPage state={state} isHospitalMode={isHospitalMode} />} />
-             <Route path="/mural" element={<MuralPage state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} />} />
              <Route path="/stats" element={<StatsReport state={state} isHospitalMode={isHospitalMode} />} />
              <Route path="/logs" element={<LogsPage state={state} isHospitalMode={isHospitalMode} />} />
              <Route path="/admin" element={<AdminPanel state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} />} />
              <Route path="*" element={<Navigate to="/dashboard" replace />} />
            </Routes>
+           <footer className={`mt-12 py-6 border-t flex flex-col sm:flex-row items-center justify-between text-[10px] gap-4 ${isHospitalMode ? 'border-gray-800 text-gray-500' : 'border-gray-100 text-gray-400'}`}>
+             <p>&copy; {new Date().getFullYear()} GVP Litoral Sul</p>
+             <span className={`flex items-center gap-1 ${isOnline ? 'text-green-500' : 'text-gray-400'}`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                {isOnline ? 'Sincronizado' : 'Offline'}
+             </span>
+           </footer>
         </main>
       </div>
     </div>
@@ -181,7 +203,7 @@ const Layout: React.FC<{
 };
 
 const App: React.FC = () => {
-  const [state, setState] = useState<GvpState | null>(null);
+  const [state, setState] = useState<AppState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
   const [isHospitalMode, setIsHospitalMode] = useState(false);
@@ -205,7 +227,7 @@ const App: React.FC = () => {
       if (state) setState({ ...state, currentUser: user });
   };
 
-  if (isLoading || !state) return <div className="min-h-screen flex items-center justify-center bg-[#1a1c1e]"><div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
+  if (isLoading || !state) return <div className="min-h-screen flex items-center justify-center bg-[#1a1c1e] flex-col gap-4"><div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
 
   return (
     <Router>
@@ -225,6 +247,7 @@ const App: React.FC = () => {
                 onToggleNightMode={() => setIsNightMode(!isNightMode)}
                 onChangePasswordClick={() => setIsChangePasswordOpen(true)}
             >
+                {/* As rotas internas são gerenciadas pelo Layout */}
                 <></>
             </Layout>
         } />

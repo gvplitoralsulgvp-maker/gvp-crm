@@ -7,8 +7,8 @@ export enum UserRole {
 export interface Member {
   id: string;
   name: string;
-  email?: string;
-  password?: string;
+  email?: string; // Login email
+  password?: string; // Login password (simulated)
   role: UserRole;
   phone?: string;
   congregation?: string;
@@ -29,10 +29,11 @@ export interface Hospital {
   lng: number;
 }
 
+// Replaces 'Hospital' to allow grouping
 export interface VisitRoute {
   id: string;
-  name: string;
-  hospitals: string[];
+  name: string; // e.g. "Rota Zona Sul" or "Grupo 1"
+  hospitals: string[]; // List of hospital names in this route
   active: boolean;
 }
 
@@ -45,51 +46,38 @@ export interface VisitReport {
 
 export interface VisitSlot {
   id: string;
-  routeId: string;
-  date: string;
-  memberIds: string[];
+  routeId: string; // Changed from hospitalId
+  date: string; // YYYY-MM-DD
+  memberIds: string[]; // Max 2 members
   report?: VisitReport;
 }
 
 export interface Patient {
   id: string;
   name: string;
-  hospitalName: string;
+  hospitalName: string; // Linked to a route/hospital string
   treatment: string;
   admissionDate: string;
   estimatedDischargeDate?: string;
-  needsAccommodation: boolean;
+  needsAccommodation: boolean; // Precisa de hospedagem
+  
+  // Internal Location
   floor?: string;
   wing?: string;
   bed?: string;
+
+  // Isolation / Precautions
   isIsolation?: boolean;
-  isolationType?: string;
-  hasDirectivesCard?: boolean;
-  agentsNotified?: boolean;
-  formsConsidered?: boolean;
-  hasS55?: boolean;
+  isolationType?: string; // e.g., "Contato", "Respiratório"
+
+  // Medical Legal / Directive Fields
+  hasDirectivesCard?: boolean; // Cartão de Diretivas
+  agentsNotified?: boolean; // Procuradores avisados
+  formsConsidered?: boolean; // S-401, S-407
+  hasS55?: boolean; // S-55
+  
   notes?: string;
-  active: boolean;
-}
-
-export interface Experience {
-  id: string;
-  memberId: string;
-  memberName: string;
-  content: string;
-  date: string;
-  likes: number;
-  category: 'Encorajamento' | 'Gratidão' | 'Aprendizado';
-}
-
-export interface TrainingMaterial {
-  id: string;
-  title: string;
-  category: 'Bioética' | 'Segurança' | 'Abordagem' | 'Protocolos';
-  type: 'video' | 'pdf' | 'texto';
-  description: string;
-  url: string;
-  isRestricted: boolean;
+  active: boolean; // If false, patient is discharged/archived
 }
 
 export interface LogEntry {
@@ -97,28 +85,26 @@ export interface LogEntry {
   timestamp: string;
   userId: string;
   userName: string;
-  action: string;
+  action: string; // e.g., "Agendou Visita", "Alterou Rota"
   details: string;
 }
 
 export interface Notification {
   id: string;
-  userId: string;
+  userId: string; // Who receives the notification
   message: string;
   type: 'info' | 'success' | 'warning';
   read: boolean;
   timestamp: string;
 }
 
-export interface GvpState {
+export interface AppState {
   currentUser: Member | null;
   members: Member[];
-  hospitals: Hospital[];
+  hospitals: Hospital[]; // Detailed hospital data for maps
   routes: VisitRoute[];
   visits: VisitSlot[];
   patients: Patient[];
   logs: LogEntry[];
   notifications: Notification[];
-  experiences: Experience[];
-  trainingMaterials: TrainingMaterial[];
 }

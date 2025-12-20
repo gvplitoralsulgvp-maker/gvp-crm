@@ -1,11 +1,9 @@
 
 import React from 'react';
-// Fix: Changed AppState to GvpState to match the exported interface in types.ts
-import { GvpState } from '../types';
+import { AppState } from '../types';
 
 interface LogsPageProps {
-  // Fix: Changed AppState to GvpState
-  state: GvpState;
+  state: AppState;
   isHospitalMode?: boolean;
 }
 

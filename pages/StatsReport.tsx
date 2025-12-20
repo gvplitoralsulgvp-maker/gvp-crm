@@ -1,11 +1,9 @@
 
 import React, { useState } from 'react';
-// Fix: Changed AppState to GvpState to match the exported interface in types.ts
-import { GvpState } from '../types';
+import { AppState } from '../types';
 import { Button } from '../components/Button';
 
-// Fix: Changed AppState to GvpState
-export const StatsReport: React.FC<{ state: GvpState, isHospitalMode?: boolean }> = ({ state, isHospitalMode }) => {
+export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }> = ({ state, isHospitalMode }) => {
   const [activeRange, setActiveRange] = useState<number>(30);
   const [isPrintMode, setIsPrintMode] = useState(false);
 
