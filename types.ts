@@ -110,7 +110,7 @@ export interface Notification {
   timestamp: string;
 }
 
-export interface AppState {
+export type AppState = {
   currentUser: Member | null;
   members: Member[];
   hospitals: Hospital[];

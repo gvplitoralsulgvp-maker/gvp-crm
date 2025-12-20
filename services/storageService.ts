@@ -10,7 +10,7 @@ import {
   Hospital, 
   TrainingMaterial, 
   Experience 
-} from '@/types';
+} from '../types';
 import { supabase } from './supabaseClient';
 
 const INITIAL_HOSPITALS: Hospital[] = [
@@ -45,18 +45,19 @@ export const INITIAL_STATE: AppState = {
   trainingMaterials: INITIAL_TRAINING,
 };
 
-const STORAGE_KEY = 'gvp_app_state_v8';
+const STORAGE_KEY = 'gvp_app_state_v10';
+
 let lastSyncedState: AppState = {
-  currentUser: INITIAL_STATE.currentUser,
-  members: INITIAL_STATE.members,
-  hospitals: INITIAL_STATE.hospitals,
-  routes: INITIAL_STATE.routes,
-  visits: INITIAL_STATE.visits,
-  patients: INITIAL_STATE.patients,
-  logs: INITIAL_STATE.logs,
-  notifications: INITIAL_STATE.notifications,
-  experiences: INITIAL_STATE.experiences,
-  trainingMaterials: INITIAL_STATE.trainingMaterials,
+  currentUser: null,
+  members: [],
+  hospitals: INITIAL_HOSPITALS,
+  routes: [],
+  visits: [],
+  patients: [],
+  logs: [],
+  notifications: [],
+  experiences: [],
+  trainingMaterials: INITIAL_TRAINING
 };
 
 let isSaving = false;
@@ -108,8 +109,7 @@ export const saveState = async (newState: AppState) => {
         syncCollection('training', newState.trainingMaterials, lastSyncedState.trainingMaterials),
         syncCollection('logs', newState.logs, lastSyncedState.logs)
       ]);
-      // Profunda cópia para evitar referências circulares ou mutações inesperadas
-      lastSyncedState = JSON.parse(JSON.stringify(newState));
+      lastSyncedState = JSON.parse(JSON.stringify(newState)) as AppState;
   } finally {
       isSaving = false;
       if (pendingSave) {
@@ -161,7 +161,7 @@ export const loadState = async (): Promise<AppState> => {
         trainingMaterials: (tr.data?.map(i => i.data) || INITIAL_TRAINING) as TrainingMaterial[]
     };
 
-    lastSyncedState = JSON.parse(JSON.stringify(loadedState));
+    lastSyncedState = JSON.parse(JSON.stringify(loadedState)) as AppState;
     
     const storedUser = localStorage.getItem('gvp_current_user');
     if (storedUser) {
