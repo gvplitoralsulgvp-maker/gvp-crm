@@ -1,5 +1,5 @@
 
-import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital, TrainingMaterial, Experience } from '@/types';
+import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital, TrainingMaterial, Experience } from '../types';
 import { supabase } from './supabaseClient';
 
 const INITIAL_HOSPITALS: Hospital[] = [
@@ -28,21 +28,21 @@ const INITIAL_ROUTES: VisitRoute[] = [
   { id: 'r1', name: 'Rota Santos - Zona Leste', hospitals: ['Santa Casa de Santos'], active: true },
 ];
 
+// Tipagem explícita em cada campo para evitar 'never[]'
 const INITIAL_STATE: AppState = {
   currentUser: null,
   members: INITIAL_MEMBERS,
   hospitals: INITIAL_HOSPITALS,
   routes: INITIAL_ROUTES,
-  visits: [],
-  patients: [],
-  logs: [],
-  notifications: [],
-  trainingMaterials: [],
-  experiences: [],
+  visits: [] as VisitSlot[],
+  patients: [] as Patient[],
+  logs: [] as LogEntry[],
+  notifications: [] as Notification[],
+  trainingMaterials: [] as TrainingMaterial[],
+  experiences: [] as Experience[],
 };
 
 const STORAGE_KEY = 'gvp_app_state_v4';
-// Inicialização explícita para evitar perda de propriedades no rastro do TS
 let lastSyncedState: AppState = { ...INITIAL_STATE };
 let isSaving = false;
 let pendingSave: AppState | null = null;
@@ -107,18 +107,14 @@ export const saveState = async (newState: AppState) => {
 };
 
 export const loadState = async (): Promise<AppState> => {
-  // Caso sem Supabase (Local)
   if (!supabase) {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      const parsed = JSON.parse(stored);
-      // Mescla com INITIAL_STATE para garantir que novas propriedades existam mesmo em saves antigos
-      return { ...INITIAL_STATE, ...parsed };
+        const parsed = JSON.parse(stored);
+        return { ...INITIAL_STATE, ...parsed };
     }
-    return { ...INITIAL_STATE };
+    return INITIAL_STATE;
   }
-
-  // Caso com Supabase
   try {
     const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'trainingMaterials', 'experiences'];
     const results = await Promise.all(collections.map(col => supabase!.from(col).select('*')));
@@ -128,18 +124,17 @@ export const loadState = async (): Promise<AppState> => {
       dataMap[col] = results[idx].data ? results[idx].data!.map((r: any) => r.data) : [];
     });
 
-    // Mapeamento explícito de todas as 10 propriedades da interface AppState
     const loaded: AppState = {
         currentUser: null,
         members: dataMap.members && dataMap.members.length > 0 ? dataMap.members : INITIAL_MEMBERS,
         hospitals: dataMap.hospitals && dataMap.hospitals.length > 0 ? dataMap.hospitals : INITIAL_HOSPITALS,
         routes: dataMap.routes && dataMap.routes.length > 0 ? dataMap.routes : INITIAL_ROUTES,
-        visits: dataMap.visits || [],
-        patients: dataMap.patients || [],
-        logs: dataMap.logs || [],
-        notifications: dataMap.notifications || [],
-        trainingMaterials: dataMap.trainingMaterials || [],
-        experiences: dataMap.experiences || []
+        visits: (dataMap.visits || []) as VisitSlot[],
+        patients: (dataMap.patients || []) as Patient[],
+        logs: (dataMap.logs || []) as LogEntry[],
+        notifications: (dataMap.notifications || []) as Notification[],
+        trainingMaterials: (dataMap.trainingMaterials || []) as TrainingMaterial[],
+        experiences: (dataMap.experiences || []) as Experience[]
     };
     
     const storedUser = localStorage.getItem('gvp_current_user');
@@ -147,13 +142,12 @@ export const loadState = async (): Promise<AppState> => {
         const parsed = JSON.parse(storedUser);
         loaded.currentUser = loaded.members.find(m => m.id === parsed.id) || null;
     }
-    
     lastSyncedState = JSON.parse(JSON.stringify(loaded));
     return loaded;
   } catch (e) {
     console.error("Error loading state from Supabase:", e);
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) return { ...INITIAL_STATE, ...JSON.parse(stored) };
-    return { ...INITIAL_STATE };
+    return INITIAL_STATE;
   }
 };
