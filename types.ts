@@ -98,6 +98,26 @@ export interface Notification {
   timestamp: string;
 }
 
+export interface Experience {
+  id: string;
+  memberId: string;
+  memberName: string;
+  content: string;
+  date: string;
+  likes: number;
+  category: 'Encorajamento' | 'Gratidão' | 'Aprendizado';
+}
+
+export interface TrainingMaterial {
+  id: string;
+  title: string;
+  description: string;
+  type: 'video' | 'pdf' | 'article';
+  category: string;
+  url: string;
+  isRestricted: boolean;
+}
+
 export interface AppState {
   currentUser: Member | null;
   members: Member[];
@@ -107,4 +127,6 @@ export interface AppState {
   patients: Patient[];
   logs: LogEntry[];
   notifications: Notification[];
+  experiences: Experience[];
+  trainingMaterials: TrainingMaterial[];
 }

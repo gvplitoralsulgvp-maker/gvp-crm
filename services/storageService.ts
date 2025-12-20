@@ -1,5 +1,5 @@
 
-import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital } from '@/types';
+import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital, Experience, TrainingMaterial } from '@/types';
 import { supabase } from './supabaseClient';
 
 // --- INITIAL DEFAULT DATA (Fallback) ---
@@ -51,17 +51,20 @@ const INITIAL_ROUTES: VisitRoute[] = [
   { id: 'r4', name: 'Rota Guarujá / Cubatão', hospitals: ['Hospital Santo Amaro', 'Hospital Municipal de Cubatão'], active: true },
 ];
 
-const INITIAL_PATIENTS: Patient[] = [];
-
 const INITIAL_STATE: AppState = {
   currentUser: null,
   members: INITIAL_MEMBERS,
   hospitals: INITIAL_HOSPITALS,
   routes: INITIAL_ROUTES,
   visits: [],
-  patients: INITIAL_PATIENTS,
+  patients: [],
   logs: [],
   notifications: [],
+  experiences: [],
+  trainingMaterials: [
+    { id: 't1', title: 'Manual de Procedimentos GVP', description: 'Diretrizes fundamentais para a atuação nos hospitais.', type: 'pdf', category: 'Protocolos', url: '#', isRestricted: true },
+    { id: 't2', title: 'Abordagem Empática', description: 'Como iniciar conversas com pacientes em momentos sensíveis.', type: 'video', category: 'Abordagem', url: '#', isRestricted: false },
+  ]
 };
 
 const STORAGE_KEY = 'gvp_app_state_v3';
@@ -74,32 +77,23 @@ const syncCollection = async (tableName: string, newItems: any[], oldItems: any[
     if (!supabase) return;
     
     try {
-        // Find items that need to be updated or inserted
-        const upserts = newItems.filter(newItem => {
-            const oldItem = oldItems.find(o => o.id === newItem.id);
-            // Deep comparison to only sync changes
+        const upserts = (newItems || []).filter(newItem => {
+            const oldItem = (oldItems || []).find(o => o.id === newItem.id);
             return !oldItem || JSON.stringify(oldItem) !== JSON.stringify(newItem);
         });
 
-        // Find items that need to be deleted
-        const deletes = oldItems.filter(oldItem => !newItems.find(n => n.id === oldItem.id));
+        const deletes = (oldItems || []).filter(oldItem => !(newItems || []).find(n => n.id === oldItem.id));
 
         if (upserts.length > 0) {
             const rows = upserts.map(item => ({ id: item.id, data: item }));
             const { error } = await supabase.from(tableName).upsert(rows);
-            if (error) {
-              console.error(`Error syncing ${tableName}:`, error.message || error);
-              throw error;
-            }
+            if (error) throw error;
         }
 
         if (deletes.length > 0) {
             const idsToDelete = deletes.map(d => d.id);
             const { error } = await supabase.from(tableName).delete().in('id', idsToDelete);
-            if (error) {
-              console.error(`Error deleting from ${tableName}:`, error.message || error);
-              throw error;
-            }
+            if (error) throw error;
         }
     } catch (err: any) {
         console.error(`Exception syncing ${tableName}:`, err.message || err);
@@ -109,7 +103,6 @@ const syncCollection = async (tableName: string, newItems: any[], oldItems: any[
 
 // --- SAVE STATE ---
 export const saveState = async (newState: AppState) => {
-  // Always update LocalStorage first for responsiveness and offline support
   if (newState.currentUser) {
       localStorage.setItem('gvp_current_user', JSON.stringify(newState.currentUser));
   } else {
@@ -117,10 +110,8 @@ export const saveState = async (newState: AppState) => {
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
 
-  // If Supabase isn't available, we stop here
   if (!supabase) return;
 
-  // Queue handling to prevent race conditions on lastSyncedState
   if (isSaving) {
       pendingSave = newState;
       return;
@@ -129,7 +120,6 @@ export const saveState = async (newState: AppState) => {
   isSaving = true;
 
   try {
-      // Sync all collections
       await Promise.all([
         syncCollection('members', newState.members, lastSyncedState.members),
         syncCollection('hospitals', newState.hospitals, lastSyncedState.hospitals),
@@ -137,16 +127,16 @@ export const saveState = async (newState: AppState) => {
         syncCollection('visits', newState.visits, lastSyncedState.visits),
         syncCollection('patients', newState.patients, lastSyncedState.patients),
         syncCollection('notifications', newState.notifications, lastSyncedState.notifications),
-        syncCollection('logs', newState.logs, lastSyncedState.logs)
+        syncCollection('logs', newState.logs, lastSyncedState.logs),
+        syncCollection('experiences', newState.experiences, lastSyncedState.experiences),
+        syncCollection('trainingMaterials', newState.trainingMaterials, lastSyncedState.trainingMaterials)
       ]);
 
-      // Update the reference point for the next sync
       lastSyncedState = JSON.parse(JSON.stringify(newState));
   } catch (err) {
       console.error("Critical Sync error:", err);
   } finally {
       isSaving = false;
-      // If a save request came in while we were working, handle the latest one now
       if (pendingSave) {
           const nextState = pendingSave;
           pendingSave = null;
@@ -157,9 +147,7 @@ export const saveState = async (newState: AppState) => {
 
 // --- LOAD STATE ---
 export const loadState = async (): Promise<AppState> => {
-  // 1. Check LocalStorage first for immediate UI update (optional, but we'll prioritize cloud if online)
   if (!supabase) {
-    console.log("Using LocalStorage (Offline Mode).");
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
         try {
@@ -176,11 +164,8 @@ export const loadState = async (): Promise<AppState> => {
     return INITIAL_STATE;
   }
 
-  // 2. ONLINE MODE: Fetch from Supabase
   try {
-    console.log("Loading data from Supabase...");
-
-    const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications'];
+    const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'experiences', 'trainingMaterials'];
     const results = await Promise.all(
         collections.map(col => {
             let query = supabase!.from(col).select('*');
@@ -196,27 +181,10 @@ export const loadState = async (): Promise<AppState> => {
         { data: visits },
         { data: patients },
         { data: logs },
-        { data: notifications }
+        { data: notifications },
+        { data: experiences },
+        { data: trainingMaterials }
     ] = results;
-
-    const isDbEmpty = (!members || members.length === 0) && (!routes || routes.length === 0);
-
-    if (isDbEmpty) {
-        console.log("⚠️ Database is empty. Attempting migration from LocalStorage...");
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-            try {
-                const localData = JSON.parse(stored);
-                console.log("🚀 Migrating local data to Supabase...");
-                // Reset sync reference to empty to force all uploads
-                lastSyncedState = { ...INITIAL_STATE, members: [], hospitals: [], routes: [], visits: [], patients: [], logs: [], notifications: [] };
-                await saveState(localData);
-                return localData;
-            } catch (e) {
-                console.error("Migration failed", e);
-            }
-        }
-    }
 
     const loadedState: AppState = {
         currentUser: null, 
@@ -224,15 +192,15 @@ export const loadState = async (): Promise<AppState> => {
         hospitals: hospitals && hospitals.length > 0 ? hospitals.map((r: any) => r.data) : INITIAL_HOSPITALS,
         routes: routes && routes.length > 0 ? routes.map((r: any) => r.data) : INITIAL_ROUTES,
         visits: visits ? visits.map((r: any) => r.data) : [],
-        patients: patients ? patients.map((r: any) => r.data) : INITIAL_PATIENTS,
+        patients: patients ? patients.map((r: any) => r.data) : [],
         logs: logs ? logs.map((r: any) => r.data) : [],
-        notifications: notifications ? notifications.map((r: any) => r.data) : []
+        notifications: notifications ? notifications.map((r: any) => r.data) : [],
+        experiences: experiences ? experiences.map((r: any) => r.data) : [],
+        trainingMaterials: trainingMaterials && trainingMaterials.length > 0 ? trainingMaterials.map((r: any) => r.data) : INITIAL_STATE.trainingMaterials
     };
 
-    // Keep memory of what we loaded
     lastSyncedState = JSON.parse(JSON.stringify(loadedState));
     
-    // Auth Persistence
     const storedUser = localStorage.getItem('gvp_current_user');
     if (storedUser) {
         try {

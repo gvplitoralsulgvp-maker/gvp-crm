@@ -1,17 +1,15 @@
 
 import React, { useState } from 'react';
-// Fix: Changed AppState to GvpState to match the exported interface in types.ts
-import { GvpState, TrainingMaterial } from '../types';
+import { AppState, TrainingMaterial } from '../types';
 import { Button } from '../components/Button';
 
-// Fix: Changed AppState to GvpState
-export const ElearningPage: React.FC<{ state: GvpState, isHospitalMode?: boolean }> = ({ state, isHospitalMode }) => {
+export const ElearningPage: React.FC<{ state: AppState, isHospitalMode?: boolean }> = ({ state, isHospitalMode }) => {
   const [filter, setFilter] = useState<string>('Todos');
 
   const categories = ['Todos', 'Bioética', 'Segurança', 'Abordagem', 'Protocolos'];
   const filteredMaterials = filter === 'Todos' 
     ? state.trainingMaterials 
-    : state.trainingMaterials.filter(m => m.category === filter);
+    : state.trainingMaterials.filter((m: TrainingMaterial) => m.category === filter);
 
   const getIcon = (type: string) => {
     if (type === 'video') return <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
@@ -43,7 +41,7 @@ export const ElearningPage: React.FC<{ state: GvpState, isHospitalMode?: boolean
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredMaterials.map(material => (
+        {(filteredMaterials || []).map((material: TrainingMaterial) => (
           <div key={material.id} className={`rounded-xl border shadow-sm overflow-hidden flex flex-col transition-transform hover:scale-[1.02] ${
             isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'
           }`}>
@@ -63,7 +61,7 @@ export const ElearningPage: React.FC<{ state: GvpState, isHospitalMode?: boolean
                 </span>
               )}
               <Button size="sm" variant="ghost" onClick={() => window.open(material.url, '_blank')} className="ml-auto">
-                Acessar {material.type}
+                Acessar
               </Button>
             </div>
           </div>

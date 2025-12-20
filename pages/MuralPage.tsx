@@ -1,13 +1,11 @@
 
 import React, { useState } from 'react';
-// Fix: Changed AppState to GvpState to match the exported interface in types.ts
-import { GvpState, Experience } from '../types';
+import { AppState, Experience } from '../types';
 import { Button } from '../components/Button';
 
-// Fix: Changed AppState to GvpState
-export const MuralPage: React.FC<{ state: GvpState, onUpdateState: (s: GvpState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
+export const MuralPage: React.FC<{ state: AppState, onUpdateState: (s: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
   const [isPosting, setIsPosting] = useState(false);
-  const [newPost, setNewPost] = useState({ content: '', category: 'Encorajamento' as any });
+  const [newPost, setNewPost] = useState<{content: string, category: 'Encorajamento' | 'Gratidão' | 'Aprendizado'}>({ content: '', category: 'Encorajamento' });
 
   const handlePost = () => {
     if (!newPost.content.trim() || !state.currentUser) return;
@@ -20,7 +18,7 @@ export const MuralPage: React.FC<{ state: GvpState, onUpdateState: (s: GvpState)
       likes: 0,
       category: newPost.category
     };
-    onUpdateState({ ...state, experiences: [exp, ...state.experiences] });
+    onUpdateState({ ...state, experiences: [exp, ...(state.experiences || [])] });
     setIsPosting(false);
     setNewPost({ content: '', category: 'Encorajamento' });
   };
@@ -28,7 +26,7 @@ export const MuralPage: React.FC<{ state: GvpState, onUpdateState: (s: GvpState)
   const handleLike = (id: string) => {
     onUpdateState({
       ...state,
-      experiences: state.experiences.map(e => e.id === id ? { ...e, likes: e.likes + 1 } : e)
+      experiences: (state.experiences || []).map((e: Experience) => e.id === id ? { ...e, likes: e.likes + 1 } : e)
     });
   };
 
@@ -57,10 +55,10 @@ export const MuralPage: React.FC<{ state: GvpState, onUpdateState: (s: GvpState)
            />
            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-4">
               <div className="flex gap-2">
-                {['Encorajamento', 'Gratidão', 'Aprendizado'].map(cat => (
+                {(['Encorajamento', 'Gratidão', 'Aprendizado'] as const).map(cat => (
                   <button 
                     key={cat}
-                    onClick={() => setNewPost({...newPost, category: cat as any})}
+                    onClick={() => setNewPost({...newPost, category: cat})}
                     className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${newPost.category === cat ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}
                   >
                     {cat}
@@ -76,12 +74,12 @@ export const MuralPage: React.FC<{ state: GvpState, onUpdateState: (s: GvpState)
       )}
 
       <div className="space-y-6">
-        {state.experiences.length === 0 ? (
+        {(!state.experiences || state.experiences.length === 0) ? (
           <div className="text-center py-20">
             <p className="text-gray-400 font-medium">O mural ainda está vazio. Seja o primeiro a inspirar o grupo!</p>
           </div>
         ) : (
-          state.experiences.map(exp => (
+          state.experiences.map((exp: Experience) => (
             <div key={exp.id} className={`p-6 rounded-2xl border transition-all hover:shadow-md group ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'}`}>
               <div className="flex justify-between items-start mb-4">
                  <div className="flex items-center gap-3">
