@@ -31,6 +31,7 @@ export interface Member {
   lat?: number;
   lng?: number;
   active: boolean;
+  hasSeenOnboarding?: boolean;
 }
 
 export interface Hospital {

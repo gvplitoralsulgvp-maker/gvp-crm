@@ -15,6 +15,7 @@ import { SignUpPage } from './pages/SignUpPage';
 import { MapPage } from './pages/MapPage';
 import { GlobalSearch } from './components/GlobalSearch';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { OnboardingModal } from './components/OnboardingModal';
 
 const Layout: React.FC<{ 
   state: AppState; 
@@ -29,11 +30,32 @@ const Layout: React.FC<{
   isSyncing?: boolean;
 }> = ({ state, onUpdateState, isPrivacyMode, onTogglePrivacy, isHospitalMode, onToggleHospitalMode, isNightMode, onToggleNightMode, onChangePasswordClick, isSyncing }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const location = useLocation();
+
+  useEffect(() => {
+    if (state.currentUser && !state.currentUser.hasSeenOnboarding) {
+      setIsOnboardingOpen(true);
+    }
+  }, [state.currentUser]);
 
   if (!state.currentUser) return <Navigate to="/login" replace />;
 
   const handleLogout = () => onUpdateState({ ...state, currentUser: null });
+
+  const handleCloseOnboarding = () => {
+    if (state.currentUser) {
+      const updatedMembers = state.members.map(m => 
+        m.id === state.currentUser?.id ? { ...m, hasSeenOnboarding: true } : m
+      );
+      onUpdateState({
+        ...state,
+        members: updatedMembers,
+        currentUser: { ...state.currentUser, hasSeenOnboarding: true }
+      });
+    }
+    setIsOnboardingOpen(false);
+  };
 
   const menuItems = [
     { to: "/dashboard", label: "Agenda", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
@@ -106,12 +128,39 @@ const Layout: React.FC<{
             {isSyncing && <span className="text-[9px] font-bold text-blue-500 animate-pulse hidden md:block uppercase tracking-widest">Sincronizando Nuvem...</span>}
           </div>
 
-          <div className="flex items-center gap-2 md:gap-4 shrink-0">
-            <button onClick={onTogglePrivacy} title="Modo Privacidade" className={`p-2 rounded-full transition-colors ${isPrivacyMode ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
+          <div className="flex items-center gap-1 md:gap-2 shrink-0">
+            {/* Toggle Modo Hospitalar (Dark Mode) */}
+            <button 
+              onClick={onToggleHospitalMode} 
+              title={isHospitalMode ? "Modo Padrão" : "Modo Hospitalar (Discreto)"}
+              className={`p-2 rounded-full transition-all ${isHospitalMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}
+            >
+              {isHospitalMode ? (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M16.95 16.95l.707.707M7.05 7.05l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" /></svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+              )}
+            </button>
+
+            {/* Toggle Night Shift (Filtro Âmbar) */}
+            <button 
+              onClick={onToggleNightMode} 
+              title="Night Shift (Filtro Noturno)"
+              className={`p-2 rounded-full transition-all ${isNightMode ? 'bg-orange-500 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            </button>
+
+            {/* Toggle Privacidade */}
+            <button 
+              onClick={onTogglePrivacy} 
+              title="Modo Privacidade (Blur)" 
+              className={`p-2 rounded-full transition-colors ${isPrivacyMode ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}
+            >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             </button>
             
-            <div className="flex items-center gap-3 border-l border-gray-200 pl-3 md:pl-4">
+            <div className={`flex items-center gap-3 border-l pl-3 md:pl-4 ${isHospitalMode ? 'border-gray-800' : 'border-gray-200'}`}>
               <div className="flex flex-col items-end">
                 <span className={`text-xs md:text-sm font-bold leading-none ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>
                   {state.currentUser.name.split(' ')[0]} {state.currentUser.name.split(' ').length > 1 ? state.currentUser.name.split(' ').slice(-1)[0] : ''}
@@ -140,6 +189,12 @@ const Layout: React.FC<{
           </Routes>
         </main>
       </div>
+
+      <OnboardingModal 
+        isOpen={isOnboardingOpen} 
+        onClose={handleCloseOnboarding} 
+        isHospitalMode={isHospitalMode} 
+      />
     </div>
   );
 };
@@ -162,7 +217,6 @@ const App: React.FC = () => {
     setState(newState);
     setIsSyncing(true);
     saveState(newState).finally(() => {
-        // Delay suave para o indicador de sync não "piscar"
         setTimeout(() => setIsSyncing(false), 800);
     });
   };
