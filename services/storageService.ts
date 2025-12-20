@@ -1,5 +1,5 @@
 
-import { Member, VisitRoute, VisitSlot, AppState, Patient, LogEntry, Notification, Hospital, TrainingMaterial, Experience, UserRole } from '@/types';
+import { Member, VisitRoute, VisitSlot, AppState, Patient, LogEntry, Notification, Hospital, TrainingMaterial, Experience, UserRole } from '../types';
 import { supabase } from './supabaseClient';
 
 const INITIAL_HOSPITALS: Hospital[] = [
@@ -32,9 +32,9 @@ export const INITIAL_STATE: AppState = {
   notifications: [],
   experiences: [],
   trainingMaterials: INITIAL_TRAINING,
-};
+} as AppState;
 
-const STORAGE_KEY = 'gvp_app_state_v6';
+const STORAGE_KEY = 'gvp_app_state_v7';
 let lastSyncedState: AppState = { ...INITIAL_STATE };
 let isSaving = false;
 let pendingSave: AppState | null = null;
