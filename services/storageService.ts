@@ -51,12 +51,6 @@ const INITIAL_ROUTES: VisitRoute[] = [
   { id: 'r4', name: 'Rota Guarujá / Cubatão', hospitals: ['Hospital Santo Amaro', 'Hospital Municipal de Cubatão'], active: true },
 ];
 
-/* Added initial training materials */
-const INITIAL_TRAINING: TrainingMaterial[] = [
-  { id: 't1', title: 'Abordagem Amorosa', description: 'Como iniciar uma conversa com pacientes e familiares de forma respeitosa.', category: 'Abordagem', type: 'video', url: '#', isRestricted: false },
-  { id: 't2', title: 'Manual de Bioética GVP', description: 'Princípios fundamentais para o serviço voluntário em hospitais.', category: 'Bioética', type: 'pdf', url: '#', isRestricted: true },
-];
-
 const INITIAL_STATE: AppState = {
   currentUser: null,
   members: INITIAL_MEMBERS,
@@ -66,9 +60,9 @@ const INITIAL_STATE: AppState = {
   patients: [],
   logs: [],
   notifications: [],
-  /* Initializing new collections */
+  // Initialize missing collections
   experiences: [],
-  trainingMaterials: INITIAL_TRAINING,
+  trainingMaterials: [],
 };
 
 const STORAGE_KEY = 'gvp_app_state_v3';
@@ -124,7 +118,6 @@ export const saveState = async (newState: AppState) => {
   isSaving = true;
 
   try {
-      /* Added experiences and trainingMaterials to sync list */
       await Promise.all([
         syncCollection('members', newState.members, lastSyncedState.members),
         syncCollection('hospitals', newState.hospitals, lastSyncedState.hospitals),
@@ -133,6 +126,7 @@ export const saveState = async (newState: AppState) => {
         syncCollection('patients', newState.patients, lastSyncedState.patients),
         syncCollection('notifications', newState.notifications, lastSyncedState.notifications),
         syncCollection('logs', newState.logs, lastSyncedState.logs),
+        // Sync new collections
         syncCollection('experiences', newState.experiences, lastSyncedState.experiences),
         syncCollection('trainingMaterials', newState.trainingMaterials, lastSyncedState.trainingMaterials)
       ]);
@@ -170,7 +164,6 @@ export const loadState = async (): Promise<AppState> => {
   }
 
   try {
-    /* Updated collection list for loading */
     const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'experiences', 'trainingMaterials'];
     const results = await Promise.all(
         collections.map(col => {
@@ -202,7 +195,7 @@ export const loadState = async (): Promise<AppState> => {
         logs: logs ? logs.map((r: any) => r.data) : [],
         notifications: notifications ? notifications.map((r: any) => r.data) : [],
         experiences: experiences ? experiences.map((r: any) => r.data) : [],
-        trainingMaterials: trainingMaterials && trainingMaterials.length > 0 ? trainingMaterials.map((r: any) => r.data) : INITIAL_TRAINING
+        trainingMaterials: trainingMaterials ? trainingMaterials.map((r: any) => r.data) : []
     };
 
     lastSyncedState = JSON.parse(JSON.stringify(loadedState));

@@ -98,7 +98,7 @@ export interface Notification {
   timestamp: string;
 }
 
-/* Added missing Experience and TrainingMaterial types */
+// Added Experience interface for MuralPage
 export interface Experience {
   id: string;
   memberId: string;
@@ -109,12 +109,13 @@ export interface Experience {
   category: 'Encorajamento' | 'Gratidão' | 'Aprendizado';
 }
 
+// Added TrainingMaterial interface for ElearningPage
 export interface TrainingMaterial {
   id: string;
   title: string;
   description: string;
+  type: 'video' | 'pdf' | 'doc';
   category: string;
-  type: 'video' | 'pdf' | 'text';
   url: string;
   isRestricted: boolean;
 }
@@ -128,7 +129,7 @@ export interface AppState {
   patients: Patient[];
   logs: LogEntry[];
   notifications: Notification[];
-  /* Added missing collections to AppState */
+  // Added missing state properties
   experiences: Experience[];
   trainingMaterials: TrainingMaterial[];
 }
