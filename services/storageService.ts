@@ -49,11 +49,16 @@ let pendingSave: AppState | null = null;
 const syncCollection = async (tableName: string, newItems: any[], oldItems: any[]) => {
     if (!supabase) return;
     try {
-        const upserts = (newItems || []).filter(newItem => {
-            const oldItem = (oldItems || []).find(o => o.id === newItem.id);
+        const itemsToSync = newItems || [];
+        const oldItemsToSync = oldItems || [];
+        
+        const upserts = itemsToSync.filter(newItem => {
+            const oldItem = oldItemsToSync.find(o => o.id === newItem.id);
             return !oldItem || JSON.stringify(oldItem) !== JSON.stringify(newItem);
         });
-        const deletes = (oldItems || []).filter(oldItem => !(newItems || []).find(n => n.id === oldItem.id));
+        
+        const deletes = oldItemsToSync.filter(oldItem => !itemsToSync.find(n => n.id === oldItem.id));
+        
         if (upserts.length > 0) {
             const rows = upserts.map(item => ({ id: item.id, data: item }));
             await supabase.from(tableName).upsert(rows);
@@ -110,22 +115,22 @@ export const loadState = async (): Promise<AppState> => {
     const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'trainingMaterials', 'experiences'];
     const results = await Promise.all(collections.map(col => supabase!.from(col).select('*')));
     
-    const dataMap: any = {};
+    const dataMap: Record<string, any[]> = {};
     collections.forEach((col, idx) => {
       dataMap[col] = results[idx].data ? results[idx].data!.map((r: any) => r.data) : [];
     });
 
     const loaded: AppState = {
         currentUser: null,
-        members: dataMap.members.length ? dataMap.members : INITIAL_MEMBERS,
-        hospitals: dataMap.hospitals.length ? dataMap.hospitals : INITIAL_HOSPITALS,
-        routes: dataMap.routes.length ? dataMap.routes : INITIAL_ROUTES,
-        visits: dataMap.visits,
-        patients: dataMap.patients,
-        logs: dataMap.logs,
-        notifications: dataMap.notifications,
-        trainingMaterials: dataMap.trainingMaterials,
-        experiences: dataMap.experiences
+        members: dataMap.members?.length ? dataMap.members : INITIAL_MEMBERS,
+        hospitals: dataMap.hospitals?.length ? dataMap.hospitals : INITIAL_HOSPITALS,
+        routes: dataMap.routes?.length ? dataMap.routes : INITIAL_ROUTES,
+        visits: dataMap.visits || [],
+        patients: dataMap.patients || [],
+        logs: dataMap.logs || [],
+        notifications: dataMap.notifications || [],
+        trainingMaterials: dataMap.trainingMaterials || [],
+        experiences: dataMap.experiences || []
     };
     
     const storedUser = localStorage.getItem('gvp_current_user');
@@ -136,6 +141,7 @@ export const loadState = async (): Promise<AppState> => {
     lastSyncedState = JSON.parse(JSON.stringify(loaded));
     return loaded;
   } catch (e) {
+    console.error("Error loading state from Supabase:", e);
     return INITIAL_STATE;
   }
 };
