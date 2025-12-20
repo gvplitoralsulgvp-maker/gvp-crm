@@ -34,7 +34,7 @@ const INITIAL_STATE: AppState = {
   trainingMaterials: INITIAL_TRAINING,
 };
 
-const STORAGE_KEY = 'gvp_app_state_v4';
+const STORAGE_KEY = 'gvp_app_state_v5';
 let lastSyncedState: AppState = { ...INITIAL_STATE };
 let isSaving = false;
 let pendingSave: AppState | null = null;
@@ -42,11 +42,15 @@ let pendingSave: AppState | null = null;
 const syncCollection = async (tableName: string, newItems: any[], oldItems: any[]) => {
     if (!supabase) return;
     try {
-        const upserts = newItems.filter(newItem => {
-            const oldItem = oldItems.find(o => o.id === newItem.id);
+        const itemsToProcess = newItems || [];
+        const oldItemsToProcess = oldItems || [];
+        
+        const upserts = itemsToProcess.filter(newItem => {
+            const oldItem = oldItemsToProcess.find(o => o.id === newItem.id);
             return !oldItem || JSON.stringify(oldItem) !== JSON.stringify(newItem);
         });
-        const deletes = oldItems.filter(oldItem => !newItems.find(n => n.id === oldItem.id));
+        const deletes = oldItemsToProcess.filter(oldItem => !itemsToProcess.find(n => n.id === oldItem.id));
+        
         if (upserts.length > 0) {
             const rows = upserts.map(item => ({ id: item.id, data: item }));
             await supabase.from(tableName).upsert(rows);
@@ -61,6 +65,7 @@ const syncCollection = async (tableName: string, newItems: any[], oldItems: any[
 };
 
 export const saveState = async (newState: AppState) => {
+  // Persistência local imediata
   if (newState.currentUser) localStorage.setItem('gvp_current_user', JSON.stringify(newState.currentUser));
   else localStorage.removeItem('gvp_current_user');
   localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
@@ -93,12 +98,12 @@ export const saveState = async (newState: AppState) => {
 };
 
 export const loadState = async (): Promise<AppState> => {
-  if (!supabase) {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return JSON.parse(stored);
-    return INITIAL_STATE;
-  }
   try {
+    if (!supabase) {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return stored ? JSON.parse(stored) : INITIAL_STATE;
+    }
+
     const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'experiences', 'training'];
     const results = await Promise.all(collections.map(col => supabase!.from(col).select('*')));
     
@@ -118,14 +123,17 @@ export const loadState = async (): Promise<AppState> => {
     };
 
     lastSyncedState = JSON.parse(JSON.stringify(loadedState));
+    
     const storedUser = localStorage.getItem('gvp_current_user');
     if (storedUser) {
         const parsed = JSON.parse(storedUser);
-        const valid = loadedState.members.find(m => m.id === parsed.id);
+        const valid = loadedState.members.find(member => member.id === parsed.id);
         if (valid) loadedState.currentUser = valid;
     }
+    
     return loadedState;
-  } catch {
+  } catch (error) {
+    console.error("Erro ao carregar estado do Supabase, tentando LocalStorage...", error);
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? JSON.parse(stored) : INITIAL_STATE;
   }
