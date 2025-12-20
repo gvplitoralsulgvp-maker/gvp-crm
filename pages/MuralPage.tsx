@@ -1,13 +1,11 @@
 
 import React, { useState } from 'react';
-// Fix: Changed AppState to GvpState to match the exported interface in types.ts
-import { GvpState, Experience } from '../types';
+import { AppState, Experience } from '../types';
 import { Button } from '../components/Button';
 
-// Fix: Changed AppState to GvpState
-export const MuralPage: React.FC<{ state: GvpState, onUpdateState: (s: GvpState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
+export const MuralPage: React.FC<{ state: AppState, onUpdateState: (s: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
   const [isPosting, setIsPosting] = useState(false);
-  const [newPost, setNewPost] = useState({ content: '', category: 'Encorajamento' as any });
+  const [newPost, setNewPost] = useState<{content: string, category: 'Encorajamento' | 'Gratidão' | 'Aprendizado'}>({ content: '', category: 'Encorajamento' });
 
   const handlePost = () => {
     if (!newPost.content.trim() || !state.currentUser) return;
@@ -41,7 +39,7 @@ export const MuralPage: React.FC<{ state: GvpState, onUpdateState: (s: GvpState)
           <h2 className="text-2xl font-bold">Mural de Experiências</h2>
           <p className="opacity-80 text-sm mt-1">Compartilhe momentos que fortaleceram seu coração durante as visitas.</p>
         </div>
-        <Button onClick={() => setIsPosting(true)} className={`${isHospitalMode ? 'bg-blue-600' : 'bg-white text-blue-700 hover:bg-blue-50'} rounded-xl px-8 font-bold`}>
+        <Button onClick={() => setIsPosting(true)} className={`${isHospitalMode ? 'bg-blue-600' : 'bg-white text-blue-700 hover:bg-blue-50'} rounded-xl px-8 font-bold shadow-lg`}>
           Compartilhar Relato
         </Button>
       </div>
@@ -57,11 +55,11 @@ export const MuralPage: React.FC<{ state: GvpState, onUpdateState: (s: GvpState)
            />
            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-4">
               <div className="flex gap-2">
-                {['Encorajamento', 'Gratidão', 'Aprendizado'].map(cat => (
+                {(['Encorajamento', 'Gratidão', 'Aprendizado'] as const).map(cat => (
                   <button 
                     key={cat}
-                    onClick={() => setNewPost({...newPost, category: cat as any})}
-                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${newPost.category === cat ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}
+                    onClick={() => setNewPost({...newPost, category: cat})}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${newPost.category === cat ? 'bg-blue-600 text-white' : isHospitalMode ? 'bg-gray-800 text-gray-500' : 'bg-gray-100 text-gray-400'}`}
                   >
                     {cat}
                   </button>
@@ -78,20 +76,20 @@ export const MuralPage: React.FC<{ state: GvpState, onUpdateState: (s: GvpState)
       <div className="space-y-6">
         {state.experiences.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-gray-400 font-medium">O mural ainda está vazio. Seja o primeiro a inspirar o grupo!</p>
+            <p className="text-gray-400 font-medium italic">O mural ainda está vazio. Seja o primeiro a inspirar o grupo!</p>
           </div>
         ) : (
           state.experiences.map(exp => (
             <div key={exp.id} className={`p-6 rounded-2xl border transition-all hover:shadow-md group ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'}`}>
               <div className="flex justify-between items-start mb-4">
                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs uppercase">{exp.memberName.substring(0,2)}</div>
+                    <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs uppercase shadow-sm">{exp.memberName.substring(0,2)}</div>
                     <div>
                       <p className={`text-sm font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{exp.memberName}</p>
                       <p className="text-[10px] text-gray-500">{new Date(exp.date).toLocaleDateString()}</p>
                     </div>
                  </div>
-                 <span className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase ${
+                 <span className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider ${
                    exp.category === 'Encorajamento' ? 'bg-purple-100 text-purple-600' : 
                    exp.category === 'Gratidão' ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'
                  }`}>
