@@ -16,7 +16,7 @@ const INITIAL_HOSPITALS: Hospital[] = [
 
 const INITIAL_TRAINING: TrainingMaterial[] = [
   { id: 't1', title: 'Abordagem em Estados Terminais', category: 'Abordagem', type: 'texto', description: 'Guia de como oferecer consolo e manter a serenidade.', url: '#', isRestricted: true },
-  { id: 't2', title: 'Higienização e EPIs', category: 'Segurança', type: 'video', description: 'Protocolos fundamentais de segurança hospitalar.', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', isRestricted: false },
+  { id: 't2', title: 'Higienização e EPIs', category: 'Segurança', type: 'video', description: 'Protocolos fundamentais de segurança hospitalar.', url: 'https://www.youtube.com/watch?v=dQw4w9XcQ', isRestricted: false },
   { id: 't3', title: 'Preenchimento do S-55', category: 'Protocolos', type: 'texto', description: 'Passo a passo para o relatório de assistência jurídica.', url: '#', isRestricted: true },
   { id: 't4', title: 'Bioética e Autonomia', category: 'Bioética', type: 'pdf', description: 'Conceitos básicos sobre o direito do paciente.', url: '#', isRestricted: false },
 ];
@@ -101,7 +101,11 @@ export const loadState = async (): Promise<AppState> => {
   try {
     if (!supabase) {
       const stored = localStorage.getItem(STORAGE_KEY);
-      return stored ? JSON.parse(stored) : INITIAL_STATE;
+      if (stored) {
+          const parsed = JSON.parse(stored);
+          return { ...INITIAL_STATE, ...parsed, currentUser: INITIAL_STATE.currentUser } as AppState;
+      }
+      return INITIAL_STATE;
     }
 
     const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'experiences', 'training'];
@@ -111,15 +115,15 @@ export const loadState = async (): Promise<AppState> => {
 
     const loadedState: AppState = {
         currentUser: null,
-        members: m.data?.map(i => i.data) || [],
-        hospitals: h.data?.map(i => i.data) || INITIAL_HOSPITALS,
-        routes: r.data?.map(i => i.data) || [],
-        visits: v.data?.map(i => i.data) || [],
-        patients: p.data?.map(i => i.data) || [],
-        logs: l.data?.map(i => i.data) || [],
-        notifications: n.data?.map(i => i.data) || [],
-        experiences: ex.data?.map(i => i.data) || [],
-        trainingMaterials: tr.data?.map(i => i.data) || INITIAL_TRAINING
+        members: (m.data?.map(i => i.data) || []) as Member[],
+        hospitals: (h.data?.map(i => i.data) || INITIAL_HOSPITALS) as Hospital[],
+        routes: (r.data?.map(i => i.data) || []) as VisitRoute[],
+        visits: (v.data?.map(i => i.data) || []) as VisitSlot[],
+        patients: (p.data?.map(i => i.data) || []) as Patient[],
+        logs: (l.data?.map(i => i.data) || []) as LogEntry[],
+        notifications: (n.data?.map(i => i.data) || []) as Notification[],
+        experiences: (ex.data?.map(i => i.data) || []) as Experience[],
+        trainingMaterials: (tr.data?.map(i => i.data) || INITIAL_TRAINING) as TrainingMaterial[]
     };
 
     lastSyncedState = JSON.parse(JSON.stringify(loadedState));
@@ -135,6 +139,10 @@ export const loadState = async (): Promise<AppState> => {
   } catch (error) {
     console.error("Erro ao carregar estado do Supabase, tentando LocalStorage...", error);
     const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : INITIAL_STATE;
+    if (stored) {
+        const parsed = JSON.parse(stored);
+        return { ...INITIAL_STATE, ...parsed } as AppState;
+    }
+    return INITIAL_STATE;
   }
 };
