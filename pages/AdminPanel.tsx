@@ -1,11 +1,11 @@
 
 import React, { useState } from 'react';
-import { AppState, Member, VisitRoute, UserRole, Hospital } from '../types';
+import { AppState, Member, VisitRoute, UserRole, Hospital, VisitSlot } from '../types';
 import { Button } from '../components/Button';
 import { MapPicker } from '../components/MapPicker';
 
 export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
-  const [activeTab, setActiveTab] = useState<'members' | 'hospitals' | 'routes' | 'balance'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'hospitals' | 'routes' | 'reports' | 'balance'>('members');
   const [editingHospital, setEditingHospital] = useState<Partial<Hospital> | null>(null);
   const [editingRoute, setEditingRoute] = useState<Partial<VisitRoute> | null>(null);
 
@@ -15,6 +15,11 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       return { ...m, visitCount };
   }).sort((a,b) => b.visitCount - a.visitCount);
   const maxVisits = Math.max(...memberActivity.map(m => m.visitCount), 1);
+
+  // Filtered visits with reports for the Reports tab
+  const visitsWithReports = state.visits
+    .filter(v => !!v.report)
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   // --- MEMBER ACTIONS ---
   const handleToggleMember = (id: string) => {
@@ -66,15 +71,19 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     setEditingRoute(null);
   };
 
+  const getMemberName = (id: string) => state.members.find(m => m.id === id)?.name || 'Desconhecido';
+
   return (
     <div className="space-y-6 pb-12 animate-fade-in">
       <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} p-6 rounded-xl shadow-sm border flex flex-col md:flex-row justify-between items-start md:items-center gap-4`}>
          <div>
             <h2 className={`text-xl font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Painel Administrativo</h2>
-            <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Controle de acesso, infraestrutura e logística de visitas.</p>
+            <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Gestão de equipe, infraestrutura hospitalar e auditoria de visitas.</p>
          </div>
-         {activeTab === 'hospitals' && <Button size="sm" onClick={() => setEditingHospital({ lat: -23.9608, lng: -46.3331 })}>+ Novo Hospital</Button>}
-         {activeTab === 'routes' && <Button size="sm" onClick={() => setEditingRoute({ hospitals: [] })}>+ Nova Rota</Button>}
+         <div className="flex gap-2">
+            {activeTab === 'hospitals' && <Button size="sm" onClick={() => setEditingHospital({ lat: -23.9608, lng: -46.3331, importantInfo: '' })}>+ Novo Hospital</Button>}
+            {activeTab === 'routes' && <Button size="sm" onClick={() => setEditingRoute({ hospitals: [] })}>+ Nova Rota</Button>}
+         </div>
       </div>
 
       <div className={`flex border-b overflow-x-auto custom-scrollbar ${isHospitalMode ? 'border-gray-800' : 'border-gray-200'}`}>
@@ -82,6 +91,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
           { id: 'members', label: 'Equipe' },
           { id: 'hospitals', label: 'Hospitais' },
           { id: 'routes', label: 'Rotas' },
+          { id: 'reports', label: 'Relatórios' },
           { id: 'balance', label: 'Equilíbrio' }
         ].map(tab => (
           <button 
@@ -153,15 +163,23 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       {activeTab === 'hospitals' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {state.hospitals.map(h => (
-                  <div key={h.id} className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} p-5 rounded-xl border shadow-sm flex justify-between items-start transition-all hover:shadow-md`}>
-                      <div className="space-y-1">
-                          <p className={`font-bold text-base ${isHospitalMode ? 'text-gray-100' : 'text-gray-800'}`}>{h.name}</p>
-                          <p className="text-xs text-gray-500 leading-tight">{h.address}</p>
-                          <p className="text-[10px] text-blue-500 font-bold uppercase tracking-wider">{h.city}</p>
+                  <div key={h.id} className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} p-5 rounded-xl border shadow-sm flex flex-col transition-all hover:shadow-md`}>
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="space-y-1">
+                            <p className={`font-bold text-base ${isHospitalMode ? 'text-gray-100' : 'text-gray-800'}`}>{h.name}</p>
+                            <p className="text-xs text-gray-500 leading-tight">{h.address}</p>
+                            <p className="text-[10px] text-blue-500 font-bold uppercase tracking-wider">{h.city}</p>
+                        </div>
+                        <button onClick={() => setEditingHospital(h)} className={`p-2 rounded-lg transition-colors ${isHospitalMode ? 'bg-white/5 text-gray-400 hover:text-white' : 'bg-gray-50 text-gray-500 hover:text-blue-600'}`}>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                        </button>
                       </div>
-                      <button onClick={() => setEditingHospital(h)} className={`p-2 rounded-lg transition-colors ${isHospitalMode ? 'bg-white/5 text-gray-400 hover:text-white' : 'bg-gray-50 text-gray-500 hover:text-blue-600'}`}>
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                      </button>
+                      {h.importantInfo && (
+                        <div className={`mt-auto p-3 rounded-lg text-xs italic ${isHospitalMode ? 'bg-blue-900/10 text-blue-400' : 'bg-blue-50 text-blue-700'}`}>
+                          <p className="font-bold uppercase text-[9px] mb-1">Informações de Visita:</p>
+                          {h.importantInfo.length > 80 ? h.importantInfo.substring(0, 80) + '...' : h.importantInfo}
+                        </div>
+                      )}
                   </div>
               ))}
           </div>
@@ -177,7 +195,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                           <button onClick={() => setEditingRoute(r)} className="text-[10px] font-bold text-gray-500 hover:text-blue-500 uppercase">Editar</button>
                       </div>
                       <div className="p-5 flex-grow space-y-2">
-                          {r.hospitals.length === 0 ? (
+                          {(!r.hospitals || r.hospitals.length === 0) ? (
                               <p className="text-xs text-gray-400 italic">Nenhum hospital vinculado.</p>
                           ) : (
                               r.hospitals.map((h, i) => (
@@ -190,6 +208,56 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                       </div>
                   </div>
               ))}
+          </div>
+      )}
+
+      {/* --- ABA RELATÓRIOS (AUDITORIA) --- */}
+      {activeTab === 'reports' && (
+          <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-xl shadow-sm border overflow-hidden`}>
+            <div className="p-4 border-b border-gray-800/10 flex justify-between items-center">
+              <h3 className={`font-bold text-sm ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>Histórico Consolidado de Relatos</h3>
+              <p className="text-[10px] text-gray-500 uppercase font-bold">{visitsWithReports.length} Visitas Concluídas</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className={`${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'} text-[10px] font-bold text-gray-400 uppercase tracking-widest`}>
+                  <tr>
+                    <th className="px-6 py-4 text-left">Data</th>
+                    <th className="px-6 py-4 text-left">Rota / Dupla</th>
+                    <th className="px-6 py-4 text-left">Relato Detalhado</th>
+                  </tr>
+                </thead>
+                <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-sm`}>
+                  {visitsWithReports.map(visit => {
+                    const routeName = state.routes.find(r => r.id === visit.routeId)?.name || 'Desconhecida';
+                    return (
+                      <tr key={visit.id} className={isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <p className={`font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-800'}`}>{new Date(visit.date + 'T12:00:00').toLocaleDateString()}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className={`text-xs font-bold uppercase text-blue-500`}>{routeName}</p>
+                          <p className="text-[10px] text-gray-500 mt-1">{visit.memberIds.map(getMemberName).join(' & ')}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className={`p-3 rounded-lg text-xs leading-relaxed max-w-lg ${isHospitalMode ? 'bg-[#1a1c1e] text-gray-400' : 'bg-gray-50 text-gray-600'}`}>
+                            {visit.report?.notes}
+                          </div>
+                          {visit.report?.followUpNeeded && (
+                            <span className="mt-2 inline-block px-2 py-0.5 bg-red-500/10 text-red-500 text-[8px] font-bold uppercase rounded border border-red-500/20">Urgente</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {visitsWithReports.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-10 text-center text-gray-500 italic">Nenhum relatório finalizado até o momento.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
       )}
 
@@ -230,7 +298,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                       <span className="text-lg">{editingHospital.id ? 'Editar Hospital' : 'Novo Hospital'}</span>
                       <button onClick={() => setEditingHospital(null)} className="text-2xl leading-none">&times;</button>
                   </div>
-                  <form onSubmit={handleSaveHospital} className="p-6 space-y-4">
+                  <form onSubmit={handleSaveHospital} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
                       <div className="space-y-1">
                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Nome da Unidade</label>
                           <input required type="text" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingHospital.name || ''} onChange={e => setEditingHospital({...editingHospital, name: e.target.value})} />
@@ -238,6 +306,16 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                       <div className="space-y-1">
                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Endereço</label>
                           <input required type="text" className={`w-full border p-3 rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} value={editingHospital.address || ''} onChange={e => setEditingHospital({...editingHospital, address: e.target.value})} />
+                      </div>
+                      <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Instruções Importantes (Regras da Instituição)</label>
+                          <textarea 
+                            rows={3}
+                            placeholder="Ex: Entrada pela lateral, estacionamento gratuito no local, exige máscara PFF2..."
+                            className={`w-full border p-3 rounded-xl text-sm resize-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`} 
+                            value={editingHospital.importantInfo || ''} 
+                            onChange={e => setEditingHospital({...editingHospital, importantInfo: e.target.value})} 
+                          />
                       </div>
                       <div className="space-y-1">
                           <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Localização Geográfica</label>

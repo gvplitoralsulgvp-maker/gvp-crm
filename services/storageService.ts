@@ -39,59 +39,50 @@ export const createDefaultState = (): AppState => {
   };
 };
 
-const STORAGE_KEY = 'soft_crm_gvp_enterprise_v3';
-let lastSyncedState: AppState = createDefaultState();
+const STORAGE_KEY = 'soft_crm_gvp_v5_prod';
+
 let isSaving = false;
 let pendingSave: AppState | null = null;
 
-const syncCollection = async (tableName: string, newItems: any[], oldItems: any[]) => {
+const syncCollection = async (tableName: string, newItems: any[]) => {
     if (!supabase) return;
     try {
-        const itemsToSync = newItems || [];
-        const oldItemsToSync = oldItems || [];
-        
-        const upserts = itemsToSync.filter(newItem => {
-            const oldItem = oldItemsToSync.find(o => o.id === newItem.id);
-            return !oldItem || JSON.stringify(oldItem) !== JSON.stringify(newItem);
-        });
-        
-        const deletes = oldItemsToSync.filter(oldItem => !itemsToSync.find(n => n.id === oldItem.id));
-        
-        if (upserts.length > 0) {
-            const rows = upserts.map(item => ({ id: item.id, data: item }));
-            await supabase.from(tableName).upsert(rows);
-        }
-        if (deletes.length > 0) {
-            const idsToDelete = deletes.map(d => d.id);
-            await supabase.from(tableName).delete().in('id', idsToDelete);
+        if (newItems && Array.isArray(newItems)) {
+            const rows = newItems.map(item => ({ id: item.id, data: item }));
+            const { error } = await supabase.from(tableName).upsert(rows);
+            if (error) throw error;
         }
     } catch (err: any) {
-        console.error(`Sync error ${tableName}:`, err);
+        console.error(`[Sync] Error in ${tableName}:`, err);
+        throw err;
     }
 };
 
-export const saveState = async (newState: AppState) => {
-  if (newState.currentUser) {
-      localStorage.setItem('gvp_current_user', JSON.stringify(newState.currentUser));
-  } else {
-      localStorage.removeItem('gvp_current_user');
-  }
+export const saveState = async (newState: AppState): Promise<void> => {
+  // Sempre salvar no LocalStorage primeiro (instantâneo)
   localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+  if (newState.currentUser) {
+    localStorage.setItem('gvp_current_user', JSON.stringify(newState.currentUser));
+  }
 
   if (!supabase || isSaving) {
       if (isSaving) pendingSave = newState;
       return;
   }
+
   isSaving = true;
   try {
+      // Sincroniza em ordem de dependência
+      await syncCollection('routes', newState.routes);
       await Promise.all([
-        syncCollection('members', newState.members, lastSyncedState.members),
-        syncCollection('hospitals', newState.hospitals, lastSyncedState.hospitals),
-        syncCollection('visits', newState.visits, lastSyncedState.visits),
-        syncCollection('patients', newState.patients, lastSyncedState.patients),
-        syncCollection('logs', newState.logs, lastSyncedState.logs)
+        syncCollection('members', newState.members),
+        syncCollection('hospitals', newState.hospitals),
+        syncCollection('visits', newState.visits),
+        syncCollection('patients', newState.patients),
+        syncCollection('logs', newState.logs)
       ]);
-      lastSyncedState = JSON.parse(JSON.stringify(newState));
+  } catch (err) {
+      console.error("[Storage] Cloud sync failed, but data is safe locally.");
   } finally {
       isSaving = false;
       if (pendingSave) {
@@ -104,52 +95,56 @@ export const saveState = async (newState: AppState) => {
 
 export const loadState = async (): Promise<AppState> => {
   const baseState = createDefaultState();
+  const stored = localStorage.getItem(STORAGE_KEY);
+  let localData: Partial<AppState> = {};
 
-  if (!supabase) {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-        try {
-            const parsed = JSON.parse(stored);
-            return { 
-              ...baseState, 
-              ...parsed
-            } as AppState;
-        } catch (e) {
-            return baseState;
-        }
-    }
-    return baseState;
+  if (stored) {
+    try { localData = JSON.parse(stored); } catch (e) { console.error("Local load error", e); }
   }
 
+  if (!supabase) return { ...baseState, ...localData } as AppState;
+
   try {
-    const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications'];
+    const collections = ['routes', 'members', 'hospitals', 'visits', 'patients', 'logs'];
     const results = await Promise.all(collections.map(col => supabase!.from(col).select('*')));
     
-    const dataMap: Record<string, any[]> = {};
+    const cloudData: any = {};
     collections.forEach((col, idx) => {
-      dataMap[col] = results[idx].data ? results[idx].data!.map((r: any) => r.data) : [];
+      // Extrai os dados do formato {id, data} do Supabase
+      const data = results[idx].data ? results[idx].data!.map((r: any) => r.data) : [];
+      cloudData[col] = data;
     });
 
-    const loaded: AppState = {
-        ...baseState,
-        members: (dataMap.members && dataMap.members.length > 0 ? dataMap.members : INITIAL_MEMBERS) as Member[],
-        hospitals: (dataMap.hospitals && dataMap.hospitals.length > 0 ? dataMap.hospitals : INITIAL_HOSPITALS) as Hospital[],
-        visits: (dataMap.visits || []) as VisitSlot[],
-        patients: (dataMap.patients || []) as Patient[],
-        logs: (dataMap.logs || []) as LogEntry[],
-        notifications: (dataMap.notifications || []) as Notification[]
+    // Lógica de Merge: Só usa a nuvem se houver dados, senão mantém o local
+    const merge = (key: keyof AppState) => {
+        const cloud = cloudData[key];
+        const local = localData[key];
+        return (cloud && Array.isArray(cloud) && cloud.length > 0) ? cloud : (local || baseState[key]);
     };
-    
+
+    const finalState: AppState = {
+        ...baseState,
+        routes: merge('routes') as VisitRoute[],
+        members: merge('members') as Member[],
+        hospitals: merge('hospitals') as Hospital[],
+        visits: merge('visits') as VisitSlot[],
+        patients: merge('patients') as Patient[],
+        logs: merge('logs') as LogEntry[],
+        notifications: localData.notifications || []
+    };
+
     const storedUser = localStorage.getItem('gvp_current_user');
     if (storedUser) {
         try {
             const parsed = JSON.parse(storedUser);
-            loaded.currentUser = loaded.members.find(m => m.id === parsed.id) || null;
+            // Re-vincula o usuário logado aos dados frescos dos membros
+            finalState.currentUser = finalState.members.find(m => m.id === parsed.id) || null;
         } catch (e) {}
     }
-    lastSyncedState = JSON.parse(JSON.stringify(loaded));
-    return loaded;
+
+    return finalState;
   } catch (e) {
-    return baseState;
+    console.error("[Storage] Error loading from cloud, using local fallback", e);
+    return { ...baseState, ...localData } as AppState;
   }
 };

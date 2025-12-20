@@ -9,11 +9,12 @@ interface PatientDetailModalProps {
   patient: Patient;
   lastVisit: VisitSlot | null;
   members: Member[];
+  onDischarge?: (id: string, name: string) => void;
   isHospitalMode?: boolean;
 }
 
 export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({ 
-  isOpen, onClose, patient, lastVisit, members, isHospitalMode 
+  isOpen, onClose, patient, lastVisit, members, onDischarge, isHospitalMode 
 }) => {
   if (!isOpen) return null;
 
@@ -27,7 +28,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className="bg-blue-600 px-6 py-5 flex justify-between items-center shrink-0">
           <div>
@@ -38,22 +39,30 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
         </div>
 
         <div className={`p-6 overflow-y-auto custom-scrollbar space-y-6 ${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'}`}>
-          {/* Identificação Principal */}
-          <div className="space-y-1">
-            <h4 className={`text-2xl font-bold ${isHospitalMode ? 'text-white' : 'text-gray-900'}`}>{patient.name}</h4>
-            <div className="flex flex-wrap gap-2">
-              <span className="px-2 py-1 bg-blue-500/10 text-blue-500 text-[10px] font-bold rounded-md uppercase border border-blue-500/20">
-                {patient.floor ? `Andar ${patient.floor}` : 'Andar não inf.'} • {patient.bed ? `Leito ${patient.bed}` : 'Leito não inf.'}
-              </span>
-              {patient.isIsolation && (
-                <span className="px-2 py-1 bg-red-500/10 text-red-500 text-[10px] font-bold rounded-md uppercase border border-red-500/20">
-                  ⚠️ Isolamento: {patient.isolationType}
+          <div className="flex justify-between items-start">
+            <div className="space-y-1">
+                <h4 className={`text-2xl font-bold ${isHospitalMode ? 'text-white' : 'text-gray-900'}`}>{patient.name}</h4>
+                <div className="flex flex-wrap gap-2">
+                <span className="px-2 py-1 bg-blue-500/10 text-blue-500 text-[10px] font-bold rounded-md uppercase border border-blue-500/20">
+                    {patient.floor ? `Andar ${patient.floor}` : 'Andar não inf.'} • {patient.bed ? `Leito ${patient.bed}` : 'Leito não inf.'}
                 </span>
-              )}
+                {patient.isIsolation && (
+                    <span className="px-2 py-1 bg-red-500/10 text-red-500 text-[10px] font-bold rounded-md uppercase border border-blue-500/20">
+                    ⚠️ Isolamento
+                    </span>
+                )}
+                </div>
             </div>
+            {patient.active && onDischarge && (
+                <button 
+                    onClick={() => { onDischarge(patient.id, patient.name); onClose(); }}
+                    className="bg-green-600 hover:bg-green-700 text-white text-[9px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg shadow-sm"
+                >
+                    Dar Alta
+                </button>
+            )}
           </div>
 
-          {/* Dados Médicos e Administrativos */}
           <div className={`grid grid-cols-2 gap-4 p-4 rounded-xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
             <div className="space-y-1">
               <p className="text-[10px] font-bold text-gray-500 uppercase">Tratamento</p>
@@ -65,7 +74,6 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
             </div>
           </div>
 
-          {/* Checklist Jurídico/Ético */}
           <div className="space-y-2">
              <p className="text-[10px] font-bold text-gray-500 uppercase px-1">Documentação e Diretivas</p>
              <div className="grid grid-cols-1 gap-2">
@@ -82,11 +90,10 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
              </div>
           </div>
 
-          {/* Resumo da Última Visita */}
           <div className={`p-4 rounded-xl border-2 ${isHospitalMode ? 'bg-blue-900/10 border-blue-900/30' : 'bg-blue-50 border-blue-100'}`}>
             <h5 className={`text-[10px] font-bold uppercase tracking-widest mb-2 flex items-center gap-2 ${isHospitalMode ? 'text-blue-400' : 'text-blue-600'}`}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-              Última Passagem de Bastão
+              Último Relato de Visita
             </h5>
             {lastVisit?.report ? (
               <div className="space-y-2">
@@ -99,13 +106,13 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-gray-500 italic">Nenhum relato anterior registrado para esta rota.</p>
+              <p className="text-xs text-gray-500 italic">Sem registros de visitas anteriores.</p>
             )}
           </div>
         </div>
 
         <div className={`p-4 border-t flex justify-end ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-50'}`}>
-          <Button variant="primary" onClick={onClose} className="w-full">Entendido</Button>
+          <Button variant="secondary" onClick={onClose} className="w-full">Fechar Prontuário</Button>
         </div>
       </div>
     </div>

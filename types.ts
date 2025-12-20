@@ -4,6 +4,8 @@ export enum UserRole {
   MEMBER = 'MEMBER'
 }
 
+export type VisitStatus = 'PENDING' | 'ON_THE_WAY' | 'FINISHED';
+
 export interface AppState {
   currentUser: Member | null;
   members: Member[];
@@ -38,6 +40,7 @@ export interface Hospital {
   city: string;
   lat: number;
   lng: number;
+  importantInfo?: string;
 }
 
 export interface VisitRoute {
@@ -59,6 +62,7 @@ export interface VisitSlot {
   routeId: string;
   date: string;
   memberIds: string[];
+  status?: VisitStatus;
   report?: VisitReport;
 }
 

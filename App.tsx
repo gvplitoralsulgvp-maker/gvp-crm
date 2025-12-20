@@ -26,7 +26,8 @@ const Layout: React.FC<{
   isNightMode: boolean;
   onToggleNightMode: () => void;
   onChangePasswordClick: () => void;
-}> = ({ state, onUpdateState, isPrivacyMode, onTogglePrivacy, isHospitalMode, onToggleHospitalMode, isNightMode, onToggleNightMode, onChangePasswordClick }) => {
+  isSyncing?: boolean;
+}> = ({ state, onUpdateState, isPrivacyMode, onTogglePrivacy, isHospitalMode, onToggleHospitalMode, isNightMode, onToggleNightMode, onChangePasswordClick, isSyncing }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
 
@@ -87,26 +88,41 @@ const Layout: React.FC<{
       </aside>
 
       <div className="flex-grow flex flex-col min-w-0 h-full relative overflow-hidden">
-        <header className={`h-16 flex items-center justify-between px-6 flex-shrink-0 z-30 ${isHospitalMode ? 'bg-[#212327] border-b border-gray-800' : 'bg-white shadow-sm'}`}>
-          <div className="flex items-center gap-4 flex-grow">
+        {isSyncing && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-blue-600/30 overflow-hidden z-[100]">
+            <div className="h-full bg-blue-600 animate-[loading_1.5s_infinite_linear]" style={{ width: '30%' }}></div>
+            <style>{`@keyframes loading { from { transform: translateX(-100%); } to { transform: translateX(400%); } }`}</style>
+          </div>
+        )}
+
+        <header className={`h-20 md:h-16 flex items-center justify-between px-4 md:px-6 flex-shrink-0 z-30 ${isHospitalMode ? 'bg-[#212327] border-b border-gray-800' : 'bg-white shadow-sm'}`}>
+          <div className="flex items-center gap-2 md:gap-4 flex-grow">
             <button className="md:hidden p-2 hover:bg-gray-100 rounded-lg shrink-0" onClick={() => setIsSidebarOpen(true)}>
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
-            <GlobalSearch state={state} isHospitalMode={isHospitalMode} />
+            <div className="hidden sm:block flex-grow">
+              <GlobalSearch state={state} isHospitalMode={isHospitalMode} />
+            </div>
+            {isSyncing && <span className="text-[9px] font-bold text-blue-500 animate-pulse hidden md:block uppercase tracking-widest">Sincronizando Nuvem...</span>}
           </div>
 
-          <div className="flex items-center gap-3 md:gap-4 shrink-0">
-            <button onClick={onToggleNightMode} title="Modo Noturno" className={`p-2 rounded-full transition-colors ${isNightMode ? 'bg-orange-500 text-white' : isHospitalMode ? 'text-gray-400 hover:bg-white/5' : 'text-gray-400 hover:bg-gray-100'}`}>
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" /></svg>
-            </button>
-            <button onClick={onToggleHospitalMode} title="Modo Hospitalar" className={`p-2 rounded-full transition-colors ${isHospitalMode ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
-            </button>
+          <div className="flex items-center gap-2 md:gap-4 shrink-0">
             <button onClick={onTogglePrivacy} title="Modo Privacidade" className={`p-2 rounded-full transition-colors ${isPrivacyMode ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             </button>
-            <div className="w-9 h-9 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs uppercase shadow-lg select-none">
-              {state.currentUser.name.substring(0,2)}
+            
+            <div className="flex items-center gap-3 border-l border-gray-200 pl-3 md:pl-4">
+              <div className="flex flex-col items-end">
+                <span className={`text-xs md:text-sm font-bold leading-none ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                  {state.currentUser.name.split(' ')[0]} {state.currentUser.name.split(' ').length > 1 ? state.currentUser.name.split(' ').slice(-1)[0] : ''}
+                </span>
+                <span className="text-[9px] md:text-[10px] font-bold text-blue-500 uppercase tracking-widest mt-1">
+                  {state.currentUser.role === UserRole.ADMIN ? 'ADMINISTRADOR' : 'VOLUNTÁRIO GVP'}
+                </span>
+              </div>
+              <div className="w-8 h-8 md:w-9 md:h-9 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs uppercase shadow-lg select-none">
+                {state.currentUser.name.substring(0,2)}
+              </div>
             </div>
           </div>
         </header>
@@ -134,6 +150,7 @@ const App: React.FC = () => {
   const [isHospitalMode, setIsHospitalMode] = useState(false);
   const [isNightMode, setIsNightMode] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => { 
     loadState().then(data => {
@@ -143,7 +160,11 @@ const App: React.FC = () => {
 
   const handleUpdateState = (newState: AppState) => {
     setState(newState);
-    saveState(newState);
+    setIsSyncing(true);
+    saveState(newState).finally(() => {
+        // Delay suave para o indicador de sync não "piscar"
+        setTimeout(() => setIsSyncing(false), 800);
+    });
   };
 
   if (!state) return (
@@ -166,6 +187,7 @@ const App: React.FC = () => {
             isHospitalMode={isHospitalMode} onToggleHospitalMode={() => setIsHospitalMode(!isHospitalMode)}
             isNightMode={isNightMode} onToggleNightMode={() => setIsNightMode(!isNightMode)}
             onChangePasswordClick={() => setIsChangePasswordOpen(true)}
+            isSyncing={isSyncing}
           />
         } />
       </Routes>
