@@ -110,13 +110,3 @@ export interface TrainingMaterial {
   url: string;
   isRestricted?: boolean;
 }
-
-export interface Experience {
-  id: string;
-  memberId: string;
-  memberName: string;
-  content: string;
-  date: string;
-  likes: number;
-  category: 'Encorajamento' | 'Gratidão' | 'Aprendizado';
-}
