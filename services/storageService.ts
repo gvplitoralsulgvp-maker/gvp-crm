@@ -28,7 +28,7 @@ const INITIAL_ROUTES: VisitRoute[] = [
   { id: 'r1', name: 'Rota Santos - Zona Leste', hospitals: ['Santa Casa de Santos'], active: true },
 ];
 
-export const createInitialState = (): AppState => ({
+export const INITIAL_STATE: AppState = {
   currentUser: null,
   members: INITIAL_MEMBERS,
   hospitals: INITIAL_HOSPITALS,
@@ -39,10 +39,10 @@ export const createInitialState = (): AppState => ({
   notifications: [] as Notification[],
   trainingMaterials: [] as TrainingMaterial[],
   experiences: [] as Experience[],
-});
+};
 
-const STORAGE_KEY = 'gvp_app_state_v4';
-let lastSyncedState: AppState = createInitialState();
+const STORAGE_KEY = 'soft_crm_gvp_v1';
+let lastSyncedState: AppState = { ...INITIAL_STATE };
 let isSaving = false;
 let pendingSave: AppState | null = null;
 
@@ -108,16 +108,11 @@ export const saveState = async (newState: AppState) => {
 export const loadState = async (): Promise<AppState> => {
   if (!supabase) {
     const stored = localStorage.getItem(STORAGE_KEY);
-    const initial = createInitialState();
     if (stored) {
-        try {
-            const parsed = JSON.parse(stored);
-            return { ...initial, ...parsed } as AppState;
-        } catch (e) {
-            return initial;
-        }
+        const parsed = JSON.parse(stored);
+        return { ...INITIAL_STATE, ...parsed } as AppState;
     }
-    return initial;
+    return INITIAL_STATE;
   }
   try {
     const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'trainingMaterials', 'experiences'];
@@ -128,7 +123,6 @@ export const loadState = async (): Promise<AppState> => {
       dataMap[col] = results[idx].data ? results[idx].data!.map((r: any) => r.data) : [];
     });
 
-    const initial = createInitialState();
     const loaded: AppState = {
         currentUser: null,
         members: (dataMap.members && dataMap.members.length > 0 ? dataMap.members : INITIAL_MEMBERS) as Member[],
@@ -144,22 +138,15 @@ export const loadState = async (): Promise<AppState> => {
     
     const storedUser = localStorage.getItem('gvp_current_user');
     if (storedUser) {
-        try {
-            const parsed = JSON.parse(storedUser);
-            loaded.currentUser = loaded.members.find(m => m.id === parsed.id) || null;
-        } catch (e) {}
+        const parsed = JSON.parse(storedUser);
+        loaded.currentUser = loaded.members.find(m => m.id === parsed.id) || null;
     }
     lastSyncedState = JSON.parse(JSON.stringify(loaded));
     return loaded;
   } catch (e) {
     console.error("Error loading state from Supabase:", e);
     const stored = localStorage.getItem(STORAGE_KEY);
-    const initial = createInitialState();
-    if (stored) {
-        try {
-            return { ...initial, ...JSON.parse(stored) } as AppState;
-        } catch (err) {}
-    }
-    return initial;
+    if (stored) return { ...INITIAL_STATE, ...JSON.parse(stored) } as AppState;
+    return INITIAL_STATE;
   }
 };
