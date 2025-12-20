@@ -98,6 +98,7 @@ export interface Notification {
   timestamp: string;
 }
 
+/* Added missing Experience and TrainingMaterial types */
 export interface Experience {
   id: string;
   memberId: string;
@@ -112,8 +113,8 @@ export interface TrainingMaterial {
   id: string;
   title: string;
   description: string;
-  type: 'video' | 'pdf' | 'article';
   category: string;
+  type: 'video' | 'pdf' | 'text';
   url: string;
   isRestricted: boolean;
 }
@@ -127,6 +128,7 @@ export interface AppState {
   patients: Patient[];
   logs: LogEntry[];
   notifications: Notification[];
+  /* Added missing collections to AppState */
   experiences: Experience[];
   trainingMaterials: TrainingMaterial[];
 }
