@@ -1,3 +1,4 @@
+
 import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital } from '@/types';
 import { supabase } from './supabaseClient';
 
@@ -65,75 +66,109 @@ const INITIAL_STATE: AppState = {
 
 const STORAGE_KEY = 'gvp_app_state_v3';
 let lastSyncedState: AppState = { ...INITIAL_STATE };
-let isInitialLoad = true;
+let isSaving = false;
+let pendingSave: AppState | null = null;
 
-// --- SAVE STATE ---
+// --- SYNC COLLECTION HELPER ---
 const syncCollection = async (tableName: string, newItems: any[], oldItems: any[]) => {
     if (!supabase) return;
     
     try {
+        // Find items that need to be updated or inserted
         const upserts = newItems.filter(newItem => {
             const oldItem = oldItems.find(o => o.id === newItem.id);
+            // Deep comparison to only sync changes
             return !oldItem || JSON.stringify(oldItem) !== JSON.stringify(newItem);
         });
 
+        // Find items that need to be deleted
         const deletes = oldItems.filter(oldItem => !newItems.find(n => n.id === oldItem.id));
 
         if (upserts.length > 0) {
             const rows = upserts.map(item => ({ id: item.id, data: item }));
             const { error } = await supabase.from(tableName).upsert(rows);
-            if (error) console.error(`Error syncing ${tableName}:`, error);
+            if (error) {
+              console.error(`Error syncing ${tableName}:`, error.message || error);
+              throw error;
+            }
         }
 
         if (deletes.length > 0) {
             const idsToDelete = deletes.map(d => d.id);
             const { error } = await supabase.from(tableName).delete().in('id', idsToDelete);
-            if (error) console.error(`Error deleting from ${tableName}:`, error);
+            if (error) {
+              console.error(`Error deleting from ${tableName}:`, error.message || error);
+              throw error;
+            }
         }
-    } catch (err) {
-        console.error(`Exception syncing ${tableName}:`, err);
+    } catch (err: any) {
+        console.error(`Exception syncing ${tableName}:`, err.message || err);
+        throw err;
     }
 };
 
+// --- SAVE STATE ---
 export const saveState = async (newState: AppState) => {
+  // Always update LocalStorage first for responsiveness and offline support
   if (newState.currentUser) {
       localStorage.setItem('gvp_current_user', JSON.stringify(newState.currentUser));
   } else {
       localStorage.removeItem('gvp_current_user');
   }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
 
-  // 1. OFFLINE MODE
-  if (!supabase) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+  // If Supabase isn't available, we stop here
+  if (!supabase) return;
+
+  // Queue handling to prevent race conditions on lastSyncedState
+  if (isSaving) {
+      pendingSave = newState;
       return;
   }
 
-  // 2. ONLINE MODE
-  Promise.all([
-    syncCollection('members', newState.members, lastSyncedState.members),
-    syncCollection('hospitals', newState.hospitals, lastSyncedState.hospitals),
-    syncCollection('routes', newState.routes, lastSyncedState.routes),
-    syncCollection('visits', newState.visits, lastSyncedState.visits),
-    syncCollection('patients', newState.patients, lastSyncedState.patients),
-    syncCollection('notifications', newState.notifications, lastSyncedState.notifications),
-    syncCollection('logs', newState.logs, lastSyncedState.logs)
-  ]).then(() => {
+  isSaving = true;
+
+  try {
+      // Sync all collections
+      await Promise.all([
+        syncCollection('members', newState.members, lastSyncedState.members),
+        syncCollection('hospitals', newState.hospitals, lastSyncedState.hospitals),
+        syncCollection('routes', newState.routes, lastSyncedState.routes),
+        syncCollection('visits', newState.visits, lastSyncedState.visits),
+        syncCollection('patients', newState.patients, lastSyncedState.patients),
+        syncCollection('notifications', newState.notifications, lastSyncedState.notifications),
+        syncCollection('logs', newState.logs, lastSyncedState.logs)
+      ]);
+
+      // Update the reference point for the next sync
       lastSyncedState = JSON.parse(JSON.stringify(newState));
-  }).catch(err => console.error("Sync error:", err));
+  } catch (err) {
+      console.error("Critical Sync error:", err);
+  } finally {
+      isSaving = false;
+      // If a save request came in while we were working, handle the latest one now
+      if (pendingSave) {
+          const nextState = pendingSave;
+          pendingSave = null;
+          saveState(nextState);
+      }
+  }
 };
 
 // --- LOAD STATE ---
 export const loadState = async (): Promise<AppState> => {
-  // 1. OFFLINE MODE
+  // 1. Check LocalStorage first for immediate UI update (optional, but we'll prioritize cloud if online)
   if (!supabase) {
     console.log("Using LocalStorage (Offline Mode).");
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
         try {
             const parsed = JSON.parse(stored);
-            if(!parsed.notifications) parsed.notifications = [];
-            if(!parsed.logs) parsed.logs = [];
-            return parsed;
+            return {
+              ...INITIAL_STATE,
+              ...parsed,
+              currentUser: localStorage.getItem('gvp_current_user') ? JSON.parse(localStorage.getItem('gvp_current_user')!) : null
+            };
         } catch (e) {
             console.error("Error parsing local state", e);
         }
@@ -141,9 +176,18 @@ export const loadState = async (): Promise<AppState> => {
     return INITIAL_STATE;
   }
 
-  // 2. ONLINE MODE
+  // 2. ONLINE MODE: Fetch from Supabase
   try {
     console.log("Loading data from Supabase...");
+
+    const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications'];
+    const results = await Promise.all(
+        collections.map(col => {
+            let query = supabase!.from(col).select('*');
+            if (col === 'logs') query = query.limit(100).order('id', { ascending: false });
+            return query;
+        })
+    );
 
     const [
         { data: members },
@@ -153,15 +197,7 @@ export const loadState = async (): Promise<AppState> => {
         { data: patients },
         { data: logs },
         { data: notifications }
-    ] = await Promise.all([
-        supabase.from('members').select('*'),
-        supabase.from('hospitals').select('*'),
-        supabase.from('routes').select('*'),
-        supabase.from('visits').select('*'),
-        supabase.from('patients').select('*'),
-        supabase.from('logs').select('*').limit(100).order('id', { ascending: false }),
-        supabase.from('notifications').select('*')
-    ]);
+    ] = results;
 
     const isDbEmpty = (!members || members.length === 0) && (!routes || routes.length === 0);
 
@@ -172,15 +208,9 @@ export const loadState = async (): Promise<AppState> => {
             try {
                 const localData = JSON.parse(stored);
                 console.log("🚀 Migrating local data to Supabase...");
-                lastSyncedState = INITIAL_STATE; 
+                // Reset sync reference to empty to force all uploads
+                lastSyncedState = { ...INITIAL_STATE, members: [], hospitals: [], routes: [], visits: [], patients: [], logs: [], notifications: [] };
                 await saveState(localData);
-                
-                isInitialLoad = false;
-                const storedUser = localStorage.getItem('gvp_current_user');
-                if (storedUser) {
-                    const parsedUser = JSON.parse(storedUser);
-                    localData.currentUser = parsedUser;
-                }
                 return localData;
             } catch (e) {
                 console.error("Migration failed", e);
@@ -199,20 +229,25 @@ export const loadState = async (): Promise<AppState> => {
         notifications: notifications ? notifications.map((r: any) => r.data) : []
     };
 
+    // Keep memory of what we loaded
     lastSyncedState = JSON.parse(JSON.stringify(loadedState));
-    isInitialLoad = false;
     
+    // Auth Persistence
     const storedUser = localStorage.getItem('gvp_current_user');
     if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        const validUser = loadedState.members.find(m => m.id === parsedUser.id && m.active);
-        if (validUser) loadedState.currentUser = validUser;
+        try {
+            const parsedUser = JSON.parse(storedUser);
+            const validUser = loadedState.members.find(m => m.id === parsedUser.id && m.active);
+            if (validUser) loadedState.currentUser = validUser;
+        } catch (e) {
+            console.error("Error restoring user session", e);
+        }
     }
 
     return loadedState;
 
-  } catch (error) {
-    console.error("Critical error loading state from Supabase:", error);
+  } catch (error: any) {
+    console.error("Critical error loading state from Supabase:", error.message || error);
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) return JSON.parse(stored);
     return INITIAL_STATE;

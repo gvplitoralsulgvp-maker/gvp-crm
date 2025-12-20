@@ -1,9 +1,9 @@
 
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { VisitRoute, Member, Hospital } from '../types';
+import React, { useState, useEffect } from 'react';
+import { VisitRoute, Member, Hospital, Patient } from '../types';
 import { HistoryItem } from './ReportModal';
 import { Button } from './Button';
+import { generateRouteBriefing } from '../services/geminiService';
 
 interface MyVisitModalProps {
   isOpen: boolean;
@@ -12,149 +12,183 @@ interface MyVisitModalProps {
   route: VisitRoute;
   partner: Member | null;
   hospitalDetails: Hospital[];
+  patients: Patient[];
   recentHistory: HistoryItem[];
+  isHospitalMode?: boolean;
+  isPrivacyMode?: boolean;
+  onSwapRequest?: () => void;
+  onCancelVisit?: () => void;
+  onOnTheWay?: () => void;
+  onFinishVisit?: () => void;
+  onPatientClick: (patient: Patient) => void;
 }
 
-export const MyVisitModal: React.FC<MyVisitModalProps> = ({
-  isOpen,
-  onClose,
-  date,
-  route,
-  partner,
-  hospitalDetails,
-  recentHistory
+export const MyVisitModal: React.FC<MyVisitModalProps> = ({ 
+  isOpen, onClose, date, route, partner, hospitalDetails, patients, recentHistory, isHospitalMode, isPrivacyMode, onSwapRequest, onCancelVisit, onOnTheWay, onFinishVisit, onPatientClick
 }) => {
-  const navigate = useNavigate();
+  const [briefing, setBriefing] = useState<string | null>(null);
+  const [isBriefingLoading, setIsBriefingLoading] = useState(false);
+  const [nearbyHospital, setNearbyHospital] = useState<Hospital | null>(null);
+  const [sentOnTheWay, setSentOnTheWay] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && "geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const { latitude, longitude } = pos.coords;
+        const near = hospitalDetails.find(h => {
+          const dist = Math.sqrt(Math.pow(h.lat - latitude, 2) + Math.pow(h.lng - longitude, 2));
+          return dist < 0.005; 
+        });
+        if (near) setNearbyHospital(near);
+      });
+    }
+    if (!isOpen) setSentOnTheWay(false);
+  }, [isOpen, hospitalDetails]);
+
+  const handleGetBriefing = async () => {
+    setIsBriefingLoading(true);
+    const result = await generateRouteBriefing(route.name, recentHistory);
+    setBriefing(result);
+    setIsBriefingLoading(false);
+  };
+
+  const handleOnTheWay = () => {
+      if (onOnTheWay) onOnTheWay();
+      setSentOnTheWay(true);
+  };
 
   if (!isOpen) return null;
 
-  const handleNavigateToHistory = () => {
-    navigate('/stats');
-  };
-
-  const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-  });
+  const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const routePatients = patients.filter(p => p.active && route.hospitals.includes(p.hospitalName));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="bg-blue-600 px-6 py-4 flex justify-between items-start flex-shrink-0">
+      <div className={`rounded-lg shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+        <div className="bg-blue-600 px-6 py-4 flex justify-between items-start shrink-0">
           <div>
             <h3 className="text-white font-bold text-lg">Detalhes da Visita</h3>
             <p className="text-blue-100 text-sm capitalize">{formattedDate}</p>
           </div>
-          <button onClick={onClose} className="text-white hover:text-blue-200 text-2xl leading-none">&times;</button>
+          <button onClick={onClose} className="text-white hover:text-blue-200 text-2xl">&times;</button>
         </div>
 
         <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
-          
-          {/* Partner Info */}
-          <div className="flex items-center gap-4 bg-blue-50 p-4 rounded-lg border border-blue-100">
-             <div className="w-12 h-12 rounded-full bg-blue-200 flex items-center justify-center text-blue-700 font-bold text-lg">
-                {partner ? partner.name.substring(0, 2).toUpperCase() : '?'}
-             </div>
-             <div>
-                <p className="text-xs text-blue-600 font-bold uppercase">Sua Dupla</p>
-                <p className="text-lg font-bold text-gray-800">
-                    {partner ? partner.name : <span className="italic text-gray-500">Aguardando parceiro...</span>}
-                </p>
-                {partner && partner.phone && (
-                    <p className="text-sm text-gray-600 flex items-center gap-1 mt-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-                           <path fillRule="evenodd" d="M2 3.5A1.5 1.5 0 013.5 2h1.148a1.5 1.5 0 011.465 1.175l.716 3.223a1.5 1.5 0 01-1.052 1.767l-.933.267c-.41.117-.643.555-.48.95a11.542 11.542 0 006.254 6.254c.395.163.833-.07.95-.48l.267-.933a1.5 1.5 0 011.767-1.052l3.223.716A1.5 1.5 0 0118 15.352V16.5a1.5 1.5 0 01-1.5 1.5H15c-1.149 0-2.263-.15-3.326-.43A13.022 13.022 0 012.43 8.326 13.019 13.019 0 012 5V3.5z" clipRule="evenodd" />
-                        </svg>
-                        {partner.phone}
-                    </p>
-                )}
-             </div>
+          {/* Ações Rápidas */}
+          <div className="grid grid-cols-2 gap-3">
+             <button 
+                onClick={handleOnTheWay}
+                disabled={sentOnTheWay || !partner}
+                className={`flex items-center justify-center gap-2 p-3 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all border-2 ${
+                    sentOnTheWay 
+                    ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-default' 
+                    : isHospitalMode 
+                        ? 'bg-blue-900/20 border-blue-900/50 text-blue-400 hover:bg-blue-900/40' 
+                        : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+                }`}
+             >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                {sentOnTheWay ? 'Avisado!' : 'A caminho'}
+             </button>
+
+             <button 
+                onClick={onFinishVisit}
+                className={`flex items-center justify-center gap-2 p-3 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all border-2 ${
+                    isHospitalMode 
+                        ? 'bg-green-900/20 border-green-900/50 text-green-400 hover:bg-green-900/40' 
+                        : 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
+                }`}
+             >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                Finalizar Visita
+             </button>
           </div>
 
-          {/* Route & Hospitals */}
-          <div>
-            <h4 className="text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide border-b pb-1">Hospitais da Rota</h4>
-            <div className="space-y-3">
-               {hospitalDetails.length > 0 ? (
-                   hospitalDetails.map(h => {
-                       // Construct GPS Links
-                       const wazeUrl = `https://waze.com/ul?q=${encodeURIComponent(h.address + ' ' + h.city)}`;
-                       const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(h.address + ' ' + h.city)}`;
-
-                       return (
-                           <div key={h.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded hover:bg-gray-50 border border-transparent hover:border-gray-100 transition-colors">
-                              <div className="flex items-start gap-2">
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                                  </svg>
-                                  <div>
-                                      <p className="font-bold text-gray-800 text-sm">{h.name}</p>
-                                      <p className="text-xs text-gray-500">{h.address} - {h.city}</p>
-                                  </div>
-                              </div>
-                              <div className="flex gap-2 pl-7 sm:pl-0">
-                                  <a href={wazeUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-1 rounded text-xs font-bold hover:bg-blue-100">
-                                      Waze
-                                  </a>
-                                  <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold hover:bg-gray-200">
-                                      Maps
-                                  </a>
-                              </div>
-                           </div>
-                       );
-                   })
-               ) : (
-                   <p className="text-sm text-gray-500 italic">Endereços não encontrados para esta rota.</p>
-               )}
-            </div>
-          </div>
-
-          {/* Recent History */}
-          <div className="pt-2">
-            <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Últimas Visitas
-                </span>
-                <span className="text-[10px] font-normal text-gray-400">Clique na mensagem para ver detalhes</span>
-            </h4>
-            
-            {recentHistory.length === 0 ? (
-                <div className="bg-gray-50 rounded p-4 text-center text-sm text-gray-500">
-                    Nenhum histórico recente disponível para esta rota.
-                </div>
-            ) : (
-                <div className="space-y-3">
-                    {recentHistory.slice(0, 3).map((h, idx) => (
-                        <div 
-                           key={idx} 
-                           onClick={handleNavigateToHistory}
-                           className="bg-gray-50 p-3 rounded border border-gray-200 hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-all group"
-                        >
-                            <div className="flex justify-between items-start mb-1">
-                                <span className="font-semibold text-blue-600 text-xs">
-                                    {new Date(h.date).toLocaleDateString('pt-BR')}
-                                </span>
-                                <span className="text-[10px] text-gray-500 italic truncate max-w-[120px]">
-                                    {h.visitorNames}
-                                </span>
-                            </div>
-                            <p className="text-gray-700 text-xs line-clamp-2 group-hover:text-blue-800">
-                                {h.notes}
-                            </p>
+          {/* Pacientes na Rota */}
+          <div className={`p-4 rounded-xl border ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800' : 'bg-white border-gray-100 shadow-sm'}`}>
+             <h4 className={`text-[10px] font-bold uppercase tracking-widest mb-3 flex items-center gap-2 ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>
+               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+               Pacientes para Visitar hoje ({routePatients.length})
+             </h4>
+             {routePatients.length === 0 ? (
+               <p className="text-xs text-gray-500 italic">Nenhum paciente cadastrado nesta rota no momento.</p>
+             ) : (
+               <div className="space-y-2">
+                 {routePatients.map(p => (
+                   <div 
+                    key={p.id} 
+                    onClick={() => onPatientClick(p)}
+                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
+                      isHospitalMode 
+                        ? 'bg-[#212327] border-gray-800 hover:border-blue-900' 
+                        : 'bg-gray-50 border-gray-100 hover:border-blue-200 hover:bg-white'
+                    }`}
+                   >
+                     <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold ${p.isIsolation ? 'bg-red-500 text-white' : 'bg-blue-600 text-white'}`}>
+                          {p.name.substring(0, 2).toUpperCase()}
                         </div>
-                    ))}
-                </div>
-            )}
+                        <div>
+                          <p className={`text-sm font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'} ${isPrivacyMode ? 'blur-sm' : ''}`}>{p.name}</p>
+                          <p className="text-[10px] text-gray-500 font-medium uppercase">{p.floor ? `${p.floor} • ` : ''}{p.hospitalName}</p>
+                        </div>
+                     </div>
+                     <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                   </div>
+                 ))}
+               </div>
+             )}
           </div>
 
+          {/* Check-in Georreferenciado */}
+          {nearbyHospital && (
+              <div className={`${isHospitalMode ? 'bg-green-900/10 border-green-900/50' : 'bg-green-50 border-green-200'} border-2 p-4 rounded-xl flex items-center justify-between`}>
+                  <div className="flex items-center gap-3">
+                      <div className="bg-green-600 text-white p-2 rounded-full">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                      </div>
+                      <div>
+                        <p className={`text-xs font-bold uppercase tracking-tighter ${isHospitalMode ? 'text-green-400' : 'text-green-800'}`}>Chegou ao hospital?</p>
+                        <p className={`text-sm font-bold ${isHospitalMode ? 'text-green-100' : 'text-green-900'}`}>{nearbyHospital.name}</p>
+                      </div>
+                  </div>
+                  <Button variant="primary" size="sm" onClick={() => alert("Check-in realizado com sucesso!")} className="bg-green-600 shadow-sm">Check-in</Button>
+              </div>
+          )}
+
+          {/* Briefing Gemini */}
+          <div className={`${isHospitalMode ? 'bg-blue-900/10 border-blue-900/50' : 'bg-blue-50/50 border-blue-100'} p-4 rounded-xl border space-y-3`}>
+             <div className="flex justify-between items-center">
+                 <h4 className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 ${isHospitalMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M9 4.5a.75.75 0 01.721.544l.813 2.846a3.75 3.75 0 002.576 2.576l2.846.813a.75.75 0 010 1.442l-2.846.813a3.75 3.75 0 00-2.576 2.576l-.813 2.846a.75.75 0 01-1.442 0l-.813-2.846a3.75 3.75 0 00-2.576-2.576l-2.846-.813a.75.75 0 010-1.442l2.846-.813a3.75 3.75 0 002.576-2.576l.813-2.846A.75.75 0 019 4.5z" /></svg>
+                     Briefing Inteligente
+                 </h4>
+                 {!briefing && (
+                    <button onClick={handleGetBriefing} disabled={isBriefingLoading} className={`text-[9px] font-bold underline disabled:opacity-50 ${isHospitalMode ? 'text-blue-400' : 'text-blue-700'}`}>
+                        {isBriefingLoading ? 'GERANDO...' : 'OBTER RESUMO DA ROTA'}
+                    </button>
+                 )}
+             </div>
+             {briefing ? (
+                 <p className={`text-xs leading-relaxed italic ${isHospitalMode ? 'text-blue-100' : 'text-blue-900'}`}>"{briefing}"</p>
+             ) : (
+                 <p className="text-[10px] text-gray-500 italic">Clique para obter um resumo automático das últimas visitas desta rota.</p>
+             )}
+          </div>
+
+          <div className={`flex items-center gap-4 p-4 rounded-lg border ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800' : 'bg-gray-50 border-gray-100'}`}>
+             <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold shadow-sm">{partner ? partner.name.substring(0, 2).toUpperCase() : '?'}</div>
+             <div>
+               <p className="text-xs text-gray-500 font-bold uppercase tracking-tight">Parceiro de Visita</p>
+               <p className={`text-lg font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{partner ? partner.name : 'Aguardando dupla...'}</p>
+             </div>
+          </div>
         </div>
 
-        <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
-          <Button variant="primary" onClick={onClose}>Fechar</Button>
+        <div className={`p-4 border-t grid grid-cols-3 gap-2 ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-gray-50 border-gray-100'}`}>
+          <Button variant="ghost" onClick={onCancelVisit} className="text-red-500 hover:bg-red-500/10 text-xs">Cancelar</Button>
+          <Button variant="ghost" onClick={onSwapRequest} className="text-orange-500 hover:bg-orange-500/10 text-xs">Troca</Button>
+          <Button variant="primary" onClick={onClose} className="text-xs">Fechar</Button>
         </div>
       </div>
     </div>

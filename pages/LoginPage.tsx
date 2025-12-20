@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppState, Member, UserRole } from '../types';
@@ -60,7 +59,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ state, onLogin }) => {
             </div>
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          GVP Soft-CRM
+          GVP Litoral Sul
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
           Acesso Restrito aos Membros

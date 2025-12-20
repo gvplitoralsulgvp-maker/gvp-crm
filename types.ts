@@ -73,7 +73,8 @@ export interface Patient {
   // Medical Legal / Directive Fields
   hasDirectivesCard?: boolean; // Cartão de Diretivas
   agentsNotified?: boolean; // Procuradores avisados
-  formsConsidered?: boolean; // S-401, S-407, S-55
+  formsConsidered?: boolean; // S-401, S-407
+  hasS55?: boolean; // S-55
   
   notes?: string;
   active: boolean; // If false, patient is discharged/archived
