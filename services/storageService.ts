@@ -21,7 +21,7 @@ const INITIAL_TRAINING: TrainingMaterial[] = [
   { id: 't4', title: 'Bioética e Autonomia', category: 'Bioética', type: 'pdf', description: 'Conceitos básicos sobre o direito do paciente.', url: '#', isRestricted: false },
 ];
 
-const INITIAL_STATE: AppState = {
+export const INITIAL_STATE: AppState = {
   currentUser: null,
   members: [],
   hospitals: INITIAL_HOSPITALS,
@@ -34,7 +34,7 @@ const INITIAL_STATE: AppState = {
   trainingMaterials: INITIAL_TRAINING,
 };
 
-const STORAGE_KEY = 'gvp_app_state_v5';
+const STORAGE_KEY = 'gvp_app_state_v6';
 let lastSyncedState: AppState = { ...INITIAL_STATE };
 let isSaving = false;
 let pendingSave: AppState | null = null;
