@@ -42,7 +42,7 @@ const INITIAL_STATE: AppState = {
 };
 
 const STORAGE_KEY = 'gvp_app_state_v4';
-let lastSyncedState: AppState = { ...INITIAL_STATE };
+let lastSyncedState: AppState = JSON.parse(JSON.stringify(INITIAL_STATE));
 let isSaving = false;
 let pendingSave: AppState | null = null;
 
@@ -108,7 +108,10 @@ export const saveState = async (newState: AppState) => {
 export const loadState = async (): Promise<AppState> => {
   if (!supabase) {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return { ...INITIAL_STATE, ...JSON.parse(stored) };
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return { ...INITIAL_STATE, ...parsed };
+    }
     return INITIAL_STATE;
   }
   try {
@@ -142,6 +145,8 @@ export const loadState = async (): Promise<AppState> => {
     return loaded;
   } catch (e) {
     console.error("Error loading state from Supabase:", e);
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) return { ...INITIAL_STATE, ...JSON.parse(stored) };
     return INITIAL_STATE;
   }
 };
