@@ -1,5 +1,5 @@
 
-import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital } from '../types';
+import { Member, VisitRoute, VisitSlot, UserRole, AppState, Patient, LogEntry, Notification, Hospital, Experience } from '../types';
 import { supabase } from './supabaseClient';
 
 const INITIAL_HOSPITALS: Hospital[] = [
@@ -37,7 +37,8 @@ export const createDefaultState = (): AppState => {
     visits: [] as VisitSlot[],
     patients: [] as Patient[],
     logs: [] as LogEntry[],
-    notifications: [] as Notification[]
+    notifications: [] as Notification[],
+    experiences: [] as Experience[]
   };
 };
 
@@ -93,7 +94,8 @@ export const saveState = async (newState: AppState) => {
         syncCollection('visits', newState.visits, lastSyncedState.visits),
         syncCollection('patients', newState.patients, lastSyncedState.patients),
         syncCollection('notifications', newState.notifications, lastSyncedState.notifications),
-        syncCollection('logs', newState.logs, lastSyncedState.logs)
+        syncCollection('logs', newState.logs, lastSyncedState.logs),
+        syncCollection('experiences', newState.experiences, lastSyncedState.experiences)
       ]);
       lastSyncedState = JSON.parse(JSON.stringify(newState));
   } finally {
@@ -113,7 +115,8 @@ export const loadState = async (): Promise<AppState> => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
         try {
-            return { ...baseState, ...JSON.parse(stored) } as AppState;
+            const parsed = JSON.parse(stored);
+            return { ...baseState, ...parsed, experiences: parsed.experiences || [] } as AppState;
         } catch (e) {
             return baseState;
         }
@@ -122,7 +125,7 @@ export const loadState = async (): Promise<AppState> => {
   }
 
   try {
-    const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications'];
+    const collections = ['members', 'hospitals', 'routes', 'visits', 'patients', 'logs', 'notifications', 'experiences'];
     const results = await Promise.all(collections.map(col => supabase!.from(col).select('*')));
     
     const dataMap: Record<string, any[]> = {};
@@ -138,7 +141,8 @@ export const loadState = async (): Promise<AppState> => {
         visits: (dataMap.visits || []) as VisitSlot[],
         patients: (dataMap.patients || []) as Patient[],
         logs: (dataMap.logs || []) as LogEntry[],
-        notifications: (dataMap.notifications || []) as Notification[]
+        notifications: (dataMap.notifications || []) as Notification[],
+        experiences: (dataMap.experiences || []) as Experience[]
     };
     
     const storedUser = localStorage.getItem('gvp_current_user');
@@ -154,7 +158,8 @@ export const loadState = async (): Promise<AppState> => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
         try {
-            return { ...baseState, ...JSON.parse(stored) } as AppState;
+            const parsed = JSON.parse(stored);
+            return { ...baseState, ...parsed, experiences: parsed.experiences || [] } as AppState;
         } catch (err) {}
     }
     return baseState;

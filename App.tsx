@@ -121,7 +121,7 @@ const Layout: React.FC<{
             <Route path="/patients" element={<PatientRegistry state={state} onUpdateState={onUpdateState} isPrivacyMode={isPrivacyMode} isHospitalMode={isHospitalMode} />} />
             <Route path="/history" element={<PatientHistory state={state} isHospitalMode={isHospitalMode} />} />
             <Route path="/map" element={<MapPage state={state} isHospitalMode={isHospitalMode} />} />
-            <Route path="/mural" element={<MuralPage />} />
+            <Route path="/mural" element={<MuralPage state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} />} />
             <Route path="/training" element={<ElearningPage />} />
             <Route path="/stats" element={<StatsReport state={state} isHospitalMode={isHospitalMode} />} />
             <Route path="/logs" element={<LogsPage state={state} isHospitalMode={isHospitalMode} />} />
@@ -135,7 +135,6 @@ const Layout: React.FC<{
 };
 
 const App: React.FC = () => {
-  // Inicialização garantida com Factory function
   const [state, setState] = useState<AppState | null>(null);
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
   const [isHospitalMode, setIsHospitalMode] = useState(false);
