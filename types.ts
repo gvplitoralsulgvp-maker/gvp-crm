@@ -4,6 +4,19 @@ export enum UserRole {
   MEMBER = 'MEMBER'
 }
 
+export interface AppState {
+  currentUser: Member | null;
+  members: Member[];
+  hospitals: Hospital[];
+  routes: VisitRoute[];
+  visits: VisitSlot[];
+  patients: Patient[];
+  logs: LogEntry[];
+  notifications: Notification[];
+  trainingMaterials: TrainingMaterial[];
+  experiences: Experience[];
+}
+
 export interface Member {
   id: string;
   name: string;
@@ -108,17 +121,4 @@ export interface Experience {
   date: string;
   likes: number;
   category: 'Encorajamento' | 'Gratidão' | 'Aprendizado';
-}
-
-export interface AppState {
-  currentUser: Member | null;
-  members: Member[];
-  hospitals: Hospital[];
-  routes: VisitRoute[];
-  visits: VisitSlot[];
-  patients: Patient[];
-  logs: LogEntry[];
-  notifications: Notification[];
-  trainingMaterials: TrainingMaterial[];
-  experiences: Experience[];
 }

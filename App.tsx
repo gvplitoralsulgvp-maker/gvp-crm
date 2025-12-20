@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { loadState, saveState } from './services/storageService';
+import { loadState, saveState, createDefaultState } from './services/storageService';
 import { AppState, UserRole, Member } from './types';
 import { Dashboard } from './pages/Dashboard';
 import { AdminPanel } from './pages/AdminPanel';
@@ -135,6 +135,7 @@ const Layout: React.FC<{
 };
 
 const App: React.FC = () => {
+  // Inicialização garantida com Factory function
   const [state, setState] = useState<AppState | null>(null);
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
   const [isHospitalMode, setIsHospitalMode] = useState(false);
@@ -155,7 +156,7 @@ const App: React.FC = () => {
   if (!state) return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50">
       <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-      <div className="font-bold text-blue-600 text-xl animate-pulse">Iniciando SOFT-CRM...</div>
+      <div className="font-bold text-blue-600 text-xl animate-pulse">Carregando SOFT-CRM Enterprise...</div>
     </div>
   );
 

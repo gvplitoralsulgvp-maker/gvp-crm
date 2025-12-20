@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { AppState, Member, VisitRoute, UserRole, Hospital } from '@/types';
+import { AppState, Member, VisitRoute, UserRole, Hospital } from '../types';
 import { Button } from '../components/Button';
 import { MapPicker } from '../components/MapPicker';
 
