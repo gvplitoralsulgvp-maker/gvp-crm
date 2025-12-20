@@ -1,8 +1,0 @@
-
-{
-  "name": "GVP LITORAL SUL",
-  "description": "Sistema de gestão de visitas hospitalares para o Grupo GVP. Controle de agenda, duplas de visita e relatórios assistidos por IA.",
-  "requestFramePermissions": [
-    "geolocation"
-  ]
-}
