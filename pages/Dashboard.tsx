@@ -4,6 +4,7 @@ import { AppState, VisitRoute, VisitSlot, VisitStatus, VisitReport } from '../ty
 import { FullCalendar } from '../components/FullCalendar';
 import { DailyAgendaModal } from '../components/DailyAgendaModal';
 import { FinishVisitModal } from '../components/FinishVisitModal';
+import { SlotModal } from '../components/SlotModal';
 import { atomicUpdate } from '../services/storageService';
 
 interface DashboardProps {
@@ -63,6 +64,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
     }
   };
 
+  const handleSlotSave = async (newMemberIds: string[]) => {
+    if (!selectionModalData) return;
+    const { route, slot } = selectionModalData;
+
+    try {
+        const visitData: VisitSlot = slot ? { ...slot, memberIds: newMemberIds } : {
+            id: crypto.randomUUID(),
+            routeId: route.id,
+            date: selectedDate,
+            memberIds: newMemberIds,
+            status: 'PENDING'
+        };
+
+        await atomicUpdate('visits', visitData);
+        
+        // Atualiza estado local
+        const otherVisits = state.visits.filter(v => v.id !== visitData.id);
+        onUpdateState({ ...state, visits: [...otherVisits, visitData] });
+        
+        setSelectionModalData(null);
+    } catch (error) {
+        alert("Erro ao salvar a escala. Tente novamente.");
+    }
+  };
+
   return (
     <div className="space-y-6 pb-12 animate-fade-in">
       <div className="flex justify-between items-center">
@@ -100,6 +126,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
         />
       </div>
 
+      {/* Modal Principal de Agenda do Dia */}
       <DailyAgendaModal 
         isOpen={isDailyAgendaOpen} 
         onClose={() => setIsDailyAgendaOpen(false)} 
@@ -116,6 +143,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
         onPatientClick={() => {}} 
       />
 
+      {/* Modal de Seleção de Dupla (Correção: Agora é renderizado) */}
+      {selectionModalData && (
+        <SlotModal
+            isOpen={true}
+            onClose={() => setSelectionModalData(null)}
+            route={selectionModalData.route}
+            currentMemberIds={selectionModalData.slot?.memberIds || []}
+            allMembers={state.members}
+            onSave={handleSlotSave}
+            currentUser={state.currentUser}
+            isHospitalMode={isHospitalMode}
+        />
+      )}
+
+      {/* Modal de Finalização de Visita */}
       {finishVisitSlot && (
         <FinishVisitModal 
           isOpen={true} 
