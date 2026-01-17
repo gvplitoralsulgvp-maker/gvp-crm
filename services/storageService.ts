@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient';
 
 /**
  * FABRICA DE ESTADO PADRÃO
+ * Garante que o estado inicial tenha todas as chaves necessárias.
  */
 export const createDefaultState = (): AppState => ({
   currentUser: null,
@@ -34,6 +35,7 @@ function mapFromDb<T>(data: any[] | null): T[] {
 
 /**
  * CARREGAMENTO DE ESTADO
+ * Esta função agora é blindada: ela constrói o objeto explicitamente.
  */
 export const loadState = async (): Promise<AppState> => {
   const defaultState = createDefaultState();
@@ -57,7 +59,7 @@ export const loadState = async (): Promise<AppState> => {
 
     const membersList = mapFromDb<Member>(resMem.data);
 
-    // Objeto construído de forma atômica para evitar erro TS2741
+    // MONTAGEM EXPLÍCITA: Resolve o erro TS2741 garantindo todas as chaves
     const finalState: AppState = {
       currentUser: null,
       members: membersList,
@@ -76,13 +78,13 @@ export const loadState = async (): Promise<AppState> => {
 
     return finalState;
   } catch (error) {
-    console.error("[StorageService] Falha crítica no carregamento:", error);
+    console.error("[StorageService] Erro fatal ao carregar dados:", error);
     return defaultState;
   }
 };
 
 /**
- * Utilitário de Sanitização
+ * Utilitário de Sanitização para persistência atômica
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
@@ -112,6 +114,6 @@ export const atomicDelete = async (tableName: string, id: string) => {
 };
 
 export const saveState = async (state: AppState) => {
-  // A persistência agora é atômica via atomicUpdate por evento
+  // Persistência agora é feita via atomicUpdate por evento para maior confiabilidade
   return Promise.resolve();
 };
