@@ -1,31 +1,31 @@
 
-import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital, VisitRoute, SocialWorkerVisit, UserRole } from '../types';
+import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital, VisitRoute, SocialWorkerVisit } from '../types';
 import { supabase } from './supabaseClient';
 
 /**
- * ESTADO PADRÃO ABSOLUTO
- * Explicitamente definido para que o TS nunca veja um objeto incompleto.
+ * ESTADO BASE GARANTIDO
+ * Criamos uma função que retorna um objeto AppState completo com tipos explícitos.
  */
 export const createDefaultState = (): AppState => {
-  return {
+  const state: AppState = {
     currentUser: null,
-    members: [],
-    hospitals: [],
-    routes: [],
-    visits: [],
-    socialWorkerVisits: [],
-    patients: [],
-    logs: [],
-    notifications: []
+    members: [] as Member[],
+    hospitals: [] as Hospital[],
+    routes: [] as VisitRoute[],
+    visits: [] as VisitSlot[],
+    socialWorkerVisits: [] as SocialWorkerVisit[],
+    patients: [] as Patient[],
+    logs: [] as LogEntry[],
+    notifications: [] as Notification[]
   };
+  return state;
 };
 
 /**
- * Função utilitária de mapeamento manual (Snake -> Camel)
- * Trabalhar com tipos genéricos aqui ajuda na tipagem individual depois.
+ * Função utilitária de mapeamento (Snake -> Camel)
  */
 function mapCollection<T>(data: any[] | null): T[] {
-  if (!data) return [];
+  if (!data) return [] as T[];
   return data.map((item: any) => {
     const camelItem: any = {};
     Object.keys(item).forEach(key => {
@@ -37,19 +37,18 @@ function mapCollection<T>(data: any[] | null): T[] {
 }
 
 /**
- * Carregamento do Estado usando Variáveis Explícitas.
- * Esta é a "outra saída": evitar loops na construção do objeto final.
+ * Carregamento do Estado.
  */
 export const loadState = async (): Promise<AppState> => {
-  // Começamos com um estado limpo e garantido
-  const state = createDefaultState();
+  // Inicializa com o default garantido
+  const finalState: AppState = createDefaultState();
   
-  if (!supabase) return state;
+  if (!supabase) return finalState;
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
 
-    // Buscas individuais (mais verboso, porém 100% seguro para o compilador)
+    // Consultas individuais
     const [
       resMembers,
       resHospitals,
@@ -70,39 +69,32 @@ export const loadState = async (): Promise<AppState> => {
       supabase.from('notifications').select('*')
     ]);
 
-    // Montagem MANUAL do objeto AppState
-    // Aqui não há como o TS reclamar de propriedade ausente pois estamos declarando todas.
-    const loadedState: AppState = {
-      currentUser: null,
-      members: mapCollection<Member>(resMembers.data),
-      hospitals: mapCollection<Hospital>(resHospitals.data),
-      routes: mapCollection<VisitRoute>(resRoutes.data),
-      visits: mapCollection<VisitSlot>(resVisits.data),
-      socialWorkerVisits: mapCollection<SocialWorkerVisit>(resSocial.data),
-      patients: mapCollection<Patient>(resPatients.data),
-      logs: mapCollection<LogEntry>(resLogs.data),
-      notifications: mapCollection<Notification>(resNotifs.data)
-    };
+    // Preenchimento manual garantindo a tipagem de cada campo
+    finalState.members = mapCollection<Member>(resMembers.data);
+    finalState.hospitals = mapCollection<Hospital>(resHospitals.data);
+    finalState.routes = mapCollection<VisitRoute>(resRoutes.data);
+    finalState.visits = mapCollection<VisitSlot>(resVisits.data);
+    finalState.socialWorkerVisits = mapCollection<SocialWorkerVisit>(resSocial.data);
+    finalState.patients = mapCollection<Patient>(resPatients.data);
+    finalState.logs = mapCollection<LogEntry>(resLogs.data);
+    finalState.notifications = mapCollection<Notification>(resNotifs.data);
 
-    // Vincular usuário logado
     if (session?.user) {
-      loadedState.currentUser = loadedState.members.find(m => m.id === session.user.id) || null;
+      finalState.currentUser = finalState.members.find(m => m.id === session.user.id) || null;
     }
 
-    return loadedState;
+    return finalState;
   } catch (error) {
-    console.error("[Storage] Falha crítica no carregamento:", error);
-    return state; // Retorna o default garantido
+    console.error("[Storage] Erro no carregamento:", error);
+    return createDefaultState();
   }
 };
 
 /**
- * Sanitização para o banco de dados (converte camelCase para snake_case).
+ * Sanitização para o banco de dados.
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
-
-  // Remove campos virtuais ou sensíveis antes de enviar ao Supabase
   if (tableName === 'members') delete (cleanData as any).password;
   if (tableName === 'patients') delete (cleanData as any).hospitalName;
   if (tableName === 'routes') delete (cleanData as any).hospitals;
@@ -112,7 +104,6 @@ const sanitizeForDb = (tableName: string, data: any) => {
     const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
     snakeCaseData[snakeKey] = (cleanData as any)[key];
   });
-
   return snakeCaseData;
 };
 
