@@ -125,9 +125,12 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
       setIsSuccess(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    } catch (error) {
-      console.error("Erro ao salvar solicitação pública:", error);
-      alert("Houve um erro de conexão ao tentar salvar os dados. Por favor, tente novamente.");
+    } catch (error: any) {
+      console.error("Erro ao salvar solicitação pública:", JSON.stringify(error, null, 2));
+      // Tenta extrair mensagem mais útil
+      let msg = "Houve um erro de conexão ao tentar salvar os dados.";
+      if (error.message) msg += ` (${error.message})`;
+      alert(msg + " Por favor, tente novamente.");
       setIsSubmitting(false);
     }
   };

@@ -96,14 +96,28 @@ const sanitizeForDb = (tableName: string, data: any) => {
     const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
     let val = (cleanData as any)[key];
     
-    // Garante que lat/lng sejam enviados como números ou nulos (não strings vazias)
-    if ((key === 'lat' || key === 'lng')) {
-        if (val === null || val === undefined || val === "" || isNaN(parseFloat(val))) {
+    // Converte strings vazias para null em campos que exigem tipos estritos (UUID, Date, Numeric)
+    if (val === "") {
+        if (
+            key.endsWith('Id') || 
+            key.endsWith('Date') || 
+            key === 'lat' || 
+            key === 'lng' ||
+            key === 'surgeryDate' || 
+            key === 'estimatedDischargeDate'
+        ) {
             val = null;
-        } else {
-            val = parseFloat(val);
         }
     }
+    
+    // Garante que lat/lng sejam enviados como números ou nulos
+    if ((key === 'lat' || key === 'lng') && val !== null) {
+        if (typeof val === 'string') {
+            const parsed = parseFloat(val);
+            val = isNaN(parsed) ? null : parsed;
+        }
+    }
+    
     snakeCaseData[snakeKey] = val;
   });
   return snakeCaseData;
@@ -114,7 +128,7 @@ export const atomicUpdate = async (tableName: string, data: any) => {
   const sanitized = sanitizeForDb(tableName, data);
   const { error } = await supabase.from(tableName).upsert(sanitized);
   if (error) {
-      console.error(`[StorageService] Erro ao salvar em ${tableName}:`, error);
+      console.error(`[StorageService] Erro ao salvar em ${tableName}:`, JSON.stringify(error, null, 2));
       throw error;
   }
 };
