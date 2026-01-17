@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { AppState, Member, VisitRoute, UserRole, Hospital, LogEntry } from '../types';
+import { AppState, Member, VisitRoute, UserRole, Hospital } from '../types';
 import { Button } from '../components/Button';
 
 export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
@@ -83,6 +83,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         const newRoute: VisitRoute = {
             ...editingRoute,
             id: crypto.randomUUID(),
+            hospitalIds: editingRoute.hospitalIds || [],
             hospitals: editingRoute.hospitals || [],
             active: true
         } as VisitRoute;
@@ -92,17 +93,26 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     setEditingRoute(null);
   };
 
-  const toggleHospitalInRoute = (hName: string) => {
-    const current = editingRoute?.hospitals || [];
-    if (current.includes(hName)) {
-        setEditingRoute({ ...editingRoute, hospitals: current.filter(h => h !== hName) });
+  const toggleHospitalInRoute = (hospital: Hospital) => {
+    const currentNames = editingRoute?.hospitals || [];
+    const currentIds = editingRoute?.hospitalIds || [];
+    
+    if (currentIds.includes(hospital.id)) {
+        setEditingRoute({ 
+          ...editingRoute, 
+          hospitalIds: currentIds.filter(id => id !== hospital.id),
+          hospitals: currentNames.filter(name => name !== hospital.name) 
+        });
     } else {
-        setEditingRoute({ ...editingRoute, hospitals: [...current, hName] });
+        setEditingRoute({ 
+          ...editingRoute, 
+          hospitalIds: [...currentIds, hospital.id],
+          hospitals: [...currentNames, hospital.name] 
+        });
     }
   };
 
   // --- BALANCE LOGIC (WORKLOAD) ---
-  // Fix: Explicitly type useMemo to Record<string, number> for better inference
   const memberWorkload = useMemo<Record<string, number>>(() => {
     const counts: Record<string, number> = {};
     state.members.forEach(m => counts[m.id] = 0);
@@ -114,7 +124,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     return counts;
   }, [state.visits, state.members]);
 
-  // Fix: Explicitly cast Object.values to number[] to avoid 'unknown' type error in Math.max spread
   const maxVisits = Math.max(...(Object.values(memberWorkload) as number[]), 1);
 
   return (
@@ -127,7 +136,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
          <div className="flex gap-2">
             {activeTab === 'members' && <Button size="sm" className="rounded-xl px-6" onClick={() => setEditingMember({ active: true, role: UserRole.MEMBER })}>+ Novo Membro</Button>}
             {activeTab === 'hospitals' && <Button size="sm" className="rounded-xl px-6" onClick={() => setEditingHospital({ name: '', city: 'Santos', address: '' })}>+ Novo Hospital</Button>}
-            {activeTab === 'routes' && <Button size="sm" className="rounded-xl px-6" onClick={() => setEditingRoute({ name: '', hospitals: [], active: true })}>+ Nova Rota</Button>}
+            {activeTab === 'routes' && <Button size="sm" className="rounded-xl px-6" onClick={() => setEditingRoute({ name: '', hospitalIds: [], hospitals: [], active: true })}>+ Nova Rota</Button>}
          </div>
       </div>
 
@@ -273,7 +282,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="flex flex-wrap gap-1">
-                                        {r.hospitals.map(h => (
+                                        {r.hospitals?.map(h => (
                                             <span key={h} className="px-2 py-0.5 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-lg text-[9px] font-black uppercase tracking-tighter">{h}</span>
                                         ))}
                                     </div>
@@ -455,11 +464,11 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 mb-2 block">Vincular Hospitais</label>
                         <div className={`max-h-40 overflow-y-auto border-2 rounded-xl p-2 space-y-1 custom-scrollbar ${isHospitalMode ? 'border-gray-800' : 'border-gray-100'}`}>
                             {state.hospitals.map(h => {
-                                const isSelected = editingRoute.hospitals?.includes(h.name);
+                                const isSelected = editingRoute.hospitalIds?.includes(h.id);
                                 return (
                                     <button 
                                         key={h.id} type="button" 
-                                        onClick={() => toggleHospitalInRoute(h.name)}
+                                        onClick={() => toggleHospitalInRoute(h)}
                                         className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-bold transition-all ${isSelected ? 'bg-blue-600 text-white' : isHospitalMode ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-600'}`}
                                     >
                                         {h.name}

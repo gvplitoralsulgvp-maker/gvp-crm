@@ -95,7 +95,10 @@ export const loadState = async (): Promise<AppState> => {
       
       // Mapeia para a chave correta no AppState (camelCase)
       const stateKey = t.replace(/(_\w)/g, m => m[1].toUpperCase());
-      (finalState as any)[stateKey] = camelData;
+      
+      // Special handling for social_worker_visits -> socialWorkerVisits
+      const actualKey = stateKey === 'socialWorkerVisits' ? 'socialWorkerVisits' : stateKey;
+      (finalState as any)[actualKey] = camelData;
     });
 
     if (session?.user) {

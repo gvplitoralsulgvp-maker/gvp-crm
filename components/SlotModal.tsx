@@ -66,7 +66,7 @@ export const SlotModal: React.FC<SlotModalProps> = ({
           <h3 className={`text-lg font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Definir Dupla</h3>
           <p className="text-sm text-blue-600 font-medium">{route.name}</p>
           <div className="flex flex-wrap gap-1 mt-2 text-[10px] text-gray-500 uppercase font-bold tracking-wider">
-            {route.hospitals.join(' • ')}
+            {route.hospitals?.join(' • ') || 'Nenhum hospital'}
           </div>
         </div>
 

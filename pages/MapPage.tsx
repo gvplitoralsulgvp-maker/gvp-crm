@@ -47,7 +47,7 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
     // Renderizar Hospitais
     state.hospitals.forEach(h => {
       const hospitalVisits = state.visits.filter(v => 
-        state.routes.find(r => r.id === v.routeId)?.hospitals.includes(h.name)
+        state.routes.find(r => r.id === v.routeId)?.hospitals?.includes(h.name)
       );
       
       const lastVisit = hospitalVisits

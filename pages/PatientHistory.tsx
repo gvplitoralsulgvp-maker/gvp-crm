@@ -21,7 +21,7 @@ export const PatientHistory: React.FC<PatientHistoryProps> = ({ state, isHospita
         const lower = searchTerm.toLowerCase();
         result = result.filter(p => 
             p.name.toLowerCase().includes(lower) || 
-            p.hospitalName.toLowerCase().includes(lower)
+            (p.hospitalName && p.hospitalName.toLowerCase().includes(lower))
         );
     }
     return result;

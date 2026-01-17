@@ -151,7 +151,7 @@ export const QuickScaleModal: React.FC<QuickScaleModalProps> = ({ isOpen, onClos
                               >
                                  <div>
                                     <p className={`font-bold text-sm ${isSelected ? 'text-blue-500' : isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{route.name}</p>
-                                    <p className="text-[10px] text-gray-400 mt-1">{route.hospitals.join(' • ')}</p>
+                                    <p className="text-[10px] text-gray-400 mt-1">{route.hospitals?.join(' • ') || 'Nenhum hospital'}</p>
                                  </div>
                                  <div className="flex items-center gap-2">
                                      <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${
