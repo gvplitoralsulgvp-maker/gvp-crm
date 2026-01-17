@@ -1,9 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Notification } from '../types';
+import { AppNotification } from '../types';
 
 interface NotificationCenterProps {
-  notifications: Notification[];
+  notifications: AppNotification[];
   onMarkAsRead: (id: string) => void;
   onClearAll: () => void;
 }

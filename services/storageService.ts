@@ -1,5 +1,5 @@
 
-import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital, VisitRoute, SocialWorkerVisit, UserRole } from '../types';
+import { AppState, Member, VisitSlot, Patient, LogEntry, AppNotification, Hospital, VisitRoute, SocialWorkerVisit, UserRole } from '../types';
 import { supabase } from './supabaseClient';
 
 /** 
@@ -16,7 +16,7 @@ export const createDefaultState = (): AppState => ({
   socialWorkerVisits: [] as SocialWorkerVisit[],
   patients: [] as Patient[],
   logs: [] as LogEntry[],
-  notifications: [] as Notification[]
+  notifications: [] as AppNotification[]
 });
 
 /**
@@ -73,7 +73,7 @@ export const loadState = async (): Promise<AppState> => {
       socialWorkerVisits: mapFromDb<SocialWorkerVisit>(fetchAll[4].data),
       patients: mapFromDb<Patient>(fetchAll[5].data),
       logs: mapFromDb<LogEntry>(fetchAll[6].data),
-      notifications: mapFromDb<Notification>(fetchAll[7].data)
+      notifications: mapFromDb<AppNotification>(fetchAll[7].data)
     };
 
     if (session?.user) {

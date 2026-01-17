@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { loadState, saveState, createDefaultState, atomicUpdate } from './services/storageService';
-import { AppState, UserRole, Member, Notification } from './types';
+import { AppState, UserRole, Member, AppNotification } from './types';
 import { Dashboard } from './pages/Dashboard';
 import { AdminPanel } from './pages/AdminPanel';
 import { PatientRegistry } from './pages/PatientRegistry';
@@ -62,7 +62,7 @@ const Layout: React.FC<{
     if ('Notification' in window && Notification.permission === 'granted') {
       try {
         // Tenta usar ServiceWorker se disponível (melhor para mobile), senão fallback para new Notification
-        if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
             navigator.serviceWorker.ready.then(registration => {
                 registration.showNotification(title, {
                     body,
@@ -89,7 +89,7 @@ const Layout: React.FC<{
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notifications' },
         (payload) => {
-          const newNotif = payload.new as Notification;
+          const newNotif = payload.new as AppNotification;
           
           // Verifica se a notificação é para o usuário logado
           if (newNotif.userId === state.currentUser?.id) {
@@ -110,7 +110,7 @@ const Layout: React.FC<{
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [state.currentUser, state.notifications]); // Dependência cuidadosa para evitar loops
+  }, [state.currentUser, state.notifications]); 
 
   // 4. Verificação Agendada de Visitas (Lembrete Diário)
   useEffect(() => {
@@ -135,7 +135,7 @@ const Layout: React.FC<{
       });
 
       if (upcoming.length > 0) {
-        const newNotifications: Notification[] = upcoming.map(v => ({
+        const newNotifications: AppNotification[] = upcoming.map(v => ({
           id: crypto.randomUUID(),
           userId: state.currentUser!.id,
           message: `📅 Lembrete: Você tem uma visita agendada para AMANHÃ (${v.date}). Prepare-se!`,
@@ -144,8 +144,6 @@ const Layout: React.FC<{
           timestamp: new Date().toISOString()
         }));
 
-        // Salva no banco (o Realtime vai pegar e disparar o push, ou atualizamos local direto)
-        // Aqui atualizamos local e disparamos push direto para garantir
         Promise.all(newNotifications.map(n => atomicUpdate('notifications', n)));
         
         onUpdateState({
@@ -157,11 +155,10 @@ const Layout: React.FC<{
       }
     };
 
-    // Roda verificação 5s após carregar o app
-    const timer = setTimeout(checkUpcomingVisits, 5000);
+    // Roda verificação 10s após carregar o app
+    const timer = setTimeout(checkUpcomingVisits, 10000);
     return () => clearTimeout(timer);
   }, [state.visits, state.currentUser]); 
-  // Removida dependência de state.notifications para evitar loop infinito na atualização
 
   useEffect(() => {
     if (state.currentUser && state.currentUser.hasSeenOnboarding === false) {
@@ -201,7 +198,6 @@ const Layout: React.FC<{
   };
 
   const handleClearNotifications = () => {
-    // Marca todas como lidas no banco
     state.notifications.forEach(n => {
         if(!n.read) atomicUpdate('notifications', { ...n, read: true });
     });

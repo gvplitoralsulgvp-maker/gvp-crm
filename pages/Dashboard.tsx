@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { AppState, VisitRoute, VisitSlot, VisitStatus, VisitReport, Patient, Notification, UserRole } from '../types';
+import { AppState, VisitRoute, VisitSlot, VisitStatus, VisitReport, Patient, AppNotification, UserRole } from '../types';
 import { FullCalendar } from '../components/FullCalendar';
 import { DailyAgendaModal } from '../components/DailyAgendaModal';
 import { FinishVisitModal } from '../components/FinishVisitModal';
@@ -188,7 +188,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
     const route = state.routes.find(r => r.id === myVisitModalData.routeId);
     const admins = state.members.filter(m => m.role === UserRole.ADMIN);
     
-    const notifications: Notification[] = admins.map(admin => ({
+    const notifications: AppNotification[] = admins.map(admin => ({
         id: crypto.randomUUID(),
         userId: admin.id,
         message: `🔄 Solicitação de Troca: ${state.currentUser!.name} pede para trocar a visita do dia ${new Date(myVisitModalData.date + 'T12:00:00').toLocaleDateString()} (${route?.name}). Motivo: ${note}. Sugere: ${newDate ? new Date(newDate + 'T12:00:00').toLocaleDateString() : 'Sem data'}.`,
@@ -215,7 +215,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
         await atomicUpdate('visits', updatedVisit);
 
         const admins = state.members.filter(m => m.role === UserRole.ADMIN);
-        const notifications: Notification[] = admins.map(admin => ({
+        const notifications: AppNotification[] = admins.map(admin => ({
             id: crypto.randomUUID(),
             userId: admin.id,
             message: `❌ Cancelamento: ${state.currentUser!.name} saiu da visita do dia ${new Date(myVisitModalData.date + 'T12:00:00').toLocaleDateString()} (${route?.name}). Motivo: ${justification}`,

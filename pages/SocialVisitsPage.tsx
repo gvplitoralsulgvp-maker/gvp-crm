@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { AppState, UserRole, Hospital, SocialWorkerVisit, Notification, LogEntry } from '../types';
+import { AppState, UserRole, Hospital, SocialWorkerVisit, AppNotification, LogEntry } from '../types';
 import { Button } from '../components/Button';
 
 export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newState: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
@@ -20,7 +20,7 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
       status: 'PENDING'
     };
 
-    const newNotifications: Notification[] = designationData.memberIds.map(mid => ({
+    const newNotifications: AppNotification[] = designationData.memberIds.map(mid => ({
       id: crypto.randomUUID(),
       userId: mid,
       message: `Designação: Assistência Social no ${state.hospitals.find(h => h.id === designatingSocial)?.name} dia ${new Date(designationData.date + 'T12:00:00').toLocaleDateString()}.`,

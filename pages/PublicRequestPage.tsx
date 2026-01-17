@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { AppState, Patient, LogEntry, Notification, UserRole } from '../types';
+import { AppState, Patient, LogEntry, AppNotification, UserRole } from '../types';
 import { Button } from '../components/Button';
 import { useNavigate } from 'react-router-dom';
 import { atomicUpdate } from '../services/storageService';
@@ -95,7 +95,7 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
         details: `Novo paciente (${newPatient.name}) cadastrado para o hospital ${hospitalNameDisplay}.`
       };
 
-      const adminNotifications: Notification[] = state.members
+      const adminNotifications: AppNotification[] = state.members
         .filter(m => m.role === UserRole.ADMIN)
         .map(admin => ({
           id: crypto.randomUUID(),

@@ -15,7 +15,7 @@ export interface AppState {
   socialWorkerVisits: SocialWorkerVisit[];
   patients: Patient[];
   logs: LogEntry[];
-  notifications: Notification[];
+  notifications: AppNotification[];
 }
 
 export interface Member {
@@ -121,7 +121,7 @@ export interface LogEntry {
   details: string;
 }
 
-export interface Notification {
+export interface AppNotification {
   id: string;
   userId: string;
   message: string;
