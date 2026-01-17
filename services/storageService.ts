@@ -4,19 +4,21 @@ import { supabase } from './supabaseClient';
 
 /**
  * FABRICA DE ESTADO PADRÃO
- * Garante que o objeto retornado tenha TODAS as chaves da interface AppState.
+ * Retorna um objeto AppState completo com todas as propriedades obrigatórias tipadas.
  */
-export const createDefaultState = (): AppState => ({
-  currentUser: null,
-  members: [] as Member[],
-  hospitals: [] as Hospital[],
-  routes: [] as VisitRoute[],
-  visits: [] as VisitSlot[],
-  socialWorkerVisits: [] as SocialWorkerVisit[],
-  patients: [] as Patient[],
-  logs: [] as LogEntry[],
-  notifications: [] as Notification[]
-});
+export const createDefaultState = (): AppState => {
+  return {
+    currentUser: null,
+    members: [] as Member[],
+    hospitals: [] as Hospital[],
+    routes: [] as VisitRoute[],
+    visits: [] as VisitSlot[],
+    socialWorkerVisits: [] as SocialWorkerVisit[],
+    patients: [] as Patient[],
+    logs: [] as LogEntry[],
+    notifications: [] as Notification[]
+  };
+};
 
 /**
  * Mapeador de Banco (Snake Case) para App (Camel Case)
@@ -28,6 +30,7 @@ function mapFromDb<T>(data: any[] | null): T[] {
   return data.map((item: any) => {
     const camelItem: any = {};
     Object.keys(item).forEach(key => {
+      // Converte snake_case para camelCase
       const camelKey = key.replace(/(_\w)/g, m => m[1].toUpperCase());
       camelItem[camelKey] = item[key];
     });
@@ -37,14 +40,16 @@ function mapFromDb<T>(data: any[] | null): T[] {
 
 /**
  * Carregamento do Estado Principal
+ * Resolve o erro TS2741 ao montar o objeto AppState de forma atômica e explícita.
  */
 export const loadState = async (): Promise<AppState> => {
-  if (!supabase) return createDefaultState();
+  const defaultState = createDefaultState();
+  if (!supabase) return defaultState;
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
 
-    // Consultas paralelas ao banco
+    // Consultas paralelas ao banco para performance
     const [
       resMem, resHos, resRou, resVis, resSoc, resPat, resLog, resNot
     ] = await Promise.all([
@@ -58,38 +63,48 @@ export const loadState = async (): Promise<AppState> => {
       supabase.from('notifications').select('*')
     ]);
 
-    const members = mapFromDb<Member>(resMem.data);
+    // Extração segura dos dados com tipagem forçada
+    const membersList = mapFromDb<Member>(resMem.data);
+    const hospitalsList = mapFromDb<Hospital>(resHos.data);
+    const routesList = mapFromDb<VisitRoute>(resRou.data);
+    const visitsList = mapFromDb<VisitSlot>(resVis.data);
+    const socialVisitsList = mapFromDb<SocialWorkerVisit>(resSoc.data);
+    const patientsList = mapFromDb<Patient>(resPat.data);
+    const logsList = mapFromDb<LogEntry>(resLog.data);
+    const notificationsList = mapFromDb<Notification>(resNot.data);
 
-    // MONTAGEM EXPLÍCITA: O TypeScript validará se falta alguma chave aqui
+    // Montagem do Estado Final - Garante que nenhuma propriedade falte
     const finalState: AppState = {
       currentUser: null,
-      members: members,
-      hospitals: mapFromDb<Hospital>(resHos.data),
-      routes: mapFromDb<VisitRoute>(resRou.data),
-      visits: mapFromDb<VisitSlot>(resVis.data),
-      socialWorkerVisits: mapFromDb<SocialWorkerVisit>(resSoc.data),
-      patients: mapFromDb<Patient>(resPat.data),
-      logs: mapFromDb<LogEntry>(resLog.data),
-      notifications: mapFromDb<Notification>(resNot.data)
+      members: membersList,
+      hospitals: hospitalsList,
+      routes: routesList,
+      visits: visitsList,
+      socialWorkerVisits: socialVisitsList,
+      patients: patientsList,
+      logs: logsList,
+      notifications: notificationsList
     };
 
-    // Define usuário logado
+    // Identifica o usuário logado no contexto da sessão
     if (session?.user) {
-      finalState.currentUser = members.find(m => m.id === session.user.id) || null;
+      finalState.currentUser = membersList.find(m => m.id === session.user.id) || null;
     }
 
     return finalState;
   } catch (error) {
-    console.error("[StorageService] Falha crítica no carregamento:", error);
-    return createDefaultState();
+    console.error("[StorageService] Falha crítica ao carregar estado do Supabase:", error);
+    return defaultState;
   }
 };
 
 /**
- * Sanitização para o banco (Camel -> Snake)
+ * Sanitização e Conversão para Banco de Dados (Camel -> Snake)
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
+  
+  // Limpeza de campos calculados ou sensíveis
   if (tableName === 'members') delete (cleanData as any).password;
   if (tableName === 'patients') delete (cleanData as any).hospitalName;
   if (tableName === 'routes') delete (cleanData as any).hospitals;
@@ -99,23 +114,39 @@ const sanitizeForDb = (tableName: string, data: any) => {
     const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
     snakeCaseData[snakeKey] = (cleanData as any)[key];
   });
+  
   return snakeCaseData;
 };
 
+/**
+ * Atualização Atômica de Registro
+ */
 export const atomicUpdate = async (tableName: string, data: any) => {
   if (!supabase) return;
   const sanitized = sanitizeForDb(tableName, data);
   const { error } = await supabase.from(tableName).upsert(sanitized);
-  if (error) throw error;
+  if (error) {
+    console.error(`[Supabase] Erro ao atualizar ${tableName}:`, error);
+    throw error;
+  }
 };
 
+/**
+ * Deleção Atômica de Registro
+ */
 export const atomicDelete = async (tableName: string, id: string) => {
   if (!supabase) return;
   const { error } = await supabase.from(tableName).delete().eq('id', id);
-  if (error) throw error;
+  if (error) {
+    console.error(`[Supabase] Erro ao deletar em ${tableName}:`, error);
+    throw error;
+  }
 };
 
+/**
+ * Função de Salvamento (Mantida para compatibilidade)
+ */
 export const saveState = async (state: AppState) => {
-  // Mantido para compatibilidade de interface
+  // A persistência é feita via atomicUpdate para garantir integridade.
   return Promise.resolve();
 };
