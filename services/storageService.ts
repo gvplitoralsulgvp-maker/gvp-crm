@@ -3,11 +3,9 @@ import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital,
 import { supabase } from './supabaseClient';
 
 /**
- * Constante de Estado Inicial (Molde).
- * GARANTE que todas as propriedades obrigatórias da interface AppState estejam presentes.
- * Isso evita o erro TS2741 durante o build.
+ * Estado inicial padrão para evitar erros de propriedades ausentes (TS2741).
  */
-const EMPTY_STATE: AppState = {
+const DEFAULT_STATE: AppState = {
   currentUser: null,
   members: [],
   hospitals: [],
@@ -20,14 +18,14 @@ const EMPTY_STATE: AppState = {
 };
 
 /**
- * Cria um estado padrão limpo.
+ * Retorna uma cópia do estado padrão.
  */
 export const createDefaultState = (): AppState => ({
-  ...EMPTY_STATE
+  ...DEFAULT_STATE
 });
 
 /**
- * Converte camelCase para snake_case para o banco de dados.
+ * Sanitização para o banco de dados (converte camelCase para snake_case).
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
@@ -55,7 +53,7 @@ const sanitizeForDb = (tableName: string, data: any) => {
 };
 
 /**
- * Converte snake_case para camelCase vindo do banco.
+ * Mapeamento do banco (snake_case) para o App (camelCase).
  */
 const mapFromDb = (data: any[]) => {
   return data.map((item: any) => {
@@ -89,7 +87,7 @@ export const atomicDelete = async (tableName: string, id: string) => {
 
 /**
  * Carrega o estado completo.
- * Implementação Robusta: Começa com o EMPTY_STATE e preenche os dados.
+ * Implementação Robusta: Garante que TODAS as propriedades de AppState sejam retornadas.
  */
 export const loadState = async (): Promise<AppState> => {
   if (!supabase) return createDefaultState();
@@ -97,7 +95,7 @@ export const loadState = async (): Promise<AppState> => {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     
-    // Lista de tabelas para consulta
+    // Lista de tabelas para busca paralela (usando snake_case para o Supabase)
     const tables = [
       'members', 
       'hospitals', 
@@ -116,7 +114,7 @@ export const loadState = async (): Promise<AppState> => {
       rawData[t] = mapFromDb(results[idx].data || []);
     });
 
-    // Montagem do estado final garantindo tipagem de arrays para evitar never[]
+    // Construção explícita do objeto final para satisfazer o TypeScript.
     const finalState: AppState = {
       currentUser: null,
       members: (rawData['members'] || []) as Member[],
@@ -141,7 +139,7 @@ export const loadState = async (): Promise<AppState> => {
 };
 
 /**
- * Função mantida apenas para compatibilidade, o salvamento agora é atômico.
+ * Função mantida apenas para compatibilidade de API.
  */
 export const saveState = async (state: AppState) => {
   return Promise.resolve();
