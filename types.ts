@@ -19,7 +19,7 @@ export interface AppState {
 }
 
 export interface Member {
-  id: string; // UUID String
+  id: string;
   name: string;
   email: string;
   role: UserRole;
@@ -31,10 +31,11 @@ export interface Member {
   lat?: number;
   lng?: number;
   hasSeenOnboarding?: boolean;
+  circuit?: string; // Adicionado como opcional para evitar erro TS2353 em dados legados
 }
 
 export interface Hospital {
-  id: string; // UUID String
+  id: string;
   name: string;
   address: string;
   city: string;
@@ -44,10 +45,10 @@ export interface Hospital {
 }
 
 export interface VisitRoute {
-  id: string; // UUID String
+  id: string;
   name: string;
-  hospitalIds: string[]; // Array de UUID Strings
-  hospitals?: string[]; // Nomes virtuais para UI
+  hospitalIds: string[]; // Obrigatório no modelo novo
+  hospitals?: string[];
   active: boolean;
 }
 
@@ -59,19 +60,19 @@ export interface VisitReport {
 }
 
 export interface VisitSlot {
-  id: string; // UUID String
+  id: string;
   routeId: string;
   date: string;
-  memberIds: string[]; // Array de UUID Strings
+  memberIds: string[];
   status: VisitStatus;
   report?: VisitReport;
 }
 
 export interface SocialWorkerVisit {
-  id: string; // UUID String
+  id: string;
   hospitalId: string;
   date: string;
-  memberIds: string[]; // Array de UUID Strings
+  memberIds: string[];
   status: VisitStatus;
   report?: VisitReport;
 }
@@ -80,7 +81,7 @@ export interface Patient {
   id: string;
   name: string;
   hospitalId: string;
-  hospitalName?: string; // Virtual para UI
+  hospitalName?: string;
   treatment: string;
   admissionDate: string;
   estimatedDischargeDate?: string; 

@@ -1,9 +1,9 @@
+
 import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital, VisitRoute, SocialWorkerVisit } from '../types';
 import { supabase } from './supabaseClient';
 
 /**
- * Retorna o estado inicial limpo e tipado para a aplicação.
- * Garantimos que todas as propriedades obrigatórias da interface AppState estejam presentes.
+ * Estado inicial seguro e completo.
  */
 export const createDefaultState = (): AppState => ({
   currentUser: null,
@@ -18,25 +18,22 @@ export const createDefaultState = (): AppState => ({
 });
 
 /**
- * Converte nomes de campos de camelCase para snake_case para o PostgreSQL.
- * Também remove campos virtuais ou legados que não existem no banco físico.
+ * Sanitização rigorosa para o banco de dados.
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
 
   if (tableName === 'members') {
     delete cleanData.password;
-    // Removendo campos que podem ter vindo de versões experimentais/legadas
-    if ('circuit' in cleanData) delete (cleanData as any).circuit;
+    if ('circuit' in cleanData) delete cleanData.circuit;
   }
   
   if (tableName === 'patients') {
-    delete (cleanData as any).hospitalName;
+    delete cleanData.hospitalName;
   }
   
   if (tableName === 'routes') {
-    delete (cleanData as any).hospitals;
-    // Garante que hospitalIds seja sempre um array, prevenindo erro de banco
+    delete cleanData.hospitals;
     if (!cleanData.hospitalIds) cleanData.hospitalIds = [];
   }
 
@@ -49,9 +46,6 @@ const sanitizeForDb = (tableName: string, data: any) => {
   return snakeCaseData;
 };
 
-/**
- * Converte nomes de campos de snake_case do banco para camelCase do React.
- */
 const mapFromDb = (data: any[]) => {
   return data.map((item: any) => {
     const camelItem: any = {};
@@ -63,22 +57,13 @@ const mapFromDb = (data: any[]) => {
   });
 };
 
-/**
- * Executa um Upsert atômico em uma tabela do Supabase.
- */
 export const atomicUpdate = async (tableName: string, data: any) => {
   if (!supabase) return;
   const sanitized = sanitizeForDb(tableName, data);
   const { error } = await supabase.from(tableName).upsert(sanitized);
-  if (error) {
-    console.error(`[Storage] Erro no upsert em ${tableName}:`, error);
-    throw error;
-  }
+  if (error) throw error;
 };
 
-/**
- * Remove um registro pelo ID.
- */
 export const atomicDelete = async (tableName: string, id: string) => {
   if (!supabase) return;
   const { error } = await supabase.from(tableName).delete().eq('id', id);
@@ -86,12 +71,11 @@ export const atomicDelete = async (tableName: string, id: string) => {
 };
 
 /**
- * Carrega todo o estado da aplicação do Supabase.
- * Usa tipagem explícita para evitar erros de inferência do compilador.
+ * Carregamento de estado com casting forçado para evitar erro de propriedade faltante no build.
  */
 export const loadState = async (): Promise<AppState> => {
-  const baseState = createDefaultState();
-  if (!supabase) return baseState;
+  const defaultState = createDefaultState();
+  if (!supabase) return defaultState;
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -109,29 +93,33 @@ export const loadState = async (): Promise<AppState> => {
     
     const results = await Promise.all(tables.map(t => supabase!.from(t).select('*')));
     
-    const finalState: AppState = {
-      currentUser: baseState.currentUser,
-      members: baseState.members,
-      hospitals: baseState.hospitals,
-      routes: baseState.routes,
-      visits: baseState.visits,
-      socialWorkerVisits: baseState.socialWorkerVisits,
-      patients: baseState.patients,
-      logs: baseState.logs,
-      notifications: baseState.notifications
-    };
+    // Objeto temporário para montagem
+    const loadedData: any = {};
     
     tables.forEach((t, idx) => {
       const dbData = results[idx].data || [];
       const camelData = mapFromDb(dbData);
-      const stateKey = t.replace(/(_\w)/g, m => m[1].toUpperCase());
       
+      let stateKey = t.replace(/(_\w)/g, m => m[1].toUpperCase());
       if (stateKey === 'socialWorkerVisits') {
-          finalState.socialWorkerVisits = camelData as SocialWorkerVisit[];
-      } else if (stateKey in finalState) {
-          (finalState as any)[stateKey] = camelData;
+          loadedData.socialWorkerVisits = camelData;
+      } else {
+          loadedData[stateKey] = camelData;
       }
     });
+
+    // Garantimos que TODAS as chaves de AppState existam antes do cast
+    const finalState: AppState = {
+      currentUser: null,
+      members: loadedData.members || [],
+      hospitals: loadedData.hospitals || [],
+      routes: loadedData.routes || [],
+      visits: loadedData.visits || [],
+      socialWorkerVisits: loadedData.socialWorkerVisits || [],
+      patients: loadedData.patients || [],
+      logs: loadedData.logs || [],
+      notifications: loadedData.notifications || []
+    };
 
     if (session?.user) {
       finalState.currentUser = finalState.members.find(m => m.id === session.user.id) || null;
@@ -139,12 +127,11 @@ export const loadState = async (): Promise<AppState> => {
 
     return finalState;
   } catch (e) {
-    console.error("[Storage] Falha crítica ao carregar estado:", e);
-    return baseState;
+    console.error("[Storage] Erro no loadState:", e);
+    return defaultState;
   }
 };
 
 export const saveState = async (state: AppState) => {
-  // saveState depreciado, atomicUpdate é usado individualmente.
   return Promise.resolve();
 };

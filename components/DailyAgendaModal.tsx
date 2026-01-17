@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { VisitRoute, VisitSlot, Member, Patient } from '../types';
 import { Button } from './Button';
@@ -47,15 +48,14 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
             const count = memberIds.length;
             const hasReport = !!slot?.report;
             
-            // Garantia de segurança para o filtro de pacientes na rota
             const routePatients = patients.filter(p => {
               const isActive = p.active;
-              const hasHospitalName = typeof p.hospitalName === 'string' && p.hospitalName.length > 0;
-              const routeHasHospitals = Array.isArray(route.hospitals) && route.hospitals.length > 0;
+              const hName = p.hospitalName;
+              const rHospitals = route.hospitals;
               
-              if (!isActive || !hasHospitalName || !routeHasHospitals) return false;
+              if (!isActive || typeof hName !== 'string' || !Array.isArray(rHospitals)) return false;
               
-              return route.hospitals!.includes(p.hospitalName!);
+              return rHospitals.includes(hName);
             });
 
             return (
