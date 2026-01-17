@@ -119,10 +119,15 @@ function mapFromDb<T>(data: any[] | null): T[] {
     Object.keys(item).forEach(key => {
       const camelKey = key.replace(/(_\w)/g, m => m[1].toUpperCase());
       let val = item[key];
-      // Tratamento especial para coordenadas numéricas vindas como strings
-      if ((camelKey === 'lat' || camelKey === 'lng') && val != null) {
-          val = parseFloat(val);
-          if (isNaN(val)) val = undefined;
+      
+      // Limpeza rigorosa de coordenadas: se vier nulo ou NaN do banco, limpa para undefined
+      if ((camelKey === 'lat' || camelKey === 'lng')) {
+          if (val === null || val === "" || val === undefined) {
+              val = undefined;
+          } else {
+              val = parseFloat(val);
+              if (isNaN(val)) val = undefined;
+          }
       }
       camelItem[camelKey] = val;
     });

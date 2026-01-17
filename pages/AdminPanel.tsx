@@ -63,9 +63,9 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     e.preventDefault();
     if (!editingMember?.name || !editingMember.email) return;
 
-    // Sanitização final para garantir que lat/lng sejam números ou undefined
-    const lat = (editingMember.lat !== undefined && !isNaN(Number(editingMember.lat))) ? Number(editingMember.lat) : undefined;
-    const lng = (editingMember.lng !== undefined && !isNaN(Number(editingMember.lng))) ? Number(editingMember.lng) : undefined;
+    // Sanitização rigorosa: apenas números finitos são permitidos
+    const finalLat = (editingMember.lat !== undefined && Number.isFinite(Number(editingMember.lat))) ? Number(editingMember.lat) : undefined;
+    const finalLng = (editingMember.lng !== undefined && Number.isFinite(Number(editingMember.lng))) ? Number(editingMember.lng) : undefined;
 
     const newMember: Member = {
       id: editingMember.id || crypto.randomUUID(),
@@ -76,8 +76,8 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       phone: editingMember.phone || '',
       congregation: editingMember.congregation || '',
       address: editingMember.address || '',
-      lat: lat,
-      lng: lng,
+      lat: finalLat,
+      lng: finalLng,
       hasSeenOnboarding: editingMember.hasSeenOnboarding || false
     };
 
@@ -92,7 +92,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       onUpdateState({ ...state, members: updatedMembers });
       setEditingMember(null);
       setMemberCep('');
-      alert("Membro salvo com sucesso!");
+      alert("Membro e localização salvos com sucesso!");
     } catch (err) {
       console.error(err);
       alert("Erro ao salvar no banco de dados. Verifique a conexão.");
@@ -224,7 +224,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                                         <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" /></svg>
                                         <span className="text-[10px] font-black uppercase">Mapeado</span>
                                       </div>
-                                      <p className="text-[9px] text-gray-400 truncate max-w-[120px]">{m.address}</p>
+                                      <p className="text-[9px] text-gray-400 truncate max-w-[120px]">{m.address || 'Endereço sem rua'}</p>
                                     </div>
                                   ) : (
                                     <span className="text-[9px] font-bold text-gray-300 uppercase tracking-tighter">Não localizado</span>
@@ -364,7 +364,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                       <div className="space-y-1">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Endereço Residencial Atual</label>
                         <textarea rows={2} readOnly className={`w-full p-3 border-2 rounded-xl outline-none resize-none opacity-80 ${isHospitalMode ? 'bg-black/20 border-gray-800 text-gray-400' : 'bg-gray-100 border-gray-200 text-gray-600'}`} value={editingMember.address || 'Validar CEP para preencher...'} />
-                        {editingMember.lat != null && !isNaN(Number(editingMember.lat)) && (
+                        {editingMember.lat != null && Number.isFinite(Number(editingMember.lat)) && (
                           <p className="text-[8px] text-blue-500 font-bold uppercase tracking-widest px-1 mt-1">Coordenadas: {Number(editingMember.lat).toFixed(4)}, {Number(editingMember.lng).toFixed(4)}</p>
                         )}
                       </div>

@@ -244,7 +244,7 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
             <div className={`absolute bottom-6 left-6 z-[400] p-5 rounded-3xl border backdrop-blur-xl shadow-2xl space-y-3 hidden md:block ${isHospitalMode ? 'bg-black/60 border-white/10' : 'bg-white/90 border-gray-100'}`}>
                 <div className="flex items-center gap-3">
                     <span className="w-3 h-3 rounded-full bg-[#d33d2a] animate-pulse"></span>
-                    <span className="text-[10px] font-bold text-red-500">HOSPITAL CRÍTICO (>5 DIAS)</span>
+                    <span className="text-[10px] font-bold text-red-500">HOSPITAL CRÍTICO (&gt;5 DIAS)</span>
                 </div>
                 {showMembers && (
                 <div className="flex items-center gap-3 pt-2 border-t border-gray-500/10">
