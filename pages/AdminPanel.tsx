@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { AppState, Member, VisitRoute, UserRole, Hospital, VisitSlot } from '../types';
 import { Button } from '../components/Button';
 import { atomicUpdate, loadState, atomicDelete } from '../services/storageService';
+import { getCoordsFromCep } from '../services/geoService';
 
 export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
   const [activeTab, setActiveTab] = useState<'members' | 'hospitals' | 'routes' | 'reports' | 'balance'>('members');
@@ -10,6 +11,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
   const [editingRoute, setEditingRoute] = useState<Partial<VisitRoute> | null>(null);
   const [editingMember, setEditingMember] = useState<Partial<Member> | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isGeocoding, setIsGeocoding] = useState(false);
 
   const handleRefreshData = async () => {
     setIsSyncing(true);
@@ -20,6 +22,30 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       alert("Erro ao sincronizar dados.");
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleGeocodeHospital = async () => {
+    if (!editingHospital?.address) {
+      alert("Digite o endereço ou CEP do hospital primeiro.");
+      return;
+    }
+    setIsGeocoding(true);
+    try {
+      // Tenta usar o serviço de geocodificação
+      const result = await getCoordsFromCep(editingHospital.address);
+      setEditingHospital({
+        ...editingHospital,
+        lat: result.lat,
+        lng: result.lng,
+        city: result.city,
+        address: result.address
+      });
+      alert("Localização encontrada e atualizada!");
+    } catch (err) {
+      alert("Não foi possível localizar este endereço automaticamente. Verifique os dados.");
+    } finally {
+      setIsGeocoding(false);
     }
   };
 
@@ -42,7 +68,10 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       active: editingMember.active === true,
       phone: editingMember.phone || '',
       congregation: editingMember.congregation || '',
-      hasSeenOnboarding: editingMember.hasSeenOnboarding || false
+      hasSeenOnboarding: editingMember.hasSeenOnboarding || false,
+      address: editingMember.address,
+      lat: editingMember.lat,
+      lng: editingMember.lng
     };
     try {
       await atomicUpdate('members', newMember);
@@ -63,8 +92,8 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       name: editingHospital.name,
       city: editingHospital.city || 'Santos',
       address: editingHospital.address || '',
-      lat: editingHospital.lat || -23.9608,
-      lng: editingHospital.lng || -46.3331,
+      lat: editingHospital.lat || 0,
+      lng: editingHospital.lng || 0,
       importantInfo: editingHospital.importantInfo || ''
     };
     try {
@@ -156,6 +185,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                     <tr>
                       <th className="px-6 py-4 text-left">Membro</th>
                       <th className="px-6 py-4 text-left">Função</th>
+                      <th className="px-6 py-4 text-left">Localização</th>
                       <th className="px-6 py-4 text-left">Status</th>
                       <th className="px-6 py-4 text-right">Ação</th>
                     </tr>
@@ -169,6 +199,13 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                             </td>
                             <td className="px-6 py-4">
                               <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${m.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>{m.role}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                               {m.lat && m.lng ? (
+                                 <span className="text-[9px] font-bold text-green-600 uppercase bg-green-50 px-2 py-1 rounded-lg">Mapeado</span>
+                               ) : (
+                                 <span className="text-[9px] font-bold text-gray-400 uppercase bg-gray-50 px-2 py-1 rounded-lg">Sem Mapa</span>
+                               )}
                             </td>
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-2">
@@ -196,6 +233,15 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                     <span className="text-[10px] font-black text-blue-600 uppercase">{h.city}</span>
                   </div>
                   <p className="text-xs text-gray-500 mb-4 line-clamp-2">{h.address}</p>
+                  
+                  <div className="flex gap-2 mb-4">
+                    {h.lat && h.lng ? (
+                      <span className="text-[9px] font-black text-green-600 uppercase bg-green-50 px-2 py-1 rounded">Vínculo GPS OK</span>
+                    ) : (
+                      <span className="text-[9px] font-black text-red-600 uppercase bg-red-50 px-2 py-1 rounded">Sem Localização</span>
+                    )}
+                  </div>
+
                   {h.importantInfo && (
                     <div className="bg-orange-500/10 p-3 rounded-xl mb-4 border border-orange-500/20">
                       <p className="text-[9px] font-black text-orange-600 uppercase mb-1">Briefing IA:</p>
@@ -332,16 +378,32 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nome da Instituição</label>
                       <input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingHospital.name || ''} onChange={e => setEditingHospital({...editingHospital, name: e.target.value})} />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
+                    
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Endereço Completo ou CEP</label>
+                      <div className="flex gap-2">
+                        <input required type="text" className={`flex-grow p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingHospital.address || ''} onChange={e => setEditingHospital({...editingHospital, address: e.target.value})} />
+                        <button type="button" onClick={handleGeocodeHospital} disabled={isGeocoding} className="bg-blue-100 text-blue-700 px-4 rounded-xl text-[10px] font-black uppercase hover:bg-blue-200 transition-all disabled:opacity-50">
+                          {isGeocoding ? '...' : 'Buscar'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="col-span-1">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Cidade</label>
                         <input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingHospital.city || ''} onChange={e => setEditingHospital({...editingHospital, city: e.target.value})} />
                       </div>
-                      <div>
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Endereço</label>
-                        <input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingHospital.address || ''} onChange={e => setEditingHospital({...editingHospital, address: e.target.value})} />
+                      <div className="col-span-1">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Latitude</label>
+                        <input disabled type="text" className={`w-full p-3 border-2 rounded-xl bg-gray-100 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-gray-500' : 'bg-gray-100 border-gray-100 text-gray-500'}`} value={editingHospital.lat || ''} />
+                      </div>
+                      <div className="col-span-1">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Longitude</label>
+                        <input disabled type="text" className={`w-full p-3 border-2 rounded-xl bg-gray-100 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-gray-500' : 'bg-gray-100 border-gray-100 text-gray-500'}`} value={editingHospital.lng || ''} />
                       </div>
                     </div>
+
                     <div className="space-y-1">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Informações para IA (Briefing)</label>
                       <textarea rows={4} className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} placeholder="Ex: Regras de crachá, pacientes cirúrgicos as terças, estacionamento no fundo..." value={editingHospital.importantInfo || ''} onChange={e => setEditingHospital({...editingHospital, importantInfo: e.target.value})} />

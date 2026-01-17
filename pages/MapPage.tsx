@@ -20,19 +20,26 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [searchMember, setSearchMember] = useState('');
 
-  // Filtro robusto para membros com localização válida (garantindo que sejam números)
+  // Filtro robusto para membros com localização válida
   const membersWithLocation = useMemo(() => {
-    return state.members.filter(m => 
-      m.lat != null && 
-      m.lng != null && 
-      !isNaN(Number(m.lat)) && 
-      !isNaN(Number(m.lng)) && 
-      (
-        m.name.toLowerCase().includes(searchMember.toLowerCase()) ||
-        m.congregation?.toLowerCase().includes(searchMember.toLowerCase())
-      )
-    );
+    return state.members.filter(m => {
+      const lat = parseFloat(String(m.lat));
+      const lng = parseFloat(String(m.lng));
+      const hasCoords = !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+      const matchesSearch = m.name.toLowerCase().includes(searchMember.toLowerCase()) ||
+                            m.congregation?.toLowerCase().includes(searchMember.toLowerCase());
+      return hasCoords && matchesSearch;
+    });
   }, [state.members, searchMember]);
+
+  // Filtro de hospitais com localização
+  const hospitalsWithLocation = useMemo(() => {
+    return state.hospitals.filter(h => {
+        const lat = parseFloat(String(h.lat));
+        const lng = parseFloat(String(h.lng));
+        return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+    });
+  }, [state.hospitals]);
 
   useEffect(() => {
     if (!mapContainerRef.current || !window.L) return;
@@ -52,12 +59,12 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
     
     const map = mapInstanceRef.current;
     
-    // Invalida o tamanho para corrigir problemas de renderização em containers dinâmicos
+    // Força atualização do layout
     setTimeout(() => { map.invalidateSize(); }, 250);
 
     // Limpeza rigorosa de camadas antes de renderizar (exceto os tiles)
     map.eachLayer((layer: any) => {
-      if (!!layer.toGeoJSON || layer instanceof window.L.Marker || layer instanceof window.L.CircleMarker || layer instanceof window.L.Circle) {
+      if (layer instanceof window.L.Marker || layer instanceof window.L.CircleMarker || layer instanceof window.L.Circle) {
         map.removeLayer(layer);
       }
     });
@@ -65,7 +72,7 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
     const today = new Date();
 
     // 1. Renderizar Hospitais
-    state.hospitals.forEach(h => {
+    hospitalsWithLocation.forEach(h => {
       const hospitalVisits = state.visits.filter(v => {
         const route = state.routes.find(r => r.id === v.routeId);
         return route?.hospitals?.includes(h.name);
@@ -103,19 +110,19 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
         `);
     });
 
-    // 2. Renderizar Membros (Visual Demonstrativo)
+    // 2. Renderizar Membros
     if (showMembers) {
       membersWithLocation.forEach(m => {
         const markerColor = m.active ? '#2563eb' : '#94a3b8';
-        const lat = Number(m.lat);
-        const lng = Number(m.lng);
+        const lat = parseFloat(String(m.lat));
+        const lng = parseFloat(String(m.lng));
         
         // Círculo de Cobertura Logística
         window.L.circle([lat, lng], {
           color: markerColor,
           fillColor: markerColor,
           fillOpacity: 0.12,
-          radius: 350,
+          radius: 400,
           weight: 1,
           dashArray: '4, 4'
         }).addTo(map);
@@ -125,7 +132,7 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
           color: 'white',
           fillColor: markerColor,
           fillOpacity: 1,
-          radius: 7,
+          radius: 8,
           weight: 2
         })
         .addTo(map)
@@ -142,11 +149,11 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
       });
     }
 
-  }, [state.hospitals, state.members, state.visits, state.routes, showMembers, membersWithLocation]);
+  }, [hospitalsWithLocation, membersWithLocation, showMembers, state.visits]);
 
   const flyToMember = (m: Member) => {
-    if (m.lat == null || m.lng == null || !mapInstanceRef.current) return;
-    mapInstanceRef.current.flyTo([Number(m.lat), Number(m.lng)], 15, { duration: 1.5 });
+    if (!m.lat || !m.lng || !mapInstanceRef.current) return;
+    mapInstanceRef.current.flyTo([m.lat, m.lng], 15, { duration: 1.5 });
   };
 
   const resetView = () => {
@@ -179,7 +186,7 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
                 {membersWithLocation.length === 0 ? (
                     <div className="py-10 text-center">
                         <p className="text-[10px] text-gray-400 italic">Nenhum voluntário localizado.</p>
-                        <p className="text-[9px] text-gray-500 mt-2 px-4">Use o Admin para validar o CEP dos membros.</p>
+                        <p className="text-[9px] text-gray-500 mt-2 px-4">Use o Admin para validar o endereço dos membros.</p>
                     </div>
                 ) : (
                     membersWithLocation.map(m => (

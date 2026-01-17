@@ -3,20 +3,14 @@ import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital,
 import { supabase } from './supabaseClient';
 
 /** 
- * GVP STORAGE SERVICE - V11
+ * GVP STORAGE SERVICE - V12
  * Responsável pela persistência e carregamento do estado global via Supabase.
  */
 
 export const createDefaultState = (): AppState => ({
   currentUser: null,
-  members: [
-    { id: 'm1', name: 'Francisco Chagas', email: 'francisco.chagas@gvp.com', phone: '11 95772-3539', role: UserRole.MEMBER, active: true },
-    { id: 'm2', name: 'Abel Farias', email: 'abel.farias@gvp.com', phone: '13 99666-1025', role: UserRole.MEMBER, active: true },
-    { id: 'm75', name: 'Andrews Luiz Santos', email: 'andrews.santos@gvp.com', phone: '1398171-4532', role: UserRole.MEMBER, active: true }
-  ] as Member[],
-  hospitals: [
-    { id: 'h1', name: 'Santa Casa de Santos', city: 'Santos', address: 'Av. Dr. Cláudio Luís da Costa, 50', lat: -23.9452, lng: -46.3345 }
-  ] as Hospital[],
+  members: [],
+  hospitals: [],
   routes: [] as VisitRoute[],
   visits: [] as VisitSlot[],
   socialWorkerVisits: [] as SocialWorkerVisit[],
@@ -27,6 +21,7 @@ export const createDefaultState = (): AppState => ({
 
 /**
  * Converte dados do banco (snake_case) para o app (camelCase)
+ * Garante que lat/lng sejam números reais.
  */
 export function mapFromDb<T>(data: any[] | null): T[] {
   if (!data || !Array.isArray(data)) return [] as T[];
@@ -36,12 +31,13 @@ export function mapFromDb<T>(data: any[] | null): T[] {
       const camelKey = key.replace(/(_\w)/g, m => m[1].toUpperCase());
       let val = item[key];
       
-      if ((camelKey === 'lat' || camelKey === 'lng')) {
+      // Tratamento especial para coordenadas
+      if (camelKey === 'lat' || camelKey === 'lng') {
           if (val === null || val === "" || val === undefined) {
               val = undefined;
           } else {
-              val = parseFloat(val);
-              if (isNaN(val)) val = undefined;
+              const parsed = parseFloat(val);
+              val = isNaN(parsed) ? undefined : parsed;
           }
       }
       camelItem[camelKey] = val;
@@ -70,8 +66,8 @@ export const loadState = async (): Promise<AppState> => {
 
     const finalState: AppState = {
       currentUser: null,
-      members: mapFromDb<Member>(fetchAll[0].data).length > 0 ? mapFromDb<Member>(fetchAll[0].data) : defaultState.members,
-      hospitals: mapFromDb<Hospital>(fetchAll[1].data).length > 0 ? mapFromDb<Hospital>(fetchAll[1].data) : defaultState.hospitals,
+      members: mapFromDb<Member>(fetchAll[0].data),
+      hospitals: mapFromDb<Hospital>(fetchAll[1].data),
       routes: mapFromDb<VisitRoute>(fetchAll[2].data),
       visits: mapFromDb<VisitSlot>(fetchAll[3].data),
       socialWorkerVisits: mapFromDb<SocialWorkerVisit>(fetchAll[4].data),
@@ -99,8 +95,14 @@ const sanitizeForDb = (tableName: string, data: any) => {
   Object.keys(cleanData).forEach(key => {
     const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
     let val = (cleanData as any)[key];
-    if ((key === 'lat' || key === 'lng') && (val == null || isNaN(val))) {
-        val = null;
+    
+    // Garante que lat/lng sejam enviados como números ou nulos (não strings vazias)
+    if ((key === 'lat' || key === 'lng')) {
+        if (val === null || val === undefined || val === "" || isNaN(parseFloat(val))) {
+            val = null;
+        } else {
+            val = parseFloat(val);
+        }
     }
     snakeCaseData[snakeKey] = val;
   });
