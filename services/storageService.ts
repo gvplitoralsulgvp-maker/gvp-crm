@@ -1,9 +1,9 @@
-
 import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital, VisitRoute, SocialWorkerVisit } from '../types';
 import { supabase } from './supabaseClient';
 
 /**
  * Retorna o estado inicial limpo e tipado para a aplicação.
+ * Garantimos que todas as propriedades obrigatórias da interface AppState estejam presentes.
  */
 export const createDefaultState = (): AppState => ({
   currentUser: null,
@@ -19,22 +19,24 @@ export const createDefaultState = (): AppState => ({
 
 /**
  * Converte nomes de campos de camelCase para snake_case para o PostgreSQL.
+ * Também remove campos virtuais ou legados que não existem no banco físico.
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
 
   if (tableName === 'members') {
     delete cleanData.password;
-    // Removendo campos que não existem no banco de dados físico
-    if ('circuit' in cleanData) delete cleanData.circuit;
+    // Removendo campos que podem ter vindo de versões experimentais/legadas
+    if ('circuit' in cleanData) delete (cleanData as any).circuit;
   }
   
   if (tableName === 'patients') {
-    delete cleanData.hospitalName;
+    delete (cleanData as any).hospitalName;
   }
   
   if (tableName === 'routes') {
-    delete cleanData.hospitals;
+    delete (cleanData as any).hospitals;
+    // Garante que hospitalIds seja sempre um array, prevenindo erro de banco
     if (!cleanData.hospitalIds) cleanData.hospitalIds = [];
   }
 
@@ -85,6 +87,7 @@ export const atomicDelete = async (tableName: string, id: string) => {
 
 /**
  * Carrega todo o estado da aplicação do Supabase.
+ * Usa tipagem explícita para evitar erros de inferência do compilador.
  */
 export const loadState = async (): Promise<AppState> => {
   const baseState = createDefaultState();
@@ -106,7 +109,6 @@ export const loadState = async (): Promise<AppState> => {
     
     const results = await Promise.all(tables.map(t => supabase!.from(t).select('*')));
     
-    // Explicitly typed finalState to avoid inference issues with spread
     const finalState: AppState = {
       currentUser: baseState.currentUser,
       members: baseState.members,
@@ -143,6 +145,6 @@ export const loadState = async (): Promise<AppState> => {
 };
 
 export const saveState = async (state: AppState) => {
-  // saveState depreciado, mantido apenas para compatibilidade de assinatura se necessário.
+  // saveState depreciado, atomicUpdate é usado individualmente.
   return Promise.resolve();
 };

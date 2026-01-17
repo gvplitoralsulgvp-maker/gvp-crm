@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { VisitRoute, Member, Hospital, Patient } from '../types';
 import { HistoryItem } from './ReportModal';
@@ -62,12 +61,15 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
 
   const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
   
-  // Fix: Strict null check to avoid type errors in filter/includes
+  // Garantia de segurança para o filtro de pacientes na rota ativa
   const routePatients = patients.filter(p => {
     const isActive = p.active;
-    const hasName = typeof p.hospitalName === 'string';
-    const routeHasHospitals = Array.isArray(route.hospitals);
-    return isActive && hasName && routeHasHospitals && route.hospitals!.includes(p.hospitalName!);
+    const hasHospitalName = typeof p.hospitalName === 'string' && p.hospitalName.length > 0;
+    const routeHasHospitals = Array.isArray(route.hospitals) && route.hospitals.length > 0;
+    
+    if (!isActive || !hasHospitalName || !routeHasHospitals) return false;
+    
+    return route.hospitals!.includes(p.hospitalName!);
   });
 
   return (
@@ -135,7 +137,7 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
                           {p.name.substring(0, 2).toUpperCase()}
                         </div>
                         <div>
-                          <p className={`text-base font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'} ${isPrivacyMode ? 'blur-sm select-none' : ''}`}>{p.name}</p>
+                          <p className={`text-base font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'} ${isPrivacyMode ? 'blur-md select-none' : ''}`}>{p.name}</p>
                           <p className="text-[11px] text-gray-500 font-bold uppercase tracking-tight">{p.floor ? `${p.floor} • ` : ''}{p.hospitalName}</p>
                         </div>
                      </div>
