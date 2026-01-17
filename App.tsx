@@ -37,19 +37,28 @@ const Layout: React.FC<{
 }> = ({ state, onUpdateState, isPrivacyMode, onTogglePrivacy, isHospitalMode, onToggleHospitalMode, isNightMode, onToggleNightMode, onChangePasswordClick, isSyncing }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [showNotifPermission, setShowNotifPermission] = useState(false);
   const location = useLocation();
   const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // --- NOTIFICAÇÕES E REALTIME ---
   
-  // 1. Pedir Permissão ao Carregar
+  // 1. Verificar Permissão ao Carregar (Sem pedir, apenas checar)
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+      setShowNotifPermission(true);
     }
     // Preload audio
     notificationAudioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
   }, []);
+
+  const handleRequestPermission = () => {
+    Notification.requestPermission().then(permission => {
+        if (permission !== 'default') {
+            setShowNotifPermission(false);
+        }
+    });
+  };
 
   // 2. Helper para Disparar Notificação do Sistema
   const sendSystemNotification = (title: string, body: string) => {
@@ -243,10 +252,6 @@ const Layout: React.FC<{
         </nav>
 
         <div className="p-4 border-t border-gray-800/10 space-y-2 shrink-0">
-          <button onClick={() => Notification.requestPermission()} className="w-full text-left px-4 py-2 text-xs font-bold uppercase text-blue-500 hover:bg-blue-50 rounded-lg flex items-center gap-2">
-             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-             Ativar Notificações
-          </button>
           <button onClick={onChangePasswordClick} className="w-full text-left px-4 py-2 text-xs font-bold uppercase text-gray-400 hover:text-blue-500">Alterar Senha</button>
           <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-xs font-bold uppercase text-red-500 hover:bg-red-500/10 rounded-lg">Sair</button>
         </div>
@@ -300,7 +305,15 @@ const Layout: React.FC<{
           </div>
         </header>
 
-        <main className="flex-grow overflow-y-auto custom-scrollbar p-4 md:p-6 bg-transparent">
+        <main className="flex-grow overflow-y-auto custom-scrollbar p-4 md:p-6 bg-transparent relative">
+          {showNotifPermission && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[100] animate-bounce">
+                <button onClick={handleRequestPermission} className="bg-blue-600 text-white px-4 py-2 rounded-full shadow-xl flex items-center gap-2 text-xs font-bold uppercase tracking-wide hover:bg-blue-700 transition-all">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                    Ativar Notificações
+                </button>
+            </div>
+          )}
           <Routes>
             <Route path="/dashboard" element={<Dashboard state={state} onUpdateState={onUpdateState} isPrivacyMode={isPrivacyMode} isHospitalMode={isHospitalMode} />} />
             <Route path="/patients" element={<PatientRegistry state={state} onUpdateState={onUpdateState} isPrivacyMode={isPrivacyMode} isHospitalMode={isHospitalMode} />} />
@@ -354,7 +367,7 @@ const Layout: React.FC<{
                         <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg></div>
                         <span className="font-bold">Relatórios KPI</span>
                     </Link>
-                    <button onClick={() => Notification.requestPermission()} className={`w-full flex items-center gap-4 p-4 rounded-xl text-left ${isHospitalMode ? 'bg-[#1a1c1e] text-white' : 'bg-gray-50 text-gray-800'}`}>
+                    <button onClick={handleRequestPermission} className={`w-full flex items-center gap-4 p-4 rounded-xl text-left ${isHospitalMode ? 'bg-[#1a1c1e] text-white' : 'bg-gray-50 text-gray-800'}`}>
                         <div className="bg-green-100 p-2 rounded-lg text-green-600"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg></div>
                         <span className="font-bold">Ativar Alertas</span>
                     </button>
@@ -381,8 +394,8 @@ const App: React.FC = () => {
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
   const [isHospitalMode, setIsHospitalMode] = useState(false);
   const [isNightMode, setIsNightMode] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(true);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(true);
 
   useEffect(() => {
     loadState().then(loaded => {
@@ -393,47 +406,40 @@ const App: React.FC = () => {
 
   const handleUpdateState = (newState: AppState) => {
     setState(newState);
-    saveState(newState);
   };
 
   const handleLogin = (user: Member) => {
     handleUpdateState({ ...state, currentUser: user });
   };
-  
-  const handleChangePassword = async (newPass: string) => {
-      if (state.currentUser) {
-          try {
-              if (supabase) {
-                  const { error } = await supabase.auth.updateUser({ password: newPass });
-                  if (error) throw error;
-                  alert("Senha alterada com sucesso!");
-                  setIsChangePasswordOpen(false);
-              } else {
-                  // Fallback if supabase not available (mock)
-                  alert("Senha alterada (simulação).");
-                  setIsChangePasswordOpen(false);
-              }
-          } catch (e: any) {
-              alert("Erro ao alterar senha: " + e.message);
-          }
-      }
+
+  const handleChangePassword = async (newPassword: string) => {
+    if (!state.currentUser) return;
+    try {
+        if (supabase) {
+            const { error } = await supabase.auth.updateUser({ password: newPassword });
+            if (error) throw error;
+        }
+        alert("Senha alterada com sucesso!");
+        setIsChangePasswordOpen(false);
+    } catch (e: any) {
+        alert("Erro ao alterar senha: " + e.message);
+    }
   };
 
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<Navigate to="/welcome" replace />} />
-        <Route path="/welcome" element={<Welcome />} />
         <Route path="/login" element={<LoginPage state={state} onLogin={handleLogin} />} />
         <Route path="/signup" element={<SignUpPage state={state} onUpdateState={handleUpdateState} />} />
         <Route path="/solicitar-visita" element={<PublicRequestPage state={state} onUpdateState={handleUpdateState} />} />
+        <Route path="/welcome" element={<Welcome />} />
         <Route path="/tutorial" element={<TutorialPage isHospitalMode={isHospitalMode} />} />
         
         <Route path="/*" element={
             <Layout 
                 state={state} 
-                onUpdateState={handleUpdateState} 
-                isPrivacyMode={isPrivacyMode} 
+                onUpdateState={handleUpdateState}
+                isPrivacyMode={isPrivacyMode}
                 onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}
                 isHospitalMode={isHospitalMode}
                 onToggleHospitalMode={() => setIsHospitalMode(!isHospitalMode)}
@@ -444,15 +450,15 @@ const App: React.FC = () => {
             />
         } />
       </Routes>
-      
+
       {state.currentUser && (
-          <ChangePasswordModal 
-              isOpen={isChangePasswordOpen}
-              onClose={() => setIsChangePasswordOpen(false)}
-              currentUser={state.currentUser}
-              onConfirm={handleChangePassword}
-              isHospitalMode={isHospitalMode}
-          />
+        <ChangePasswordModal 
+            isOpen={isChangePasswordOpen}
+            onClose={() => setIsChangePasswordOpen(false)}
+            currentUser={state.currentUser}
+            onConfirm={handleChangePassword}
+            isHospitalMode={isHospitalMode}
+        />
       )}
     </Router>
   );

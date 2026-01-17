@@ -46,9 +46,9 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                 <span className="px-2 py-1 bg-blue-500/10 text-blue-500 text-[10px] font-bold rounded-md uppercase border border-blue-500/20">
                     {patient.floor ? `Andar ${patient.floor}` : 'Andar não inf.'} • {patient.bed ? `Leito ${patient.bed}` : 'Leito não inf.'}
                 </span>
-                {patient.isIsolation && (
-                    <span className="px-2 py-1 bg-red-500/10 text-red-500 text-[10px] font-bold rounded-md uppercase border border-blue-500/20">
-                    ⚠️ Isolamento
+                {patient.needsAccommodation && (
+                    <span className="px-2 py-1 bg-orange-500/10 text-orange-600 text-[10px] font-bold rounded-md uppercase border border-orange-500/20">
+                    🏠 Hospedagem Necessária
                     </span>
                 )}
                 </div>
@@ -62,6 +62,18 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                 </button>
             )}
           </div>
+
+          {patient.isIsolation && (
+             <div className="p-4 bg-red-500 text-white rounded-xl shadow-lg border border-red-400 flex items-center gap-4">
+                <div className="p-2 bg-white/20 rounded-full">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                </div>
+                <div>
+                    <p className="text-xs font-black uppercase tracking-widest opacity-80">Alerta de Risco</p>
+                    <p className="font-bold text-lg">ISOLAMENTO: {patient.isolationType || 'Geral'}</p>
+                </div>
+             </div>
+          )}
 
           <div className={`grid grid-cols-2 gap-4 p-4 rounded-xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-200 shadow-sm'}`}>
             <div className="space-y-1">
@@ -81,7 +93,10 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                   <div key={idx} className={`flex items-center justify-between p-3 rounded-xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'}`}>
                     <span className={`text-xs font-medium ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.label}</span>
                     {item.status ? (
-                      <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                      <div className="flex items-center gap-1 text-green-500">
+                          <span className="text-[10px] font-bold uppercase">Confirmado</span>
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                      </div>
                     ) : (
                       <span className="text-[9px] font-bold text-red-400 uppercase tracking-tighter">Pendente</span>
                     )}

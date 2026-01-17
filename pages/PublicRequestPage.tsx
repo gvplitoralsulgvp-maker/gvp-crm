@@ -31,7 +31,14 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
     surgeryDate: '',
     treatment: '',
     clinicalStatus: '',
-    notes: ''
+    notes: '',
+    // Novos campos
+    hasDirectivesCard: false,
+    agentsNotified: false,
+    hasS55: false,
+    needsAccommodation: false,
+    isIsolation: false,
+    isolationType: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -79,11 +86,14 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
         active: true,
         notes: formData.notes,
         isExternalRequest: true,
-        needsAccommodation: false,
-        hasDirectivesCard: false,
-        agentsNotified: false,
-        formsConsidered: false,
-        hasS55: false
+        // Novos campos mapeados
+        needsAccommodation: formData.needsAccommodation,
+        hasDirectivesCard: formData.hasDirectivesCard,
+        agentsNotified: formData.agentsNotified,
+        formsConsidered: false, // S-401 geralmente é interno
+        hasS55: formData.hasS55,
+        isIsolation: formData.isIsolation,
+        isolationType: formData.isolationType
       };
 
       const newLog: LogEntry = {
@@ -127,7 +137,6 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
 
     } catch (error: any) {
       console.error("Erro ao salvar solicitação pública:", JSON.stringify(error, null, 2));
-      // Tenta extrair mensagem mais útil
       let msg = "Houve um erro de conexão ao tentar salvar os dados.";
       if (error.message) msg += ` (${error.message})`;
       alert(msg + " Por favor, tente novamente.");
@@ -259,10 +268,75 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
                   </div>
                 </div>
 
-                {/* Seção 3: Acompanhante */}
+                {/* Seção 3: Protocolo Ético e Logística (NOVO) */}
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 border-b border-gray-100 pb-3">
                     <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-black text-sm">3</div>
+                    <h3 className="text-sm font-black text-blue-600 uppercase tracking-widest">Protocolo Ético e Logística</h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                     <div className="space-y-4">
+                        <label className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mb-2 block">Documentação</label>
+                        <label className="flex items-center gap-4 cursor-pointer group p-3 rounded-xl border border-gray-100 hover:border-blue-200 transition-all">
+                            <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${formData.hasDirectivesCard ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}`}>
+                                <input type="checkbox" className="hidden" checked={formData.hasDirectivesCard} onChange={e => setFormData({...formData, hasDirectivesCard: e.target.checked})} />
+                                {formData.hasDirectivesCard && <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" /></svg>}
+                            </div>
+                            <span className="text-xs font-bold text-gray-700">Tem Cartão de Diretivas?</span>
+                        </label>
+                        <label className="flex items-center gap-4 cursor-pointer group p-3 rounded-xl border border-gray-100 hover:border-blue-200 transition-all">
+                            <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${formData.agentsNotified ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}`}>
+                                <input type="checkbox" className="hidden" checked={formData.agentsNotified} onChange={e => setFormData({...formData, agentsNotified: e.target.checked})} />
+                                {formData.agentsNotified && <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" /></svg>}
+                            </div>
+                            <span className="text-xs font-bold text-gray-700">Procuradores Avisados?</span>
+                        </label>
+                        <label className="flex items-center gap-4 cursor-pointer group p-3 rounded-xl border border-gray-100 hover:border-blue-200 transition-all">
+                            <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${formData.hasS55 ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}`}>
+                                <input type="checkbox" className="hidden" checked={formData.hasS55} onChange={e => setFormData({...formData, hasS55: e.target.checked})} />
+                                {formData.hasS55 && <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" /></svg>}
+                            </div>
+                            <span className="text-xs font-bold text-gray-700">Considerou S-55?</span>
+                        </label>
+                     </div>
+
+                     <div className="space-y-4">
+                        <label className="text-[10px] font-black text-orange-600 uppercase tracking-[0.2em] mb-2 block">Alertas de Apoio</label>
+                        <label className="flex items-center gap-4 cursor-pointer group p-3 rounded-xl border border-gray-100 hover:border-orange-200 transition-all">
+                            <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${formData.needsAccommodation ? 'bg-orange-500 border-orange-500' : 'border-gray-300'}`}>
+                                <input type="checkbox" className="hidden" checked={formData.needsAccommodation} onChange={e => setFormData({...formData, needsAccommodation: e.target.checked})} />
+                                {formData.needsAccommodation && <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" /></svg>}
+                            </div>
+                            <span className="text-xs font-bold text-gray-700">Precisa de Hospedagem?</span>
+                        </label>
+                        
+                        <div className="space-y-2 p-3 rounded-xl border border-gray-100 hover:border-red-200 transition-all">
+                            <label className="flex items-center gap-4 cursor-pointer group">
+                                <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${formData.isIsolation ? 'bg-red-600 border-red-600' : 'border-gray-300'}`}>
+                                    <input type="checkbox" className="hidden" checked={formData.isIsolation} onChange={e => setFormData({...formData, isIsolation: e.target.checked})} />
+                                    {formData.isIsolation && <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" /></svg>}
+                                </div>
+                                <span className="text-xs font-bold text-gray-700">Paciente em Isolamento?</span>
+                            </label>
+                            {formData.isIsolation && (
+                                <input 
+                                    type="text" 
+                                    placeholder="Tipo (Ex: Contato, Respiratório)" 
+                                    className="w-full border-2 p-2 rounded-xl text-xs mt-2 focus:border-red-500 outline-none"
+                                    value={formData.isolationType}
+                                    onChange={e => setFormData({...formData, isolationType: e.target.value})}
+                                />
+                            )}
+                        </div>
+                     </div>
+                  </div>
+                </div>
+
+                {/* Seção 4: Acompanhante (Renumerado para 4) */}
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3 border-b border-gray-100 pb-3">
+                    <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-black text-sm">4</div>
                     <h3 className="text-sm font-black text-blue-600 uppercase tracking-widest">Acompanhante</h3>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -289,10 +363,10 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
                   </div>
                 </div>
 
-                {/* Seção 4: Espiritualidade */}
+                {/* Seção 5: Espiritualidade */}
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 border-b border-gray-100 pb-3">
-                    <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-black text-sm">4</div>
+                    <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-black text-sm">5</div>
                     <h3 className="text-sm font-black text-blue-600 uppercase tracking-widest">Situação Espiritual</h3>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -324,10 +398,10 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
                   </div>
                 </div>
 
-                {/* Seção 5: Atendimento */}
+                {/* Seção 6: Atendimento */}
                 <div className="space-y-6">
                   <div className="flex items-center gap-3 border-b border-gray-100 pb-3">
-                    <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-black text-sm">5</div>
+                    <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-black text-sm">6</div>
                     <h3 className="text-sm font-black text-blue-600 uppercase tracking-widest">Detalhes do Atendimento</h3>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -383,7 +457,7 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
                   </div>
                 </div>
 
-                {/* Seção 6: Notas */}
+                {/* Seção 7: Notas */}
                 <div className="space-y-1.5 pt-4">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Observações Adicionais / Motivo da Internação</label>
                   <textarea 
