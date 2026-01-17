@@ -117,7 +117,7 @@ export const SignUpPage: React.FC<{ state: AppState, onUpdateState: (s: AppState
             <p className="text-[10px] text-amber-700 font-bold leading-relaxed">
               O seu Supabase está bloqueando novos usuários. Para corrigir:<br/>
               1. Vá ao <span className="underline">Dashboard do Supabase</span><br/>
-              2. Menu <span className="underline">Authentication</span> > <span className="underline">Providers</span><br/>
+              2. Menu <span className="underline">Authentication</span> &gt; <span className="underline">Providers</span><br/>
               3. Abra a aba <span className="underline">Email</span><br/>
               4. Ative a opção: <b>"Allow new users to sign up"</b>.
             </p>
