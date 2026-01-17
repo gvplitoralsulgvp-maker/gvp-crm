@@ -3,30 +3,25 @@ import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital,
 import { supabase } from './supabaseClient';
 
 /**
- * Constante de estado inicial para garantir que todas as propriedades 
- * obrigatórias da interface AppState estejam sempre presentes.
+ * Retorna o estado inicial completo e tipado.
+ * Isso garante que todas as propriedades exigidas pela interface AppState estejam presentes.
  */
-const INITIAL_STATE: AppState = {
-  currentUser: null,
-  members: [],
-  hospitals: [],
-  routes: [],
-  visits: [],
-  socialWorkerVisits: [],
-  patients: [],
-  logs: [],
-  notifications: []
+export const createDefaultState = (): AppState => {
+  return {
+    currentUser: null,
+    members: [],
+    hospitals: [],
+    routes: [],
+    visits: [],
+    socialWorkerVisits: [],
+    patients: [],
+    logs: [],
+    notifications: []
+  };
 };
 
 /**
- * Retorna uma cópia limpa do estado inicial.
- */
-export const createDefaultState = (): AppState => ({
-  ...INITIAL_STATE
-});
-
-/**
- * Sanitização para o banco de dados (Snake Case).
+ * Sanitização para o banco de dados (converte camelCase para snake_case).
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
@@ -54,7 +49,7 @@ const sanitizeForDb = (tableName: string, data: any) => {
 };
 
 /**
- * Mapeamento do banco para Camel Case.
+ * Mapeamento do banco (snake_case) para o App (camelCase).
  */
 const mapFromDb = (data: any[]) => {
   return data.map((item: any) => {
@@ -68,7 +63,7 @@ const mapFromDb = (data: any[]) => {
 };
 
 /**
- * Atualização Atômica.
+ * Atualização Atômica no Supabase.
  */
 export const atomicUpdate = async (tableName: string, data: any) => {
   if (!supabase) return;
@@ -78,7 +73,7 @@ export const atomicUpdate = async (tableName: string, data: any) => {
 };
 
 /**
- * Exclusão Atômica.
+ * Exclusão Atômica no Supabase.
  */
 export const atomicDelete = async (tableName: string, id: string) => {
   if (!supabase) return;
@@ -87,10 +82,12 @@ export const atomicDelete = async (tableName: string, id: string) => {
 };
 
 /**
- * Carregamento do Estado completo.
+ * Carrega o estado completo do banco de dados.
+ * Garante que o retorno seja um AppState válido com todas as propriedades inicializadas.
  */
 export const loadState = async (): Promise<AppState> => {
-  if (!supabase) return INITIAL_STATE;
+  const state = createDefaultState();
+  if (!supabase) return state;
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -112,13 +109,14 @@ export const loadState = async (): Promise<AppState> => {
     tables.forEach((t, idx) => {
       const dbData = results[idx].data || [];
       const camelData = mapFromDb(dbData);
+      // Converte nome da tabela para chave do estado (ex: social_worker_visits -> socialWorkerVisits)
       const stateKey = t.replace(/(_\w)/g, m => m[1].toUpperCase());
       loadedData[stateKey] = camelData;
     });
 
-    // Construção segura do estado final partindo do INITIAL_STATE
+    // Construção explícita da resposta para evitar erro de propriedade ausente
     const finalState: AppState = {
-      ...INITIAL_STATE,
+      currentUser: null,
       members: (loadedData.members || []) as Member[],
       hospitals: (loadedData.hospitals || []) as Hospital[],
       routes: (loadedData.routes || []) as VisitRoute[],
@@ -135,13 +133,13 @@ export const loadState = async (): Promise<AppState> => {
 
     return finalState;
   } catch (e) {
-    console.error("[Storage] Erro fatal no loadState:", e);
-    return INITIAL_STATE;
+    console.error("[Storage] Erro ao carregar estado:", e);
+    return state;
   }
 };
 
 /**
- * SaveState depreciado.
+ * SaveState depreciado, mantido apenas para compatibilidade de interface se necessário.
  */
 export const saveState = async (state: AppState) => {
   return Promise.resolve();
