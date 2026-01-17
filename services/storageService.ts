@@ -4,30 +4,34 @@ import { supabase } from './supabaseClient';
 
 /**
  * FABRICA DE ESTADO PADRÃO
- * Garante que o objeto retornado tenha TODAS as chaves da interface AppState.
- * O uso de 'as' em arrays vazios evita a inferência de 'never[]'.
+ * Retorna um objeto AppState completo com todas as 9 propriedades obrigatórias.
  */
-export const createDefaultState = (): AppState => ({
-  currentUser: null,
-  members: [] as Member[],
-  hospitals: [] as Hospital[],
-  routes: [] as VisitRoute[],
-  visits: [] as VisitSlot[],
-  socialWorkerVisits: [] as SocialWorkerVisit[],
-  patients: [] as Patient[],
-  logs: [] as LogEntry[],
-  notifications: [] as Notification[]
-});
+export const createDefaultState = (): AppState => {
+  const defaultState: AppState = {
+    currentUser: null,
+    members: [] as Member[],
+    hospitals: [] as Hospital[],
+    routes: [] as VisitRoute[],
+    visits: [] as VisitSlot[],
+    socialWorkerVisits: [] as SocialWorkerVisit[],
+    patients: [] as Patient[],
+    logs: [] as LogEntry[],
+    notifications: [] as Notification[]
+  };
+  return defaultState;
+};
 
 /**
- * Conversor de Snake Case (DB) para Camel Case (App)
- * Usado individualmente para garantir tipagem.
+ * Função de mapeamento genérica (Snake Case -> Camel Case)
+ * Garante que o array de saída seja tipado corretamente para evitar 'never[]'
  */
-function toCamel<T>(data: any[] | null): T[] {
-  if (!data) return [] as T[];
+function mapFromDb<T>(data: any[] | null): T[] {
+  if (!data || !Array.isArray(data)) return [] as T[];
+  
   return data.map((item: any) => {
     const camelItem: any = {};
     Object.keys(item).forEach(key => {
+      // Converte snake_case para camelCase
       const camelKey = key.replace(/(_\w)/g, m => m[1].toUpperCase());
       camelItem[camelKey] = item[key];
     });
@@ -39,14 +43,15 @@ function toCamel<T>(data: any[] | null): T[] {
  * Carregamento do Estado Principal
  */
 export const loadState = async (): Promise<AppState> => {
-  const state = createDefaultState();
+  // Inicializamos um objeto vazio que segue RIGOROSAMENTE a interface AppState
+  const state: AppState = createDefaultState();
   
   if (!supabase) return state;
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
 
-    // Buscas paralelas no Supabase
+    // Buscas paralelas no banco de dados
     const [
       resMem, resHos, resRou, resVis, resSoc, resPat, resLog, resNot
     ] = await Promise.all([
@@ -60,43 +65,35 @@ export const loadState = async (): Promise<AppState> => {
       supabase.from('notifications').select('*')
     ]);
 
-    // Montagem do objeto final campo a campo para satisfazer o TypeScript
-    const finalState: AppState = {
-      currentUser: null,
-      members: voicesToCamel<Member>(resMem.data),
-      hospitals: voicesToCamel<Hospital>(resHos.data),
-      routes: voicesToCamel<VisitRoute>(resRou.data),
-      visits: voicesToCamel<VisitSlot>(resVis.data),
-      socialWorkerVisits: voicesToCamel<SocialWorkerVisit>(resSoc.data),
-      patients: voicesToCamel<Patient>(resPat.data),
-      logs: voicesToCamel<LogEntry>(resLog.data),
-      notifications: voicesToCamel<Notification>(resNot.data)
-    };
+    // Atribuição individual para garantir que nenhuma chave seja esquecida
+    state.members = mapFromDb<Member>(resMem.data);
+    state.hospitals = mapFromDb<Hospital>(resHos.data);
+    state.routes = mapFromDb<VisitRoute>(resRou.data);
+    state.visits = mapFromDb<VisitSlot>(resVis.data);
+    state.socialWorkerVisits = mapFromDb<SocialWorkerVisit>(resSoc.data);
+    state.patients = mapFromDb<Patient>(resPat.data);
+    state.logs = mapFromDb<LogEntry>(resLog.data);
+    state.notifications = mapFromDb<Notification>(resNot.data);
 
-    // Define o usuário atual se houver sessão
+    // Contexto do usuário atual
     if (session?.user) {
-      finalState.currentUser = finalState.members.find(m => m.id === session.user.id) || null;
+      state.currentUser = state.members.find(m => m.id === session.user.id) || null;
     }
 
-    return finalState;
-  } catch (error) {
-    console.error("[Storage] Falha no carregamento:", error);
     return state;
+  } catch (error) {
+    console.error("[StorageService] Falha crítica ao carregar estado:", error);
+    return createDefaultState(); // Retorno seguro em caso de erro
   }
 };
 
 /**
- * Atalho interno para a função de mapeamento
- */
-function voicesToCamel<T>(data: any): T[] {
-    return toCamel<T>(data);
-}
-
-/**
- * Sanitização para o banco de dados (converte Camel para Snake)
+ * Sanitização e conversão para o Banco de Dados (Camel -> Snake)
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
+  
+  // Regras de negócio para limpeza de campos virtuais ou sensíveis
   if (tableName === 'members') delete (cleanData as any).password;
   if (tableName === 'patients') delete (cleanData as any).hospitalName;
   if (tableName === 'routes') delete (cleanData as any).hospitals;
@@ -106,9 +103,13 @@ const sanitizeForDb = (tableName: string, data: any) => {
     const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
     snakeCaseData[snakeKey] = (cleanData as any)[key];
   });
+  
   return snakeCaseData;
 };
 
+/**
+ * Atualização Atômica (Persistência individual)
+ */
 export const atomicUpdate = async (tableName: string, data: any) => {
   if (!supabase) return;
   const sanitized = sanitizeForDb(tableName, data);
@@ -116,13 +117,20 @@ export const atomicUpdate = async (tableName: string, data: any) => {
   if (error) throw error;
 };
 
+/**
+ * Deleção Atômica
+ */
 export const atomicDelete = async (tableName: string, id: string) => {
   if (!supabase) return;
   const { error } = await supabase.from(tableName).delete().eq('id', id);
   if (error) throw error;
 };
 
+/**
+ * Compatibilidade com o sistema de salvamento global
+ */
 export const saveState = async (state: AppState) => {
-  // Implementação futura ou via atomicUpdate
+  // O sistema utiliza atomicUpdate para mudanças em tempo real, 
+  // mas mantemos esta função para compatibilidade de interface se necessário.
   return Promise.resolve();
 };
