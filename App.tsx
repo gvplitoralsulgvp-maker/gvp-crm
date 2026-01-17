@@ -23,6 +23,7 @@ import { OnboardingModal } from './components/OnboardingModal';
 import { NotificationCenter } from './components/NotificationCenter';
 import { supabase } from './services/supabaseClient';
 
+// --- LAYOUT PRINCIPAL ---
 const Layout: React.FC<{ 
   state: AppState; 
   onUpdateState: (s: AppState) => void; 
@@ -43,16 +44,15 @@ const Layout: React.FC<{
 
   // --- NOTIFICAÇÕES E REALTIME ---
   
-  // 1. Verificar Permissão ao Carregar (Sem pedir, apenas checar)
+  // 1. Verificar Permissão ao Carregar
   useEffect(() => {
     try {
       if ('Notification' in window && Notification.permission === 'default') {
         setShowNotifPermission(true);
       }
-      // Preload audio
       notificationAudioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     } catch (e) {
-      console.warn("Erro ao inicializar notificações:", e);
+      console.warn("Erro ao inicializar audio:", e);
     }
   }, []);
 
@@ -65,61 +65,47 @@ const Layout: React.FC<{
     if (Notification.permission === 'granted') {
       try {
         new Notification("GVP Litoral Sul", { 
-          body: "As notificações já estão ativadas e funcionando!",
+          body: "Notificações ativas! Você será alertado sobre novos pedidos.",
           icon: '/vite.svg' 
         });
-      } catch (e) { console.error(e); }
-      alert("As notificações já estão ativadas neste dispositivo.");
+      } catch (e) {}
+      alert("Permissão já concedida.");
       setShowNotifPermission(false);
-      return;
-    }
-
-    if (Notification.permission === 'denied') {
-      alert("As notificações foram bloqueadas anteriormente.\n\nPara ativar:\n1. Clique no ícone de cadeado 🔒 na barra de endereço.\n2. Em 'Permissões', ative 'Notificações'.\n3. Recarregue a página.");
       return;
     }
 
     Notification.requestPermission().then(permission => {
         if (permission === 'granted') {
             setShowNotifPermission(false);
-            try {
-              new Notification("GVP Litoral Sul", { body: "Notificações ativadas com sucesso!" });
-            } catch (e) { console.error(e); }
-        } else {
-            alert("Permissão negada. Você não receberá alertas de visitas.");
+            new Notification("GVP Litoral Sul", { body: "Notificações ativadas!" });
+        } else if (permission === 'denied') {
+            alert("Você bloqueou as notificações. Para ativar, acesse as configurações do navegador (ícone cadeado) e permita Notificações.");
         }
     });
   };
 
-  // 2. Helper para Disparar Notificação do Sistema
   const sendSystemNotification = (title: string, body: string) => {
     try {
-      // Tocar som
+      // Audio
       if (notificationAudioRef.current) {
-          notificationAudioRef.current.play().catch(e => console.log("Audio play blocked", e));
+          notificationAudioRef.current.play().catch(() => {});
       }
-
-      // Mostrar Push Nativo
+      // Push Visual
       if ('Notification' in window && Notification.permission === 'granted') {
-          // Tenta usar ServiceWorker se disponível (melhor para mobile), senão fallback para new Notification
           if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-              navigator.serviceWorker.ready.then(registration => {
-                  registration.showNotification(title, {
-                      body,
-                      icon: '/vite.svg', // Icone padrao
-                      vibrate: [200, 100, 200]
-                  });
+              navigator.serviceWorker.ready.then(reg => {
+                  reg.showNotification(title, { body, icon: '/vite.svg', vibrate: [200, 100, 200] });
               });
           } else {
               new Notification(title, { body, icon: '/vite.svg' });
           }
       }
     } catch (e) {
-      console.error("Erro ao enviar notificação nativa", e);
+      console.error("Erro notificação:", e);
     }
   };
 
-  // 3. Supabase Realtime Listener (Ouvindo novas notificações do servidor)
+  // 2. Listener Realtime (Websocket)
   useEffect(() => {
     if (!state.currentUser || !supabase) return;
 
@@ -130,32 +116,68 @@ const Layout: React.FC<{
         { event: 'INSERT', schema: 'public', table: 'notifications' },
         (payload) => {
           const newNotif = payload.new as AppNotification;
-          
-          // Verifica se a notificação é para o usuário logado
+          // Se for para mim
           if (newNotif.userId === state.currentUser?.id) {
-            // Atualiza estado local
             onUpdateState({
                 ...state,
                 notifications: [newNotif, ...state.notifications]
             });
-
-            // Dispara Push Nativo
-            const title = newNotif.type === 'warning' ? '⚠️ Atenção GVP' : 'Nova Mensagem GVP';
+            const title = newNotif.type === 'warning' ? '⚠️ Atenção Admin' : 'Nova Mensagem';
             sendSystemNotification(title, newNotif.message);
           }
         }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [state.currentUser, state.notifications]); 
 
-  // 4. Verificação Agendada de Visitas (Lembrete Diário)
+  // 3. Sync Force (Ao acordar o celular/aba)
+  // Isso resolve o problema de não receber alertas quando o celular "dorme"
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+        if (document.visibilityState === 'visible' && state.currentUser) {
+            console.log("App acordou (foreground). Buscando atualizações...");
+            try {
+                // Recarrega notificações do servidor para garantir que nada foi perdido
+                const { data: serverNotifs } = await supabase!
+                    .from('notifications')
+                    .select('*')
+                    .order('timestamp', { ascending: false }); // Do mais recente
+                
+                if (serverNotifs) {
+                    const mapped = serverNotifs.map(n => ({
+                        id: n.id,
+                        userId: n.user_id, // mapFromDb logic manual here just in case
+                        message: n.message,
+                        type: n.type,
+                        read: n.read,
+                        timestamp: n.timestamp
+                    })).filter((n: any) => n.userId === state.currentUser?.id);
+
+                    // Verifica se tem algo novo comparado ao estado local
+                    const localIds = new Set(state.notifications.map(n => n.id));
+                    const hasNew = mapped.some((n: any) => !localIds.has(n.id) && !n.read);
+
+                    if (hasNew) {
+                        sendSystemNotification("Atualização", "Novos itens recebidos enquanto você estava ausente.");
+                    }
+
+                    onUpdateState({ ...state, notifications: mapped });
+                }
+            } catch (err) {
+                console.error("Erro sync ao acordar:", err);
+            }
+        }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [state.currentUser, state.notifications]);
+
+  // 4. Lembrete Diário (Agenda)
   useEffect(() => {
     if (!state.currentUser) return;
-
     const checkUpcomingVisits = () => {
       try {
         const now = new Date();
@@ -166,7 +188,6 @@ const Layout: React.FC<{
         const upcoming = state.visits.filter(v => {
           const isTomorrow = v.date === tomorrowStr;
           const isMine = v.memberIds.includes(state.currentUser!.id);
-          // Evita notificar se já existir notificação de hoje sobre isso
           const alreadyNotified = state.notifications.some(n => 
             n.userId === state.currentUser!.id && 
             n.message.includes(v.date) && 
@@ -179,7 +200,7 @@ const Layout: React.FC<{
           const newNotifications: AppNotification[] = upcoming.map(v => ({
             id: crypto.randomUUID(),
             userId: state.currentUser!.id,
-            message: `📅 Lembrete: Você tem uma visita agendada para AMANHÃ (${v.date}). Prepare-se!`,
+            message: `📅 Lembrete: Visita amanhã (${v.date}). Prepare-se!`,
             type: 'warning',
             read: false,
             timestamp: new Date().toISOString()
@@ -191,19 +212,15 @@ const Layout: React.FC<{
             ...state,
             notifications: [...newNotifications, ...state.notifications]
           });
-
-          sendSystemNotification("Lembrete de Visita", `Você tem visita amanhã! Verifique o app.`);
+          sendSystemNotification("Lembrete de Visita", "Você tem visita amanhã!");
         }
-      } catch (err) {
-        console.error("Erro na verificação de visitas:", err);
-      }
+      } catch (err) { console.error(err); }
     };
-
-    // Roda verificação 10s após carregar o app
     const timer = setTimeout(checkUpcomingVisits, 10000);
     return () => clearTimeout(timer);
-  }, [state.visits, state.currentUser]); // Removido state.notifications da dependência para evitar loops
+  }, [state.visits, state.currentUser]); 
 
+  // Onboarding Logic
   useEffect(() => {
     if (state.currentUser && state.currentUser.hasSeenOnboarding === false) {
       setIsOnboardingOpen(true);
@@ -222,9 +239,7 @@ const Layout: React.FC<{
       const updatedMembers = state.members.map(m => 
         m.id === state.currentUser?.id ? { ...m, hasSeenOnboarding: true } : m
       );
-      
       atomicUpdate('members', { ...state.currentUser, hasSeenOnboarding: true });
-      
       onUpdateState({
         ...state,
         members: updatedMembers,
@@ -249,7 +264,7 @@ const Layout: React.FC<{
   };
 
   const menuItems = [
-    { to: "/dashboard", label: "Agenda", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+    { to: "/dashboard", label: "Agenda", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
     { to: "/patients", label: "Pacientes", icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" },
     { to: "/social-visits", label: "AS", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
     { to: "/map", label: "Mapa", icon: "M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" },
@@ -262,8 +277,6 @@ const Layout: React.FC<{
 
   return (
     <div className={`h-[100dvh] flex overflow-hidden ${isHospitalMode ? 'bg-[#1a1c1e] text-gray-200' : 'bg-gray-50 text-gray-900'} ${isNightMode ? 'night-shift' : ''}`}>
-      
-      {/* Sidebar Desktop - Escondida no Mobile */}
       <aside className={`hidden md:flex flex-col w-64 ${isHospitalMode ? 'bg-[#212327] border-r border-gray-800' : 'bg-white shadow-xl'}`}>
         <div className="p-6 border-b flex items-center justify-between border-gray-800/10 shrink-0">
           <div className="flex items-center gap-2">
@@ -273,7 +286,6 @@ const Layout: React.FC<{
             <span className="font-bold text-lg">SOFT-CRM GVP</span>
           </div>
         </div>
-
         <nav className="flex-grow p-4 space-y-2 overflow-y-auto custom-scrollbar">
           {menuItems.map(item => (
             <Link 
@@ -285,14 +297,12 @@ const Layout: React.FC<{
             </Link>
           ))}
         </nav>
-
         <div className="p-4 border-t border-gray-800/10 space-y-2 shrink-0">
           <button onClick={onChangePasswordClick} className="w-full text-left px-4 py-2 text-xs font-bold uppercase text-gray-400 hover:text-blue-500">Alterar Senha</button>
           <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-xs font-bold uppercase text-red-500 hover:bg-red-500/10 rounded-lg">Sair</button>
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <div className="flex-grow flex flex-col min-w-0 h-full relative overflow-hidden pb-16 md:pb-0">
         {isSyncing && (
           <div className="absolute top-0 left-0 right-0 h-1 bg-blue-600/30 overflow-hidden z-[100]">
@@ -319,19 +329,15 @@ const Layout: React.FC<{
               onMarkAsRead={handleMarkAsRead} 
               onClearAll={handleClearNotifications} 
             />
-
             <button onClick={onToggleHospitalMode} className={`p-2 rounded-full transition-all ${isHospitalMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
               {isHospitalMode ? <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M16.95 16.95l.707.707M7.05 7.05l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" /></svg> : <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>}
             </button>
-
             <button onClick={onToggleNightMode} className={`p-2 rounded-full transition-all ${isNightMode ? 'bg-orange-500 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </button>
-
             <button onClick={onTogglePrivacy} className={`p-2 rounded-full transition-colors ${isPrivacyMode ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             </button>
-            
             <div className={`flex items-center gap-3 border-l pl-3 md:pl-4 ${isHospitalMode ? 'border-gray-800' : 'border-gray-200'}`}>
               <div className="w-8 h-8 md:w-9 md:h-9 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-lg select-none">
                 {state.currentUser.name.substring(0,2).toUpperCase()}
@@ -363,29 +369,22 @@ const Layout: React.FC<{
         </main>
       </div>
 
-      {/* Bottom Navigation Bar (Mobile Only) */}
       <nav className={`md:hidden fixed bottom-0 left-0 right-0 h-16 ${isHospitalMode ? 'bg-[#212327] border-t border-gray-800' : 'bg-white border-t border-gray-200'} z-50 flex justify-around items-center px-2 pb-safe`}>
         {menuItems.slice(0, 4).map(item => (
           <Link 
-            key={item.to} 
-            to={item.to}
+            key={item.to} to={item.to}
             className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${location.pathname === item.to ? 'text-blue-600' : isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
             <span className="text-[9px] font-bold uppercase tracking-wide">{item.label}</span>
           </Link>
         ))}
-        {/* Botão Mais para Admin/Extras */}
-        <button 
-            onClick={() => setIsSidebarOpen(true)}
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${isSidebarOpen ? 'text-blue-600' : isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}
-        >
+        <button onClick={() => setIsSidebarOpen(true)} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${isSidebarOpen ? 'text-blue-600' : isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
             <span className="text-[9px] font-bold uppercase tracking-wide">Menu</span>
         </button>
       </nav>
 
-      {/* Mobile Drawer (Menu Extras) */}
       {isSidebarOpen && (
         <div className="fixed inset-0 z-[60] md:hidden">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)}></div>
@@ -418,12 +417,12 @@ const Layout: React.FC<{
             </div>
         </div>
       )}
-
       <OnboardingModal isOpen={isOnboardingOpen} onClose={handleCloseOnboarding} isHospitalMode={isHospitalMode} />
     </div>
   );
 };
 
+// --- APP COMPONENT PRINCIPAL ---
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(createDefaultState());
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
@@ -432,6 +431,7 @@ const App: React.FC = () => {
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(true);
 
+  // Inicialização
   useEffect(() => {
     loadState().then(loaded => {
       setState(loaded);
