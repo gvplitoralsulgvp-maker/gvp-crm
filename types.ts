@@ -83,7 +83,7 @@ export interface Patient {
   hospitalName?: string; // Virtual para UI
   treatment: string;
   admissionDate: string;
-  estimatedDischargeDate?: string; // Adicionado para evitar erro TS2339
+  estimatedDischargeDate?: string; 
   active: boolean;
   floor?: string;
   wing?: string;

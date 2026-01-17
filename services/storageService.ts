@@ -19,14 +19,12 @@ export const createDefaultState = (): AppState => ({
 
 /**
  * Converte nomes de campos de camelCase para snake_case para o PostgreSQL.
- * Também remove campos virtuais que não existem na estrutura física do banco.
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
 
   if (tableName === 'members') {
     delete cleanData.password;
-    // Removemos 'circuit' caso ele tenha vindo de alguma versão antiga de testes
     if ('circuit' in cleanData) delete cleanData.circuit;
   }
   
@@ -36,7 +34,6 @@ const sanitizeForDb = (tableName: string, data: any) => {
   
   if (tableName === 'routes') {
     delete cleanData.hospitals;
-    // Garante que hospitalIds seja sempre um array para evitar erros de restrição no banco
     if (!cleanData.hospitalIds) cleanData.hospitalIds = [];
   }
 
@@ -64,7 +61,7 @@ const mapFromDb = (data: any[]) => {
 };
 
 /**
- * Executa um Upsert (Insert ou Update) atômico em uma tabela do Supabase.
+ * Executa um Upsert atômico em uma tabela do Supabase.
  */
 export const atomicUpdate = async (tableName: string, data: any) => {
   if (!supabase) return;
@@ -77,7 +74,7 @@ export const atomicUpdate = async (tableName: string, data: any) => {
 };
 
 /**
- * Remove um registro de uma tabela pelo ID.
+ * Remove um registro pelo ID.
  */
 export const atomicDelete = async (tableName: string, id: string) => {
   if (!supabase) return;
@@ -95,7 +92,6 @@ export const loadState = async (): Promise<AppState> => {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     
-    // Lista de tabelas físicas sincronizadas
     const tables = [
       'members', 
       'hospitals', 
@@ -114,11 +110,8 @@ export const loadState = async (): Promise<AppState> => {
     tables.forEach((t, idx) => {
       const dbData = results[idx].data || [];
       const camelData = mapFromDb(dbData);
-      
-      // Mapeia para a chave correta no AppState (camelCase)
       let stateKey = t.replace(/(_\w)/g, m => m[1].toUpperCase());
       
-      // Caso especial: social_worker_visits -> socialWorkerVisits
       if (stateKey === 'socialWorkerVisits') {
           finalState.socialWorkerVisits = camelData as SocialWorkerVisit[];
       } else {
@@ -137,9 +130,7 @@ export const loadState = async (): Promise<AppState> => {
   }
 };
 
-/**
- * Legado para manter compatibilidade de assinatura se necessário em outros arquivos.
- */
 export const saveState = async (state: AppState) => {
-  console.info("saveState no longer recommended. Use atomicUpdate.");
+  // saveState depreciado
+  return Promise.resolve();
 };

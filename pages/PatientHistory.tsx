@@ -21,7 +21,7 @@ export const PatientHistory: React.FC<PatientHistoryProps> = ({ state, isHospita
         const lower = searchTerm.toLowerCase();
         result = result.filter(p => 
             p.name.toLowerCase().includes(lower) || 
-            (p.hospitalName && p.hospitalName.toLowerCase().includes(lower))
+            (p.hospitalName?.toLowerCase().includes(lower))
         );
     }
     return result;
@@ -89,13 +89,6 @@ export const PatientHistory: React.FC<PatientHistoryProps> = ({ state, isHospita
                          </td>
                       </tr>
                    ))}
-                   {inactivePatients.length === 0 && (
-                      <tr>
-                         <td colSpan={4} className="px-6 py-8 text-center text-gray-500 italic">
-                             Nenhum histórico encontrado.
-                         </td>
-                      </tr>
-                   )}
                 </tbody>
              </table>
           </div>
