@@ -114,7 +114,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
           isOpen={true} 
           onClose={() => setFinishVisitSlot(null)} 
           onConfirm={handleFinishVisit} 
-          patients={state.patients.filter(p => p.active && state.routes.find(r => r.id === finishVisitSlot.routeId)?.hospitalIds.includes(p.hospitalId))}
+          patients={state.patients.filter(p => {
+              const route = state.routes.find(r => r.id === finishVisitSlot.routeId);
+              return p.active && (route?.hospitalIds || []).includes(p.hospitalId);
+          })}
           isHospitalMode={isHospitalMode} 
         />
       )}

@@ -4,18 +4,21 @@ import { supabase } from './supabaseClient';
 
 /**
  * Retorna o estado inicial limpo.
+ * Explicitamente tipado como AppState para garantir que todas as propriedades existam.
  */
-export const createDefaultState = (): AppState => ({
-  currentUser: null,
-  members: [],
-  hospitals: [],
-  routes: [],
-  visits: [],
-  socialWorkerVisits: [],
-  patients: [],
-  logs: [],
-  notifications: []
-});
+export const createDefaultState = (): AppState => {
+  return {
+    currentUser: null,
+    members: [],
+    hospitals: [],
+    routes: [],
+    visits: [],
+    socialWorkerVisits: [],
+    patients: [],
+    logs: [],
+    notifications: []
+  };
+};
 
 /**
  * Sanitização para o banco de dados (Snake Case).
@@ -109,7 +112,7 @@ export const loadState = async (): Promise<AppState> => {
       loadedData[stateKey] = camelData;
     });
 
-    // Montagem forçada para satisfazer a interface AppState
+    // Construção robusta do estado final
     const finalState: AppState = {
       currentUser: null,
       members: (loadedData.members || []) as Member[],
@@ -134,7 +137,7 @@ export const loadState = async (): Promise<AppState> => {
 };
 
 /**
- * SaveState depreciado.
+ * SaveState depreciado em favor de atomicUpdate.
  */
 export const saveState = async (state: AppState) => {
   return Promise.resolve();
