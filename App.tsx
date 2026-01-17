@@ -45,46 +45,77 @@ const Layout: React.FC<{
   
   // 1. Verificar Permissão ao Carregar (Sem pedir, apenas checar)
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      setShowNotifPermission(true);
+    try {
+      if ('Notification' in window && Notification.permission === 'default') {
+        setShowNotifPermission(true);
+      }
+      // Preload audio
+      notificationAudioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    } catch (e) {
+      console.warn("Erro ao inicializar notificações:", e);
     }
-    // Preload audio
-    notificationAudioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
   }, []);
 
   const handleRequestPermission = () => {
+    if (!('Notification' in window)) {
+      alert("Este navegador não suporta notificações.");
+      return;
+    }
+
+    if (Notification.permission === 'granted') {
+      try {
+        new Notification("GVP Litoral Sul", { 
+          body: "As notificações já estão ativadas e funcionando!",
+          icon: '/vite.svg' 
+        });
+      } catch (e) { console.error(e); }
+      alert("As notificações já estão ativadas neste dispositivo.");
+      setShowNotifPermission(false);
+      return;
+    }
+
+    if (Notification.permission === 'denied') {
+      alert("As notificações foram bloqueadas anteriormente.\n\nPara ativar:\n1. Clique no ícone de cadeado 🔒 na barra de endereço.\n2. Em 'Permissões', ative 'Notificações'.\n3. Recarregue a página.");
+      return;
+    }
+
     Notification.requestPermission().then(permission => {
-        if (permission !== 'default') {
+        if (permission === 'granted') {
             setShowNotifPermission(false);
+            try {
+              new Notification("GVP Litoral Sul", { body: "Notificações ativadas com sucesso!" });
+            } catch (e) { console.error(e); }
+        } else {
+            alert("Permissão negada. Você não receberá alertas de visitas.");
         }
     });
   };
 
   // 2. Helper para Disparar Notificação do Sistema
   const sendSystemNotification = (title: string, body: string) => {
-    // Tocar som
-    if (notificationAudioRef.current) {
-        notificationAudioRef.current.play().catch(e => console.log("Audio play blocked", e));
-    }
-
-    // Mostrar Push Nativo
-    if ('Notification' in window && Notification.permission === 'granted') {
-      try {
-        // Tenta usar ServiceWorker se disponível (melhor para mobile), senão fallback para new Notification
-        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.ready.then(registration => {
-                registration.showNotification(title, {
-                    body,
-                    icon: '/vite.svg', // Icone padrao
-                    vibrate: [200, 100, 200]
-                });
-            });
-        } else {
-            new Notification(title, { body, icon: '/vite.svg' });
-        }
-      } catch (e) {
-        console.error("Erro ao enviar notificação nativa", e);
+    try {
+      // Tocar som
+      if (notificationAudioRef.current) {
+          notificationAudioRef.current.play().catch(e => console.log("Audio play blocked", e));
       }
+
+      // Mostrar Push Nativo
+      if ('Notification' in window && Notification.permission === 'granted') {
+          // Tenta usar ServiceWorker se disponível (melhor para mobile), senão fallback para new Notification
+          if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.ready.then(registration => {
+                  registration.showNotification(title, {
+                      body,
+                      icon: '/vite.svg', // Icone padrao
+                      vibrate: [200, 100, 200]
+                  });
+              });
+          } else {
+              new Notification(title, { body, icon: '/vite.svg' });
+          }
+      }
+    } catch (e) {
+      console.error("Erro ao enviar notificação nativa", e);
     }
   };
 
@@ -126,48 +157,52 @@ const Layout: React.FC<{
     if (!state.currentUser) return;
 
     const checkUpcomingVisits = () => {
-      const now = new Date();
-      const tomorrow = new Date();
-      tomorrow.setDate(now.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+      try {
+        const now = new Date();
+        const tomorrow = new Date();
+        tomorrow.setDate(now.getDate() + 1);
+        const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-      const upcoming = state.visits.filter(v => {
-        const isTomorrow = v.date === tomorrowStr;
-        const isMine = v.memberIds.includes(state.currentUser!.id);
-        // Evita notificar se já existir notificação de hoje sobre isso
-        const alreadyNotified = state.notifications.some(n => 
-          n.userId === state.currentUser!.id && 
-          n.message.includes(v.date) && 
-          new Date(n.timestamp).toDateString() === now.toDateString()
-        );
-        return isTomorrow && isMine && !alreadyNotified && !v.report;
-      });
-
-      if (upcoming.length > 0) {
-        const newNotifications: AppNotification[] = upcoming.map(v => ({
-          id: crypto.randomUUID(),
-          userId: state.currentUser!.id,
-          message: `📅 Lembrete: Você tem uma visita agendada para AMANHÃ (${v.date}). Prepare-se!`,
-          type: 'warning',
-          read: false,
-          timestamp: new Date().toISOString()
-        }));
-
-        Promise.all(newNotifications.map(n => atomicUpdate('notifications', n)));
-        
-        onUpdateState({
-          ...state,
-          notifications: [...newNotifications, ...state.notifications]
+        const upcoming = state.visits.filter(v => {
+          const isTomorrow = v.date === tomorrowStr;
+          const isMine = v.memberIds.includes(state.currentUser!.id);
+          // Evita notificar se já existir notificação de hoje sobre isso
+          const alreadyNotified = state.notifications.some(n => 
+            n.userId === state.currentUser!.id && 
+            n.message.includes(v.date) && 
+            new Date(n.timestamp).toDateString() === now.toDateString()
+          );
+          return isTomorrow && isMine && !alreadyNotified && !v.report;
         });
 
-        sendSystemNotification("Lembrete de Visita", `Você tem visita amanhã! Verifique o app.`);
+        if (upcoming.length > 0) {
+          const newNotifications: AppNotification[] = upcoming.map(v => ({
+            id: crypto.randomUUID(),
+            userId: state.currentUser!.id,
+            message: `📅 Lembrete: Você tem uma visita agendada para AMANHÃ (${v.date}). Prepare-se!`,
+            type: 'warning',
+            read: false,
+            timestamp: new Date().toISOString()
+          }));
+
+          Promise.all(newNotifications.map(n => atomicUpdate('notifications', n)));
+          
+          onUpdateState({
+            ...state,
+            notifications: [...newNotifications, ...state.notifications]
+          });
+
+          sendSystemNotification("Lembrete de Visita", `Você tem visita amanhã! Verifique o app.`);
+        }
+      } catch (err) {
+        console.error("Erro na verificação de visitas:", err);
       }
     };
 
     // Roda verificação 10s após carregar o app
     const timer = setTimeout(checkUpcomingVisits, 10000);
     return () => clearTimeout(timer);
-  }, [state.visits, state.currentUser]); 
+  }, [state.visits, state.currentUser]); // Removido state.notifications da dependência para evitar loops
 
   useEffect(() => {
     if (state.currentUser && state.currentUser.hasSeenOnboarding === false) {
@@ -214,7 +249,7 @@ const Layout: React.FC<{
   };
 
   const menuItems = [
-    { to: "/dashboard", label: "Agenda", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+    { to: "/dashboard", label: "Agenda", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
     { to: "/patients", label: "Pacientes", icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" },
     { to: "/social-visits", label: "AS", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
     { to: "/map", label: "Mapa", icon: "M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" },

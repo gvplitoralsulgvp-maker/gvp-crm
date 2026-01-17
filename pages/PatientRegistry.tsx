@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppState, Patient } from '../types';
 import { Button } from '../components/Button';
+import { PatientDetailModal } from '../components/PatientDetailModal';
 
 interface PatientRegistryProps {
   state: AppState;
@@ -15,6 +16,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
   const navigate = useNavigate();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Partial<Patient>>({});
+  const [viewingPatient, setViewingPatient] = useState<Patient | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterHospital, setFilterHospital] = useState('');
 
@@ -113,9 +115,13 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-10">
         {filteredPatients.map(patient => (
-          <div key={patient.id} className={`${isHospitalMode ? 'bg-[#212327] border-gray-800 shadow-black' : 'bg-white border-gray-200 shadow-sm'} rounded-3xl border overflow-hidden flex flex-col relative transition-all hover:shadow-xl`}>
+          <div 
+            key={patient.id} 
+            onClick={() => setViewingPatient(patient)}
+            className={`${isHospitalMode ? 'bg-[#212327] border-gray-800 shadow-black' : 'bg-white border-gray-200 shadow-sm'} rounded-3xl border overflow-hidden flex flex-col relative transition-all hover:shadow-xl cursor-pointer active:scale-95`}
+          >
             {patient.isIsolation && <div className="bg-red-600 text-white text-[10px] font-black text-center py-1.5 uppercase tracking-widest">⚠️ Isolamento: {patient.isolationType}</div>}
-            <div className="p-6 flex-grow">
+            <div className="p-6 flex-grow pointer-events-none">
               <div className="flex justify-between items-start mb-4">
                  <div>
                    <h3 className={`font-black text-lg leading-tight ${isPrivacyMode ? 'blur-sm select-none' : ''} ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{patient.name}</h3>
@@ -139,7 +145,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
               </div>
             </div>
 
-            <div className={`px-6 py-4 border-t flex justify-between items-center gap-2 ${isHospitalMode ? 'bg-white/5 border-gray-800' : 'bg-gray-50 border-gray-100'}`}>
+            <div className={`px-6 py-4 border-t flex justify-between items-center gap-2 ${isHospitalMode ? 'bg-white/5 border-gray-800' : 'bg-gray-50 border-gray-100'}`} onClick={e => e.stopPropagation()}>
                <button 
                 type="button"
                 onClick={(e) => handleDischarge(e, patient.id, patient.name)} 
@@ -149,7 +155,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                </button>
                <button 
                 type="button"
-                onClick={() => { setEditingPatient(patient); setIsFormOpen(true); }} 
+                onClick={(e) => { e.stopPropagation(); setEditingPatient(patient); setIsFormOpen(true); }} 
                 className="text-[10px] font-black text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl uppercase tracking-widest transition-all"
                >
                  Editar
@@ -164,6 +170,35 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
           </div>
         )}
       </div>
+
+      {/* Modal de Detalhes do Paciente */}
+      {viewingPatient && (
+        <PatientDetailModal
+            isOpen={true}
+            onClose={() => setViewingPatient(null)}
+            patient={viewingPatient}
+            lastVisit={
+                state.visits
+                    .filter(v => v.status === 'FINISHED' && v.report)
+                    .sort((a, b) => b.date.localeCompare(a.date))
+                    .find(v => {
+                        const r = state.routes.find(route => route.id === v.routeId);
+                        return r && r.hospitals && viewingPatient.hospitalName && r.hospitals.includes(viewingPatient.hospitalName);
+                    }) || null
+            }
+            members={state.members}
+            onDischarge={(id, name) => {
+                if (window.confirm(`Deseja confirmar a ALTA HOSPITALAR de ${name}?`)) {
+                    const updatedPatients = state.patients.map(p => 
+                        p.id === id ? { ...p, active: false } : p
+                    );
+                    onUpdateState({ ...state, patients: updatedPatients });
+                    setViewingPatient(null);
+                }
+            }}
+            isHospitalMode={isHospitalMode}
+        />
+      )}
 
       {isFormOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
