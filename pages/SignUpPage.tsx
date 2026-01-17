@@ -13,6 +13,7 @@ export const SignUpPage: React.FC<{ state: AppState, onUpdateState: (s: AppState
   const [geoInfo, setGeoInfo] = useState<{lat: number, lng: number, address: string} | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isInstanceBlocked, setIsInstanceBlocked] = useState(false);
 
   const handleValidateCep = async () => {
     const cleanCep = formData.cep.replace(/\D/g, '');
@@ -27,6 +28,8 @@ export const SignUpPage: React.FC<{ state: AppState, onUpdateState: (s: AppState
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsInstanceBlocked(false);
+
     if (!geoInfo || formData.password.length < 6) {
         if (!geoInfo) setError('Por favor, valide o seu CEP antes de continuar.');
         else if (formData.password.length < 6) setError('A senha deve ter no mínimo 6 caracteres.');
@@ -45,13 +48,24 @@ export const SignUpPage: React.FC<{ state: AppState, onUpdateState: (s: AppState
         const { data, error: authErr } = await supabase.auth.signUp({
             email: cleanEmail,
             password: formData.password,
-            options: { data: { full_name: formData.name } }
+            options: { 
+              data: { 
+                full_name: formData.name 
+              } 
+            }
         });
 
-        if (authErr) throw authErr;
+        if (authErr) {
+          // Detectar erro de instância que não permite novos usuários
+          if (authErr.message.includes("Signups not allowed")) {
+            setIsInstanceBlocked(true);
+            throw new Error("O servidor está configurado para não aceitar novos cadastros no momento.");
+          }
+          throw authErr;
+        }
+
         if (!data.user) throw new Error("Erro ao criar usuário na autenticação.");
 
-        // REGRA DE OURO: admin@gvp.com é sempre ADMIN e já começa ATIVO
         const isAdminEmail = cleanEmail === 'admin@gvp.com';
 
         // 2. Criar Perfil na tabela Members
@@ -69,13 +83,12 @@ export const SignUpPage: React.FC<{ state: AppState, onUpdateState: (s: AppState
             hasSeenOnboarding: false
         };
 
-        // Salvar no banco usando o atomicUpdate que já lida com o supabase
         await atomicUpdate('members', newMember);
         
         if (isAdminEmail) {
-            alert('Conta Administrador criada com sucesso! Você já pode entrar.');
+            alert('Conta Administrador criada com sucesso! Você já pode acessar o sistema.');
         } else {
-            alert('Cadastro enviado! Aguarde a aprovação do administrador para acessar o painel.');
+            alert('Cadastro realizado com sucesso! Aguarde agora a liberação do seu acesso pelo coordenador do grupo no painel administrativo.');
         }
         
         navigate('/login');
@@ -94,6 +107,22 @@ export const SignUpPage: React.FC<{ state: AppState, onUpdateState: (s: AppState
             <h2 className="text-3xl font-black text-gray-900 tracking-tight">GVP Litoral Sul</h2>
             <p className="text-sm font-bold text-blue-500 uppercase tracking-widest mt-2">Solicitar Cadastro</p>
         </div>
+
+        {isInstanceBlocked && (
+          <div className="p-6 bg-amber-50 border-2 border-amber-200 rounded-2xl space-y-3 animate-bounce">
+            <p className="text-xs font-black text-amber-800 uppercase tracking-widest flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+              Instrução para o Administrador
+            </p>
+            <p className="text-[10px] text-amber-700 font-bold leading-relaxed">
+              O seu Supabase está bloqueando novos usuários. Para corrigir:<br/>
+              1. Vá ao <span className="underline">Dashboard do Supabase</span><br/>
+              2. Menu <span className="underline">Authentication</span> > <span className="underline">Providers</span><br/>
+              3. Abra a aba <span className="underline">Email</span><br/>
+              4. Ative a opção: <b>"Allow new users to sign up"</b>.
+            </p>
+          </div>
+        )}
         
         <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -103,7 +132,7 @@ export const SignUpPage: React.FC<{ state: AppState, onUpdateState: (s: AppState
                 </div>
                 <div className="space-y-1">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">E-mail</label>
-                    <input required type="email" placeholder="admin@gvp.com" className="w-full border-2 border-gray-50 bg-gray-50 rounded-2xl p-4 text-sm outline-none focus:border-blue-600 transition-all" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                    <input required type="email" placeholder="seu.email@gvp.com" className="w-full border-2 border-gray-50 bg-gray-50 rounded-2xl p-4 text-sm outline-none focus:border-blue-600 transition-all" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                 </div>
             </div>
             
@@ -137,9 +166,9 @@ export const SignUpPage: React.FC<{ state: AppState, onUpdateState: (s: AppState
                 <input required type="password" placeholder="Mínimo 6 caracteres" className="w-full border-2 border-gray-50 bg-gray-50 rounded-2xl p-4 text-sm outline-none focus:border-blue-600 transition-all" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
             </div>
 
-            {error && <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-bold border border-red-100 text-center">{error}</div>}
+            {error && <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black border border-red-100 text-center uppercase tracking-widest leading-relaxed">{error}</div>}
 
-            <Button type="submit" disabled={isLoading} className="w-full rounded-2xl py-4 font-black">
+            <Button type="submit" disabled={isLoading} className="w-full rounded-2xl py-5 font-black text-base transition-all active:scale-95 shadow-xl shadow-blue-500/20">
                 {isLoading ? 'Criando Conta...' : 'Finalizar Cadastro'}
             </Button>
             

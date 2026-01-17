@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { AppState, Member, UserRole } from '../types';
 import { Button } from '../components/Button';
 import { supabase } from '../services/supabaseClient';
+import { mapFromDb } from '../services/storageService';
 
 interface LoginPageProps {
   state: AppState;
@@ -43,47 +44,48 @@ export const LoginPage: React.FC<LoginPageProps> = ({ state, onLogin }) => {
     try {
         if (!supabase) throw new Error("Supabase não configurado corretamente.");
 
-        // 1. Autenticação via Supabase
-        const { data, error: authError } = await supabase.auth.signInWithPassword({
+        // 1. Autenticação via Supabase Auth
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
             email: cleanEmail,
             password
         });
 
         if (authError) {
-            throw new Error("E-mail ou senha incorretos. Tente novamente.");
+            console.error("Login Auth Error:", authError);
+            
+            // Caso especial: Usuários criados antes da desativação da confirmação
+            if (authError.message.includes("Email not confirmed")) {
+                throw new Error("Sua conta foi criada em uma versão anterior do sistema. Peça ao administrador para ativar seu e-mail manualmente no painel.");
+            }
+            
+            throw new Error("E-mail ou senha incorretos. Verifique seus dados.");
         }
 
-        // 2. Busca o perfil na tabela members
-        const { data: profile, error: profileError } = await supabase
+        // 2. Busca o perfil na tabela members usando o UUID do Auth
+        const { data: profileRaw, error: profileError } = await supabase
             .from('members')
             .select('*')
-            .eq('id', data.user.id)
+            .eq('id', authData.user.id)
             .single();
 
-        if (profileError || !profile) {
-            throw new Error("Perfil não encontrado. Contate o administrador.");
+        if (profileError || !profileRaw) {
+            console.error("Login Profile Error:", profileError);
+            throw new Error("Perfil de voluntário não localizado. Contate o administrador.");
         }
 
-        if (!profile.active) {
-            throw new Error("Sua conta ainda não foi ativada pelo administrador.");
-        }
+        // 3. Usa o mapeamento padronizado do app
+        const mappedProfiles = mapFromDb<Member>([profileRaw]);
+        const userSession = mappedProfiles[0];
 
-        // Converte snake_case para camelCase
-        const userSession: Member = {
-            id: profile.id,
-            name: profile.name,
-            email: profile.email,
-            role: profile.role as UserRole,
-            active: profile.active,
-            phone: profile.phone,
-            congregation: profile.congregation,
-            hasSeenOnboarding: profile.has_seen_onboarding
-        };
+        // 4. Verificação de status ativo (aprovado pelo admin)
+        if (userSession.active !== true) {
+            throw new Error("Seu cadastro foi realizado, mas ainda aguarda a aprovação do Administrador.");
+        }
 
         onLogin(userSession);
         navigate('/dashboard');
     } catch (err: any) {
-        setError(err.message);
+        setError(err.message || "Ocorreu um erro ao tentar entrar.");
     } finally {
         setIsLoading(false);
     }
@@ -106,7 +108,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ state, onLogin }) => {
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">E-mail Corporativo</label>
               <input 
                 required type="email" 
-                placeholder="admin@gvp.com" 
+                placeholder="seu.email@gvp.com" 
                 className="w-full border-2 border-gray-50 bg-gray-50 rounded-2xl p-4 text-sm focus:border-blue-600 outline-none transition-all" 
                 value={email} 
                 onChange={e => setEmail(e.target.value)} 
@@ -125,7 +127,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ state, onLogin }) => {
             </div>
 
             {error && (
-              <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black border border-red-100 text-center uppercase tracking-widest">
+              <div className="p-4 rounded-2xl text-[10px] font-black border text-center uppercase tracking-widest leading-relaxed bg-red-50 text-red-600 border-red-100">
                 {error}
               </div>
             )}

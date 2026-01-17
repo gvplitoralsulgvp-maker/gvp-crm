@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { AppState, Member, VisitRoute, UserRole, Hospital } from '../types';
 import { Button } from '../components/Button';
-import { atomicUpdate, atomicDelete, loadState } from '../services/storageService';
+import { atomicUpdate, loadState } from '../services/storageService';
 import { getCoordsFromCep } from '../services/geoService';
 
 export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
@@ -35,35 +35,10 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     });
   }, [state.members]);
 
-  const handleValidateMemberCep = async () => {
-    const cleanCep = memberCep.replace(/\D/g, '');
-    if (cleanCep.length !== 8) {
-      alert("Digite um CEP válido com 8 dígitos.");
-      return;
-    }
-    setIsGeoLoading(true);
-    try {
-      const result = await getCoordsFromCep(cleanCep);
-      if (editingMember) {
-        setEditingMember({
-          ...editingMember,
-          address: result.address,
-          lat: result.lat,
-          lng: result.lng
-        });
-      }
-    } catch (err: any) {
-      alert(err.message || "Erro ao localizar CEP.");
-    } finally {
-      setIsGeoLoading(false);
-    }
-  };
-
   const handleSaveMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingMember?.name || !editingMember.email) return;
 
-    // Sanitização rigorosa: apenas números finitos são permitidos
     const finalLat = (editingMember.lat !== undefined && Number.isFinite(Number(editingMember.lat))) ? Number(editingMember.lat) : undefined;
     const finalLng = (editingMember.lng !== undefined && Number.isFinite(Number(editingMember.lng))) ? Number(editingMember.lng) : undefined;
 
@@ -72,7 +47,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       name: editingMember.name,
       email: editingMember.email,
       role: editingMember.role || UserRole.MEMBER,
-      active: editingMember.active ?? true,
+      active: editingMember.active === true,
       phone: editingMember.phone || '',
       congregation: editingMember.congregation || '',
       address: editingMember.address || '',
@@ -92,10 +67,10 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       onUpdateState({ ...state, members: updatedMembers });
       setEditingMember(null);
       setMemberCep('');
-      alert("Membro e localização salvos com sucesso!");
+      alert("Membro atualizado com sucesso!");
     } catch (err) {
       console.error(err);
-      alert("Erro ao salvar no banco de dados. Verifique a conexão.");
+      alert("Erro ao salvar no banco de dados.");
     }
   };
 
@@ -160,7 +135,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800 shadow-black' : 'bg-white border-gray-100 shadow-sm'} p-6 rounded-2xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4`}>
          <div>
             <h2 className={`text-xl font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Painel Administrativo</h2>
-            <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Gestão central da equipe, rotas e infraestrutura hospitalar.</p>
+            <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Gestão da equipe, rotas e infraestrutura hospitalar.</p>
          </div>
          <div className="flex gap-2">
             <button 
@@ -174,8 +149,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
               {isSyncing ? 'Sincronizando...' : 'Sincronizar'}
             </button>
             {activeTab === 'members' && <Button size="sm" className="rounded-xl px-6" onClick={() => { setEditingMember({ active: true, role: UserRole.MEMBER }); setMemberCep(''); }}>+ Novo Membro</Button>}
-            {activeTab === 'hospitals' && <Button size="sm" className="rounded-xl px-6" onClick={() => setEditingHospital({ name: '', city: 'Santos', address: '' })}>+ Novo Hospital</Button>}
-            {activeTab === 'routes' && <Button size="sm" className="rounded-xl px-6" onClick={() => setEditingRoute({ name: '', hospitalIds: [], hospitals: [], active: true })}>+ Nova Rota</Button>}
          </div>
       </div>
 
@@ -218,16 +191,15 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                                   <p className="text-[10px] text-gray-400">{m.email}</p>
                                 </td>
                                 <td className="px-6 py-4">
-                                  {m.lat != null && m.lng != null && !isNaN(Number(m.lat)) ? (
+                                  {m.lat != null && m.lng != null ? (
                                     <div className="flex flex-col">
                                       <div className="flex items-center gap-1 text-blue-600">
                                         <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" /></svg>
                                         <span className="text-[10px] font-black uppercase">Mapeado</span>
                                       </div>
-                                      <p className="text-[9px] text-gray-400 truncate max-w-[120px]">{m.address || 'Endereço sem rua'}</p>
                                     </div>
                                   ) : (
-                                    <span className="text-[9px] font-bold text-gray-300 uppercase tracking-tighter">Não localizado</span>
+                                    <span className="text-[9px] font-bold text-gray-300 uppercase">Não localizado</span>
                                   )}
                                 </td>
                                 <td className="px-6 py-4">
@@ -244,7 +216,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                    <button onClick={() => { setEditingMember(m); setMemberCep(''); }} className={`p-2 rounded-xl transition-all ${!m.active ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-blue-50 text-blue-600'}`}>
+                                    <button onClick={() => setEditingMember(m)} className={`p-2 rounded-xl transition-all ${!m.active ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-blue-50 text-blue-600'}`}>
                                       {!m.active ? (
                                         <span className="text-[9px] font-black uppercase px-2">Liberar</span>
                                       ) : (
@@ -260,73 +232,12 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         </div>
       )}
 
-      {activeTab === 'hospitals' && (
-        <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className={`${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'} text-[10px] font-black text-gray-400 uppercase tracking-widest`}>
-                        <tr>
-                          <th className="px-6 py-4 text-left">Unidade</th>
-                          <th className="px-6 py-4 text-left">Cidade</th>
-                          <th className="px-6 py-4 text-left">Endereço</th>
-                          <th className="px-6 py-4 text-right">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-sm`}>
-                        {state.hospitals.map(h => (
-                            <tr key={h.id} className={isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}>
-                                <td className="px-6 py-4 font-bold">{h.name}</td>
-                                <td className="px-6 py-4 text-gray-400">{h.city}</td>
-                                <td className="px-6 py-4 text-gray-400 text-xs">{h.address}</td>
-                                <td className="px-6 py-4 text-right">
-                                    <button onClick={() => setEditingHospital(h)} className="p-2 hover:bg-blue-50 text-blue-600 rounded-xl">
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-      )}
-
-      {activeTab === 'routes' && (
-        <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className={`${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'} text-[10px] font-black text-gray-400 uppercase tracking-widest`}>
-                        <tr><th className="px-6 py-4 text-left">Rota</th><th className="px-6 py-4 text-left">Hospitais</th><th className="px-6 py-4 text-right">Ações</th></tr>
-                    </thead>
-                    <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-sm`}>
-                        {state.routes.map(r => (
-                            <tr key={r.id} className={isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}>
-                                <td className="px-6 py-4 font-bold">{r.name}</td>
-                                <td className="px-6 py-4">
-                                    <div className="flex flex-wrap gap-1">
-                                        {r.hospitals?.map(h => (
-                                            <span key={h} className="px-2 py-0.5 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-lg text-[9px] font-black uppercase">{h}</span>
-                                        ))}
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <button onClick={() => setEditingRoute(r)} className="p-2 hover:bg-blue-50 text-blue-600 rounded-xl"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-      )}
-
-      {/* --- MODAL MEMBER --- */}
       {editingMember && (
           <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
              <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
                 <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center">
                     <span className="text-lg">{editingMember.id ? 'Editar Membro' : 'Novo Membro'}</span>
-                    <button onClick={() => { setEditingMember(null); setMemberCep(''); }} className="text-3xl leading-none">&times;</button>
+                    <button onClick={() => setEditingMember(null)} className="text-3xl leading-none">&times;</button>
                 </div>
                 <form onSubmit={handleSaveMember} className="p-8 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
                     <div className="space-y-1">
@@ -335,46 +246,8 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">E-mail</label>
-                      <input required type="email" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.email || ''} onChange={e => setEditingMember({...editingMember, email: e.target.value})} />
+                      <input required type="email" readOnly className="w-full p-3 border-2 rounded-xl outline-none opacity-50 bg-gray-100" value={editingMember.email || ''} />
                     </div>
-                    
-                    <div className="pt-2 border-t border-gray-800/10 space-y-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest px-1">Localização por CEP</label>
-                        <div className="flex gap-2">
-                          <input 
-                            type="text" 
-                            placeholder="00000-000" 
-                            className={`flex-grow p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} 
-                            value={memberCep} 
-                            onChange={e => setMemberCep(e.target.value)} 
-                          />
-                          <button 
-                            type="button" 
-                            onClick={handleValidateMemberCep}
-                            disabled={isGeoLoading}
-                            className="bg-blue-600 text-white px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50"
-                          >
-                            {isGeoLoading ? '...' : 'Validar'}
-                          </button>
-                        </div>
-                        <p className="text-[9px] text-gray-400 italic px-1">A validação atualiza o endereço e as coordenadas no mapa.</p>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Endereço Residencial Atual</label>
-                        <textarea rows={2} readOnly className={`w-full p-3 border-2 rounded-xl outline-none resize-none opacity-80 ${isHospitalMode ? 'bg-black/20 border-gray-800 text-gray-400' : 'bg-gray-100 border-gray-200 text-gray-600'}`} value={editingMember.address || 'Validar CEP para preencher...'} />
-                        {editingMember.lat != null && Number.isFinite(Number(editingMember.lat)) && (
-                          <p className="text-[8px] text-blue-500 font-bold uppercase tracking-widest px-1 mt-1">Coordenadas: {Number(editingMember.lat).toFixed(4)}, {Number(editingMember.lng).toFixed(4)}</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Congregação</label>
-                      <input type="text" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.congregation || ''} onChange={e => setEditingMember({...editingMember, congregation: e.target.value})} />
-                    </div>
-
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Role</label>
@@ -391,7 +264,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                         </select>
                       </div>
                     </div>
-                    <Button className="w-full rounded-xl py-4" type="submit">Salvar Membro</Button>
+                    <Button className="w-full rounded-xl py-4" type="submit">Salvar Alterações</Button>
                 </form>
              </div>
           </div>
