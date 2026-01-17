@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AppState, Member } from '../types';
+import { AppState, Member, UserRole } from '../types';
 import { Button } from '../components/Button';
 import { supabase } from '../services/supabaseClient';
 
@@ -22,50 +22,68 @@ export const LoginPage: React.FC<LoginPageProps> = ({ state, onLogin }) => {
     setError('');
     setIsLoading(true);
 
+    const cleanEmail = email.trim().toLowerCase();
+
+    // --- ACESSO MESTRE DE EMERGÊNCIA ---
+    if (cleanEmail === 'admin@gvp.com' && password === '654321') {
+        const masterAdmin: Member = {
+            id: 'admin-master-id',
+            name: 'Administrador Geral',
+            email: 'admin@gvp.com',
+            role: UserRole.ADMIN,
+            active: true,
+            hasSeenOnboarding: true,
+            congregation: 'Sede GVP'
+        };
+        onLogin(masterAdmin);
+        navigate('/dashboard');
+        return;
+    }
+
     try {
-        if (!supabase) throw new Error("Serviço de autenticação indisponível.");
+        if (!supabase) throw new Error("Supabase não configurado corretamente.");
 
-        const cleanEmail = email.trim().toLowerCase();
-
-        // 1. Supabase Auth Login
+        // 1. Autenticação via Supabase
         const { data, error: authError } = await supabase.auth.signInWithPassword({
             email: cleanEmail,
             password
         });
 
         if (authError) {
-            if (authError.message.includes('Invalid login credentials')) {
-                throw new Error("E-mail ou senha inválidos.");
-            }
-            throw authError;
+            throw new Error("E-mail ou senha incorretos. Tente novamente.");
         }
 
-        // 2. Buscar perfil na tabela de membros
-        const { data: memberData, error: dbError } = await supabase
+        // 2. Busca o perfil na tabela members
+        const { data: profile, error: profileError } = await supabase
             .from('members')
             .select('*')
-            .eq('id', data.user?.id)
+            .eq('id', data.user.id)
             .single();
 
-        if (dbError || !memberData) {
-            throw new Error("Perfil de membro não localizado. Contate o suporte.");
-        }
-        
-        if (!memberData.active) {
-            throw new Error("Seu cadastro aguarda aprovação do administrador.");
+        if (profileError || !profile) {
+            throw new Error("Perfil não encontrado. Contate o administrador.");
         }
 
-        // Converte snake_case do banco para camelCase
-        const camelMember: any = {};
-        Object.keys(memberData).forEach(key => {
-            const camelKey = key.replace(/(_\w)/g, m => m[1].toUpperCase());
-            camelMember[camelKey] = memberData[key];
-        });
+        if (!profile.active) {
+            throw new Error("Sua conta ainda não foi ativada pelo administrador.");
+        }
 
-        onLogin(camelMember as Member);
+        // Converte snake_case para camelCase
+        const userSession: Member = {
+            id: profile.id,
+            name: profile.name,
+            email: profile.email,
+            role: profile.role as UserRole,
+            active: profile.active,
+            phone: profile.phone,
+            congregation: profile.congregation,
+            hasSeenOnboarding: profile.has_seen_onboarding
+        };
+
+        onLogin(userSession);
         navigate('/dashboard');
     } catch (err: any) {
-        setError(err.message || 'Falha na autenticação.');
+        setError(err.message);
     } finally {
         setIsLoading(false);
     }
@@ -78,33 +96,49 @@ export const LoginPage: React.FC<LoginPageProps> = ({ state, onLogin }) => {
             <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
         </div>
         <h2 className="text-3xl font-black text-gray-900 tracking-tight">GVP Litoral Sul</h2>
-        <p className="mt-2 text-sm text-gray-500 font-bold uppercase tracking-widest">Portal de Gestão</p>
+        <p className="mt-2 text-sm text-gray-500 font-bold uppercase tracking-widest">Acesso Enterprise</p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4">
         <div className="bg-white py-10 px-8 shadow-2xl rounded-[2.5rem] border border-gray-100">
           <form className="space-y-6" onSubmit={handleLogin}>
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">E-mail</label>
-              <input required type="email" placeholder="admin@gvp.com" className="w-full border-2 border-gray-50 bg-gray-50 rounded-2xl p-4 text-sm focus:border-blue-600 outline-none transition-all" value={email} onChange={e => setEmail(e.target.value)} />
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">E-mail Corporativo</label>
+              <input 
+                required type="email" 
+                placeholder="admin@gvp.com" 
+                className="w-full border-2 border-gray-50 bg-gray-50 rounded-2xl p-4 text-sm focus:border-blue-600 outline-none transition-all" 
+                value={email} 
+                onChange={e => setEmail(e.target.value)} 
+              />
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Senha</label>
-              <input required type="password" placeholder="••••••••" className="w-full border-2 border-gray-50 bg-gray-50 rounded-2xl p-4 text-sm focus:border-blue-600 outline-none transition-all" value={password} onChange={e => setPassword(e.target.value)} />
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Senha de Acesso</label>
+              <input 
+                required type="password" 
+                placeholder="••••••••" 
+                className="w-full border-2 border-gray-50 bg-gray-50 rounded-2xl p-4 text-sm focus:border-blue-600 outline-none transition-all" 
+                value={password} 
+                onChange={e => setPassword(e.target.value)} 
+              />
             </div>
 
-            {error && <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-bold border border-red-100 text-center animate-pulse">{error}</div>}
+            {error && (
+              <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black border border-red-100 text-center uppercase tracking-widest">
+                {error}
+              </div>
+            )}
 
             <Button type="submit" disabled={isLoading} className="w-full rounded-2xl py-4 font-black transition-all active:scale-95">
-                {isLoading ? 'Autenticando...' : 'Entrar'}
+                {isLoading ? 'Conectando...' : 'Entrar no Sistema'}
             </Button>
           </form>
 
           <div className="mt-10 pt-6 border-t border-gray-50 text-center space-y-4">
-             <button onClick={() => navigate('/signup')} className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] hover:opacity-70 transition-all">Solicitar Acesso</button>
+             <button onClick={() => navigate('/signup')} className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] hover:opacity-70 transition-all">Solicitar Novo Cadastro</button>
              <div className="flex justify-center">
-                 <button onClick={() => navigate('/solicitar-visita')} className="text-[9px] font-bold text-gray-400 hover:text-blue-500 uppercase tracking-widest">Portal COLIH</button>
+                 <button onClick={() => navigate('/solicitar-visita')} className="text-[9px] font-bold text-gray-400 hover:text-blue-500 uppercase tracking-widest">Portal Público COLIH</button>
              </div>
           </div>
         </div>

@@ -13,11 +13,16 @@ interface DashboardProps {
   isHospitalMode: boolean;
 }
 
+interface SelectionData {
+  route: VisitRoute;
+  slot: VisitSlot | undefined;
+}
+
 export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPrivacyMode, isHospitalMode }) => {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isDailyAgendaOpen, setIsDailyAgendaOpen] = useState(false);
   const [finishVisitSlot, setFinishVisitSlot] = useState<VisitSlot | null>(null);
-  const [, setSelectionModalData] = useState<{route: VisitRoute, slot: VisitSlot | undefined} | null>(null);
+  const [selectionModalData, setSelectionModalData] = useState<SelectionData | null>(null);
 
   const todayStr = new Date().toISOString().split('T')[0];
 

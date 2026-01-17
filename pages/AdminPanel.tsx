@@ -2,15 +2,132 @@
 import React, { useState, useMemo } from 'react';
 import { AppState, Member, VisitRoute, UserRole, Hospital } from '../types';
 import { Button } from '../components/Button';
-import { atomicUpdate } from '../services/storageService';
+import { atomicUpdate, atomicDelete, loadState } from '../services/storageService';
+import { getCoordsFromCep } from '../services/geoService';
 
 export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
   const [activeTab, setActiveTab] = useState<'members' | 'hospitals' | 'routes' | 'reports' | 'balance'>('members');
   const [editingHospital, setEditingHospital] = useState<Partial<Hospital> | null>(null);
   const [editingRoute, setEditingRoute] = useState<Partial<VisitRoute> | null>(null);
   const [editingMember, setEditingMember] = useState<Partial<Member> | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isGeoLoading, setIsGeoLoading] = useState(false);
+  const [memberCep, setMemberCep] = useState('');
 
-  // --- ROUTE LOGIC ---
+  const handleRefreshData = async () => {
+    setIsSyncing(true);
+    try {
+      const newState = await loadState();
+      onUpdateState(newState);
+    } catch (err) {
+      alert("Erro ao sincronizar dados.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const sortedMembers = useMemo(() => {
+    return [...state.members].sort((a, b) => {
+      if (a.active === b.active) {
+        return a.name.localeCompare(b.name);
+      }
+      return a.active ? 1 : -1;
+    });
+  }, [state.members]);
+
+  const handleValidateMemberCep = async () => {
+    const cleanCep = memberCep.replace(/\D/g, '');
+    if (cleanCep.length !== 8) {
+      alert("Digite um CEP válido com 8 dígitos.");
+      return;
+    }
+    setIsGeoLoading(true);
+    try {
+      const result = await getCoordsFromCep(cleanCep);
+      if (editingMember) {
+        setEditingMember({
+          ...editingMember,
+          address: result.address,
+          lat: result.lat,
+          lng: result.lng
+        });
+      }
+    } catch (err: any) {
+      alert(err.message || "Erro ao localizar CEP.");
+    } finally {
+      setIsGeoLoading(false);
+    }
+  };
+
+  const handleSaveMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMember?.name || !editingMember.email) return;
+
+    // Sanitização final para garantir que lat/lng sejam números ou undefined
+    const lat = (editingMember.lat !== undefined && !isNaN(Number(editingMember.lat))) ? Number(editingMember.lat) : undefined;
+    const lng = (editingMember.lng !== undefined && !isNaN(Number(editingMember.lng))) ? Number(editingMember.lng) : undefined;
+
+    const newMember: Member = {
+      id: editingMember.id || crypto.randomUUID(),
+      name: editingMember.name,
+      email: editingMember.email,
+      role: editingMember.role || UserRole.MEMBER,
+      active: editingMember.active ?? true,
+      phone: editingMember.phone || '',
+      congregation: editingMember.congregation || '',
+      address: editingMember.address || '',
+      lat: lat,
+      lng: lng,
+      hasSeenOnboarding: editingMember.hasSeenOnboarding || false
+    };
+
+    try {
+      await atomicUpdate('members', newMember);
+      let updatedMembers = [...state.members];
+      if (editingMember.id) {
+        updatedMembers = updatedMembers.map(m => m.id === editingMember.id ? newMember : m);
+      } else {
+        updatedMembers.push(newMember);
+      }
+      onUpdateState({ ...state, members: updatedMembers });
+      setEditingMember(null);
+      setMemberCep('');
+      alert("Membro salvo com sucesso!");
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao salvar no banco de dados. Verifique a conexão.");
+    }
+  };
+
+  const handleSaveHospital = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingHospital?.name) return;
+
+    const newHospital: Hospital = {
+      id: editingHospital.id || crypto.randomUUID(),
+      name: editingHospital.name,
+      city: editingHospital.city || 'Santos',
+      address: editingHospital.address || '',
+      lat: editingHospital.lat || -23.9608,
+      lng: editingHospital.lng || -46.3331,
+      importantInfo: editingHospital.importantInfo || ''
+    };
+
+    try {
+      await atomicUpdate('hospitals', newHospital);
+      let updatedHospitals = [...state.hospitals];
+      if (editingHospital.id) {
+        updatedHospitals = updatedHospitals.map(h => h.id === editingHospital.id ? newHospital : h);
+      } else {
+        updatedHospitals.push(newHospital);
+      }
+      onUpdateState({ ...state, hospitals: updatedHospitals });
+      setEditingHospital(null);
+    } catch (err) {
+      alert("Erro ao salvar hospital.");
+    }
+  };
+
   const handleSaveRoute = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingRoute?.name) return;
@@ -38,39 +155,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     }
   };
 
-  const toggleHospitalInRoute = (hospital: Hospital) => {
-    const currentNames = editingRoute?.hospitals || [];
-    const currentIds = editingRoute?.hospitalIds || [];
-    
-    if (currentIds.includes(hospital.id)) {
-        setEditingRoute({ 
-          ...editingRoute, 
-          hospitalIds: currentIds.filter(id => id !== hospital.id),
-          hospitals: currentNames.filter(name => name !== hospital.name) 
-        });
-    } else {
-        setEditingRoute({ 
-          ...editingRoute, 
-          hospitalIds: [...currentIds, hospital.id],
-          hospitals: [...currentNames, hospital.name] 
-        });
-    }
-  };
-
-  // Workload memo with type safety
-  const memberWorkload = useMemo<Record<string, number>>(() => {
-    const counts: Record<string, number> = {};
-    state.members.forEach(m => counts[m.id] = 0);
-    state.visits.forEach(v => {
-        v.memberIds.forEach(mid => {
-            if (counts[mid] !== undefined) counts[mid]++;
-        });
-    });
-    return counts;
-  }, [state.visits, state.members]);
-
-  const maxVisits = Math.max(...(Object.values(memberWorkload) as number[]), 1);
-
   return (
     <div className="space-y-6 pb-12 animate-fade-in">
       <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800 shadow-black' : 'bg-white border-gray-100 shadow-sm'} p-6 rounded-2xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4`}>
@@ -79,17 +163,133 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
             <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Gestão central da equipe, rotas e infraestrutura hospitalar.</p>
          </div>
          <div className="flex gap-2">
-            {activeTab === 'members' && <Button size="sm" className="rounded-xl px-6" onClick={() => setEditingMember({ active: true, role: UserRole.MEMBER })}>+ Novo Membro</Button>}
+            <button 
+              onClick={handleRefreshData} 
+              disabled={isSyncing}
+              className={`p-2 rounded-xl border-2 transition-all flex items-center gap-2 text-[10px] font-black uppercase tracking-widest ${
+                isHospitalMode ? 'bg-white/5 border-white/10 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'
+              } ${isSyncing ? 'animate-pulse' : 'hover:border-blue-500 hover:text-blue-500'}`}
+            >
+              <svg className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+              {isSyncing ? 'Sincronizando...' : 'Sincronizar'}
+            </button>
+            {activeTab === 'members' && <Button size="sm" className="rounded-xl px-6" onClick={() => { setEditingMember({ active: true, role: UserRole.MEMBER }); setMemberCep(''); }}>+ Novo Membro</Button>}
             {activeTab === 'hospitals' && <Button size="sm" className="rounded-xl px-6" onClick={() => setEditingHospital({ name: '', city: 'Santos', address: '' })}>+ Novo Hospital</Button>}
             {activeTab === 'routes' && <Button size="sm" className="rounded-xl px-6" onClick={() => setEditingRoute({ name: '', hospitalIds: [], hospitals: [], active: true })}>+ Nova Rota</Button>}
          </div>
       </div>
 
       <div className={`flex border-b overflow-x-auto custom-scrollbar ${isHospitalMode ? 'border-gray-800' : 'border-gray-200'}`}>
-        {['members', 'hospitals', 'routes', 'reports', 'balance'].map(tab => (
-          <button key={tab} className={`px-6 py-4 font-black text-[10px] uppercase tracking-[0.2em] transition-all border-b-2 ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`} onClick={() => setActiveTab(tab as any)}>{tab}</button>
+        {[
+          { id: 'members', label: 'Membros' },
+          { id: 'hospitals', label: 'Hospitais' },
+          { id: 'routes', label: 'Rotas' },
+          { id: 'reports', label: 'Relatórios' },
+          { id: 'balance', label: 'Balanço' }
+        ].map(tab => (
+          <button 
+            key={tab.id} 
+            className={`px-6 py-4 font-black text-[10px] uppercase tracking-[0.2em] transition-all border-b-2 whitespace-nowrap ${activeTab === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`} 
+            onClick={() => setActiveTab(tab.id as any)}
+          >
+            {tab.label}
+          </button>
         ))}
       </div>
+
+      {activeTab === 'members' && (
+        <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className={`${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'} text-[10px] font-black text-gray-400 uppercase tracking-widest`}>
+                        <tr>
+                          <th className="px-6 py-4 text-left">Membro</th>
+                          <th className="px-6 py-4 text-left">Localização</th>
+                          <th className="px-6 py-4 text-left">Role</th>
+                          <th className="px-6 py-4 text-left">Status</th>
+                          <th className="px-6 py-4 text-right">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-sm`}>
+                        {sortedMembers.map(m => (
+                            <tr key={m.id} className={`${!m.active ? 'bg-orange-500/5' : ''} ${isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                                <td className="px-6 py-4">
+                                  <p className="font-bold">{m.name}</p>
+                                  <p className="text-[10px] text-gray-400">{m.email}</p>
+                                </td>
+                                <td className="px-6 py-4">
+                                  {m.lat != null && m.lng != null && !isNaN(Number(m.lat)) ? (
+                                    <div className="flex flex-col">
+                                      <div className="flex items-center gap-1 text-blue-600">
+                                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" /></svg>
+                                        <span className="text-[10px] font-black uppercase">Mapeado</span>
+                                      </div>
+                                      <p className="text-[9px] text-gray-400 truncate max-w-[120px]">{m.address}</p>
+                                    </div>
+                                  ) : (
+                                    <span className="text-[9px] font-bold text-gray-300 uppercase tracking-tighter">Não localizado</span>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={`px-2 py-0.5 rounded text-[9px] font-black ${m.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                    {m.role}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`w-2 h-2 rounded-full ${m.active ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></span>
+                                    <span className={`font-bold ${!m.active ? 'text-red-600 uppercase text-[10px]' : ''}`}>
+                                      {m.active ? 'Ativo' : 'Pendente'}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                    <button onClick={() => { setEditingMember(m); setMemberCep(''); }} className={`p-2 rounded-xl transition-all ${!m.active ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-blue-50 text-blue-600'}`}>
+                                      {!m.active ? (
+                                        <span className="text-[9px] font-black uppercase px-2">Liberar</span>
+                                      ) : (
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                      )}
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      )}
+
+      {activeTab === 'hospitals' && (
+        <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className={`${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'} text-[10px] font-black text-gray-400 uppercase tracking-widest`}>
+                        <tr>
+                          <th className="px-6 py-4 text-left">Unidade</th>
+                          <th className="px-6 py-4 text-left">Cidade</th>
+                          <th className="px-6 py-4 text-left">Endereço</th>
+                          <th className="px-6 py-4 text-right">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-sm`}>
+                        {state.hospitals.map(h => (
+                            <tr key={h.id} className={isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}>
+                                <td className="px-6 py-4 font-bold">{h.name}</td>
+                                <td className="px-6 py-4 text-gray-400">{h.city}</td>
+                                <td className="px-6 py-4 text-gray-400 text-xs">{h.address}</td>
+                                <td className="px-6 py-4 text-right">
+                                    <button onClick={() => setEditingHospital(h)} className="p-2 hover:bg-blue-50 text-blue-600 rounded-xl">
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      )}
 
       {activeTab === 'routes' && (
         <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
@@ -100,7 +300,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                     </thead>
                     <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-sm`}>
                         {state.routes.map(r => (
-                            <tr key={r.id}>
+                            <tr key={r.id} className={isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}>
                                 <td className="px-6 py-4 font-bold">{r.name}</td>
                                 <td className="px-6 py-4">
                                     <div className="flex flex-wrap gap-1">
@@ -110,7 +310,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                    <button onClick={() => setEditingRoute(r)} className="p-2 hover:bg-blue-50 text-blue-600 rounded-xl"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg></button>
+                                    <button onClick={() => setEditingRoute(r)} className="p-2 hover:bg-blue-50 text-blue-600 rounded-xl"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
                                 </td>
                             </tr>
                         ))}
@@ -120,26 +320,78 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         </div>
       )}
 
-      {editingRoute && (
+      {/* --- MODAL MEMBER --- */}
+      {editingMember && (
           <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
-             <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+             <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
                 <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center">
-                    <span className="text-lg">Editar Rota</span>
-                    <button onClick={() => setEditingRoute(null)} className="text-3xl leading-none">&times;</button>
+                    <span className="text-lg">{editingMember.id ? 'Editar Membro' : 'Novo Membro'}</span>
+                    <button onClick={() => { setEditingMember(null); setMemberCep(''); }} className="text-3xl leading-none">&times;</button>
                 </div>
-                <form onSubmit={handleSaveRoute} className="p-8 space-y-4">
-                    <input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingRoute.name || ''} onChange={e => setEditingRoute({...editingRoute, name: e.target.value})} />
-                    <div className="max-h-40 overflow-y-auto border-2 rounded-xl p-2 custom-scrollbar">
-                        {state.hospitals.map(h => {
-                            const isSelected = editingRoute.hospitalIds?.includes(h.id);
-                            return (
-                                <button key={h.id} type="button" onClick={() => toggleHospitalInRoute(h)} className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-bold mb-1 ${isSelected ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}>
-                                    {h.name} {isSelected && '✓'}
-                                </button>
-                            );
-                        })}
+                <form onSubmit={handleSaveMember} className="p-8 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nome Completo</label>
+                      <input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.name || ''} onChange={e => setEditingMember({...editingMember, name: e.target.value})} />
                     </div>
-                    <Button className="w-full rounded-xl" type="submit">Salvar Rota</Button>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">E-mail</label>
+                      <input required type="email" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.email || ''} onChange={e => setEditingMember({...editingMember, email: e.target.value})} />
+                    </div>
+                    
+                    <div className="pt-2 border-t border-gray-800/10 space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest px-1">Localização por CEP</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            placeholder="00000-000" 
+                            className={`flex-grow p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} 
+                            value={memberCep} 
+                            onChange={e => setMemberCep(e.target.value)} 
+                          />
+                          <button 
+                            type="button" 
+                            onClick={handleValidateMemberCep}
+                            disabled={isGeoLoading}
+                            className="bg-blue-600 text-white px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50"
+                          >
+                            {isGeoLoading ? '...' : 'Validar'}
+                          </button>
+                        </div>
+                        <p className="text-[9px] text-gray-400 italic px-1">A validação atualiza o endereço e as coordenadas no mapa.</p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Endereço Residencial Atual</label>
+                        <textarea rows={2} readOnly className={`w-full p-3 border-2 rounded-xl outline-none resize-none opacity-80 ${isHospitalMode ? 'bg-black/20 border-gray-800 text-gray-400' : 'bg-gray-100 border-gray-200 text-gray-600'}`} value={editingMember.address || 'Validar CEP para preencher...'} />
+                        {editingMember.lat != null && !isNaN(Number(editingMember.lat)) && (
+                          <p className="text-[8px] text-blue-500 font-bold uppercase tracking-widest px-1 mt-1">Coordenadas: {Number(editingMember.lat).toFixed(4)}, {Number(editingMember.lng).toFixed(4)}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Congregação</label>
+                      <input type="text" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.congregation || ''} onChange={e => setEditingMember({...editingMember, congregation: e.target.value})} />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Role</label>
+                        <select className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.role} onChange={e => setEditingMember({...editingMember, role: e.target.value as UserRole})}>
+                          <option value={UserRole.MEMBER}>Voluntário</option>
+                          <option value={UserRole.ADMIN}>Administrador</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Status</label>
+                        <select className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.active ? 'true' : 'false'} onChange={e => setEditingMember({...editingMember, active: e.target.value === 'true'})}>
+                          <option value="true">Ativo (Liberado)</option>
+                          <option value="false">Inativo/Pendente</option>
+                        </select>
+                      </div>
+                    </div>
+                    <Button className="w-full rounded-xl py-4" type="submit">Salvar Membro</Button>
                 </form>
              </div>
           </div>

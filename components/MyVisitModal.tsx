@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { VisitRoute, Member, Hospital, Patient } from '../types';
 import { HistoryItem } from './ReportModal';
@@ -27,7 +28,7 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
 }) => {
   const [briefing, setBriefing] = useState<string | null>(null);
   const [isBriefingLoading, setIsBriefingLoading] = useState(false);
-  const [, setNearbyHospital] = useState<Hospital | null>(null);
+  const [nearbyHospital, setNearbyHospital] = useState<Hospital | null>(null);
   const [sentOnTheWay, setSentOnTheWay] = useState(false);
 
   useEffect(() => {
@@ -61,7 +62,6 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
 
   const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
   
-  // Garantia de segurança para o filtro de pacientes na rota ativa
   const routePatients = patients.filter(p => {
     const isActive = p.active;
     const hasHospitalName = typeof p.hospitalName === 'string' && p.hospitalName.length > 0;
