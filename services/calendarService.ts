@@ -1,5 +1,5 @@
 
-import { VisitSlot, VisitRoute } from '../types';
+import { VisitRoute } from '../types';
 
 export const downloadIcsFile = (date: string, route: VisitRoute) => {
   const cleanDate = date.replace(/-/g, '');
@@ -7,7 +7,9 @@ export const downloadIcsFile = (date: string, route: VisitRoute) => {
   const endTime = '100000';   
   
   const title = `GVP: Visita - ${route.name}`;
-  const description = `Visita hospitalar do Grupo GVP.\nHospitais: ${route.hospitals.join(', ')}`;
+  // Usa o campo hospitalIds ou o campo virtual hospitals se disponível
+  const hospitalsLabel = route.hospitals ? route.hospitals.join(', ') : 'Rota agendada';
+  const description = `Visita hospitalar do Grupo GVP.\nHospitais: ${hospitalsLabel}`;
   
   const icsContent = [
     'BEGIN:VCALENDAR',

@@ -1,16 +1,18 @@
 
 import React, { useState } from 'react';
-import { VisitSlot, VisitRoute } from '../types';
+import { VisitSlot, VisitRoute, Member } from '../types';
 
 interface FullCalendarProps {
   selectedDate: string;
   onChange: (date: string) => void;
   visits: VisitSlot[];
   routes: VisitRoute[];
+  members: Member[];
+  currentUser: Member | null;
   isHospitalMode?: boolean;
 }
 
-export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChange, visits, routes, isHospitalMode }) => {
+export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChange, visits, routes, members, currentUser, isHospitalMode }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
   
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -28,13 +30,34 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
   const handleNextMonth = () => setCurrentMonth(new Date(year, month + 1, 1));
 
   const getDayStatus = (dateStr: string) => {
+    const todayStr = new Date().toISOString().split('T')[0];
     const dayVisits = visits.filter(v => v.date === dateStr);
-    const totalSlots = activeRoutesCount * 2;
+    const activeRoutes = routes.filter(r => r.active);
+    const totalSlots = activeRoutes.length * 2;
+    
+    if (dayVisits.length === 0) return 'empty';
+
+    const isPast = dateStr < todayStr;
+    const allFinished = dayVisits.every(v => !!v.report || v.status === 'FINISHED');
+    const someScheduled = dayVisits.some(v => v.memberIds.length > 0);
+
+    if (isPast) {
+      if (someScheduled && !allFinished) return 'missed';
+      if (allFinished) return 'full';
+      return 'empty';
+    }
+
     let filledSlots = 0;
     dayVisits.forEach(v => filledSlots += v.memberIds.length);
+    
     if (filledSlots === 0) return 'empty';
     if (filledSlots === totalSlots) return 'full';
     return 'partial';
+  };
+
+  const isUserEscalated = (dateStr: string) => {
+    if (!currentUser) return false;
+    return visits.some(v => v.date === dateStr && v.memberIds.includes(currentUser.id));
   };
 
   return (
@@ -66,6 +89,14 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
           const dayVisits = visits.filter(v => v.date === dateStr);
           const confirmados = dayVisits.reduce((acc, v) => acc + v.memberIds.length, 0);
           const totalNecessario = activeRoutesCount * 2;
+          const userScheduled = isUserEscalated(dateStr);
+          
+          const userVisit = userScheduled ? dayVisits.find(v => v.memberIds.includes(currentUser?.id || '')) : null;
+          const partnerNames = userVisit?.memberIds
+            .filter(id => id !== currentUser?.id)
+            .map(id => members.find(m => m.id === id)?.name.split(' ')[0])
+            .filter(Boolean)
+            .join(' & ');
 
           return (
             <div 
@@ -82,22 +113,46 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
                 {day}
               </span>
 
-              <div className="mt-auto mb-2 flex flex-col items-center gap-1.5 w-full">
-                {status === 'full' ? (
+              <div className="mt-auto mb-2 flex flex-col items-center gap-1 w-full">
+                {/* Badge do Usuário Logado e Parceiro */}
+                {userScheduled && currentUser && (
+                  <div className="flex flex-col items-center gap-0.5 w-full">
+                    <div className="px-1.5 py-0.5 rounded bg-blue-600 text-white text-[8px] font-black uppercase tracking-tighter shadow-sm animate-fade-in truncate max-w-full">
+                      {currentUser.name.split(' ')[0]}
+                    </div>
+                    {partnerNames && (
+                      <div className="px-1.5 py-0.5 rounded bg-indigo-500 text-white text-[7px] font-bold uppercase tracking-tighter shadow-sm animate-fade-in truncate max-w-[90%]" title={`Parceiro: ${partnerNames}`}>
+                        🤝 {partnerNames}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {status === 'missed' ? (
+                  <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border scale-90 sm:scale-100 bg-red-500/10 border-red-500/50 text-red-500 shadow-sm animate-pulse`}>
+                    <span className="text-[8px] font-black uppercase tracking-tighter">Perdida</span>
+                  </div>
+                ) : status === 'full' ? (
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border scale-90 sm:scale-100 ${isHospitalMode ? 'bg-green-900/20 border-green-900/50 text-green-500' : 'bg-green-50 border-green-100 text-green-600'}`}>
                     <span className="text-[9px] font-bold uppercase tracking-tighter">Ok</span>
                   </div>
                 ) : status === 'partial' ? (
                   <div className="flex flex-col items-center gap-1 w-full px-1">
-                    <div className={`w-full h-1 rounded-full overflow-hidden ${isHospitalMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                      <div className="bg-yellow-400 h-full rounded-full transition-all duration-500" style={{ width: `${(confirmados / totalNecessario) * 100}%` }}></div>
-                    </div>
-                    <span className="text-[8px] text-yellow-600 font-bold uppercase">{confirmados}/{totalNecessario}</span>
+                    {!userScheduled && (
+                       <>
+                        <div className={`w-full h-1 rounded-full overflow-hidden ${isHospitalMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                          <div className="bg-yellow-400 h-full rounded-full transition-all duration-500" style={{ width: `${(confirmados / totalNecessario) * 100}%` }}></div>
+                        </div>
+                        <span className="text-[8px] text-yellow-600 font-bold uppercase">{confirmados}/{totalNecessario}</span>
+                       </>
+                    )}
                   </div>
                 ) : (
-                  <div className={`px-2 py-0.5 rounded-full border scale-90 sm:scale-100 ${isHospitalMode ? 'bg-red-900/10 border-red-900/30 text-red-900' : 'bg-red-50 border-red-100 text-red-500'}`}>
-                    <span className="text-[8px] font-bold uppercase">Livre</span>
-                  </div>
+                  !userScheduled && !isToday && (
+                    <div className={`px-2 py-0.5 rounded-full border scale-90 sm:scale-100 ${isHospitalMode ? 'bg-gray-900/10 border-gray-900/30 text-gray-500' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
+                      <span className="text-[8px] font-bold uppercase">Livre</span>
+                    </div>
+                  )
                 )}
               </div>
             </div>

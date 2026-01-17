@@ -12,30 +12,29 @@ export interface AppState {
   hospitals: Hospital[];
   routes: VisitRoute[];
   visits: VisitSlot[];
+  socialWorkerVisits: SocialWorkerVisit[];
   patients: Patient[];
   logs: LogEntry[];
   notifications: Notification[];
 }
 
 export interface Member {
-  id: string;
+  id: string; // UUID String
   name: string;
-  email?: string;
-  password?: string;
+  email: string;
   role: UserRole;
+  password?: string;
   phone?: string;
   congregation?: string;
-  circuit?: string;
+  active: boolean;
   address?: string;
-  cep?: string;
   lat?: number;
   lng?: number;
-  active: boolean;
   hasSeenOnboarding?: boolean;
 }
 
 export interface Hospital {
-  id: string;
+  id: string; // UUID String
   name: string;
   address: string;
   city: string;
@@ -45,9 +44,10 @@ export interface Hospital {
 }
 
 export interface VisitRoute {
-  id: string;
+  id: string; // UUID String
   name: string;
-  hospitals: string[];
+  hospitalIds: string[]; // Array de UUID Strings
+  hospitals?: string[]; // Nomes virtuais para UI
   active: boolean;
 }
 
@@ -59,33 +59,43 @@ export interface VisitReport {
 }
 
 export interface VisitSlot {
-  id: string;
+  id: string; // UUID String
   routeId: string;
   date: string;
-  memberIds: string[];
-  status?: VisitStatus;
+  memberIds: string[]; // Array de UUID Strings
+  status: VisitStatus;
+  report?: VisitReport;
+}
+
+export interface SocialWorkerVisit {
+  id: string; // UUID String
+  hospitalId: string;
+  date: string;
+  memberIds: string[]; // Array de UUID Strings
+  status: VisitStatus;
   report?: VisitReport;
 }
 
 export interface Patient {
   id: string;
   name: string;
-  hospitalName: string;
+  hospitalId: string;
+  hospitalName?: string; // Virtual para UI
   treatment: string;
   admissionDate: string;
-  estimatedDischargeDate?: string;
-  needsAccommodation: boolean;
+  active: boolean;
   floor?: string;
   wing?: string;
   bed?: string;
   isIsolation?: boolean;
   isolationType?: string;
+  notes?: string;
+  isExternalRequest?: boolean;
+  needsAccommodation?: boolean;
   hasDirectivesCard?: boolean;
   agentsNotified?: boolean;
   formsConsidered?: boolean;
   hasS55?: boolean;
-  notes?: string;
-  active: boolean;
 }
 
 export interface LogEntry {

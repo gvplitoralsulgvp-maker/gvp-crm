@@ -13,6 +13,8 @@ import { Welcome } from './pages/Welcome';
 import { LoginPage } from './pages/LoginPage';
 import { SignUpPage } from './pages/SignUpPage';
 import { MapPage } from './pages/MapPage';
+import { SocialVisitsPage } from './pages/SocialVisitsPage';
+import { PublicRequestPage } from './pages/PublicRequestPage'; // Nova página
 import { GlobalSearch } from './components/GlobalSearch';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { OnboardingModal } from './components/OnboardingModal';
@@ -34,14 +36,12 @@ const Layout: React.FC<{
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const location = useLocation();
 
-  // 1. Controle de Onboarding
   useEffect(() => {
     if (state.currentUser && state.currentUser.hasSeenOnboarding === false) {
       setIsOnboardingOpen(true);
     }
   }, [state.currentUser]);
 
-  // 2. Sistema de Lembretes Automáticos (24h)
   useEffect(() => {
     if (!state.currentUser) return;
 
@@ -77,7 +77,7 @@ const Layout: React.FC<{
       }
     };
 
-    const timer = setTimeout(checkUpcomingVisits, 3000); // Roda 3s após o boot
+    const timer = setTimeout(checkUpcomingVisits, 3000);
     return () => clearTimeout(timer);
   }, [state.visits, state.currentUser]);
 
@@ -111,6 +111,7 @@ const Layout: React.FC<{
   const menuItems = [
     { to: "/dashboard", label: "Agenda", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
     { to: "/patients", label: "Pacientes", icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" },
+    { to: "/social-visits", label: "Assist. Social", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
     { to: "/map", label: "Mapa", icon: "M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" },
     { to: "/stats", label: "KPIs", icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
   ];
@@ -121,14 +122,6 @@ const Layout: React.FC<{
 
   return (
     <div className={`h-screen flex overflow-hidden ${isHospitalMode ? 'bg-[#1a1c1e] text-gray-200' : 'bg-gray-50 text-gray-900'} ${isNightMode ? 'night-shift' : ''}`}>
-      <style>{`
-        .night-shift::after { content: ""; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 120, 0, 0.1); pointer-events: none; z-index: 9999; mix-blend-mode: multiply; }
-      `}</style>
-
-      {isSidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsSidebarOpen(false)} />
-      )}
-
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col ${isHospitalMode ? 'bg-[#212327] border-r border-gray-800' : 'bg-white shadow-xl'}`}>
         <div className="p-6 border-b flex items-center justify-between border-gray-800/10 shrink-0">
           <div className="flex items-center gap-2">
@@ -164,7 +157,6 @@ const Layout: React.FC<{
         {isSyncing && (
           <div className="absolute top-0 left-0 right-0 h-1 bg-blue-600/30 overflow-hidden z-[100]">
             <div className="h-full bg-blue-600 animate-[loading_1.5s_infinite_linear]" style={{ width: '30%' }}></div>
-            <style>{`@keyframes loading { from { transform: translateX(-100%); } to { transform: translateX(400%); } }`}</style>
           </div>
         )}
 
@@ -176,26 +168,24 @@ const Layout: React.FC<{
             <div className="hidden sm:block flex-grow">
               <GlobalSearch state={state} isHospitalMode={isHospitalMode} />
             </div>
-            {isSyncing && <span className="text-[9px] font-bold text-blue-500 animate-pulse hidden md:block uppercase tracking-widest">Sincronizando Nuvem...</span>}
           </div>
 
           <div className="flex items-center gap-1 md:gap-2 shrink-0">
-            {/* Notificações */}
             <NotificationCenter 
               notifications={state.notifications.filter(n => n.userId === state.currentUser?.id)} 
               onMarkAsRead={handleMarkAsRead} 
               onClearAll={handleClearNotifications} 
             />
 
-            <button onClick={onToggleHospitalMode} title={isHospitalMode ? "Modo Padrão" : "Modo Hospitalar (Discreto)"} className={`p-2 rounded-full transition-all ${isHospitalMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
+            <button onClick={onToggleHospitalMode} className={`p-2 rounded-full transition-all ${isHospitalMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
               {isHospitalMode ? <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M16.95 16.95l.707.707M7.05 7.05l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" /></svg> : <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>}
             </button>
 
-            <button onClick={onToggleNightMode} title="Night Shift (Filtro Noturno)" className={`p-2 rounded-full transition-all ${isNightMode ? 'bg-orange-500 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
+            <button onClick={onToggleNightMode} className={`p-2 rounded-full transition-all ${isNightMode ? 'bg-orange-500 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </button>
 
-            <button onClick={onTogglePrivacy} title="Modo Privacidade (Blur)" className={`p-2 rounded-full transition-colors ${isPrivacyMode ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
+            <button onClick={onTogglePrivacy} className={`p-2 rounded-full transition-colors ${isPrivacyMode ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'}`}>
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             </button>
             
@@ -219,6 +209,7 @@ const Layout: React.FC<{
           <Routes>
             <Route path="/dashboard" element={<Dashboard state={state} onUpdateState={onUpdateState} isPrivacyMode={isPrivacyMode} isHospitalMode={isHospitalMode} />} />
             <Route path="/patients" element={<PatientRegistry state={state} onUpdateState={onUpdateState} isPrivacyMode={isPrivacyMode} isHospitalMode={isHospitalMode} />} />
+            <Route path="/social-visits" element={<SocialVisitsPage state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} />} />
             <Route path="/history" element={<PatientHistory state={state} isHospitalMode={isHospitalMode} />} />
             <Route path="/map" element={<MapPage state={state} isHospitalMode={isHospitalMode} />} />
             <Route path="/stats" element={<StatsReport state={state} isHospitalMode={isHospitalMode} />} />
@@ -229,11 +220,7 @@ const Layout: React.FC<{
         </main>
       </div>
 
-      <OnboardingModal 
-        isOpen={isOnboardingOpen} 
-        onClose={handleCloseOnboarding} 
-        isHospitalMode={isHospitalMode} 
-      />
+      <OnboardingModal isOpen={isOnboardingOpen} onClose={handleCloseOnboarding} isHospitalMode={isHospitalMode} />
     </div>
   );
 };
@@ -260,12 +247,7 @@ const App: React.FC = () => {
     });
   };
 
-  if (!state) return (
-    <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50">
-      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-      <div className="font-bold text-blue-600 text-xl animate-pulse">SOFT-CRM GVP</div>
-    </div>
-  );
+  if (!state) return null;
 
   return (
     <Router>
@@ -273,6 +255,7 @@ const App: React.FC = () => {
         <Route path="/" element={<Welcome />} />
         <Route path="/login" element={<LoginPage state={state} onLogin={(u) => handleUpdateState({...state, currentUser: u})} />} />
         <Route path="/signup" element={<SignUpPage state={state} onUpdateState={handleUpdateState} />} />
+        <Route path="/solicitar-visita" element={<PublicRequestPage state={state} onUpdateState={handleUpdateState} />} />
         <Route path="/*" element={
           <Layout 
             state={state} onUpdateState={handleUpdateState}
