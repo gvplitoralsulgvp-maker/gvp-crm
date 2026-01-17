@@ -180,46 +180,48 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       {/* CONTEÚDO: EQUIPE */}
       {activeTab === 'members' && (
         <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
-            <table className="min-w-full divide-y divide-gray-200">
-                <thead className={`${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'} text-[10px] font-black text-gray-400 uppercase tracking-widest`}>
-                    <tr>
-                      <th className="px-6 py-4 text-left">Membro</th>
-                      <th className="px-6 py-4 text-left">Função</th>
-                      <th className="px-6 py-4 text-left">Localização</th>
-                      <th className="px-6 py-4 text-left">Status</th>
-                      <th className="px-6 py-4 text-right">Ação</th>
-                    </tr>
-                </thead>
-                <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-sm`}>
-                    {sortedMembers.map(m => (
-                        <tr key={m.id} className={`${isHospitalMode ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}>
-                            <td className="px-6 py-4">
-                              <p className="font-bold">{m.name}</p>
-                              <p className="text-[10px] text-gray-500">{m.email}</p>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${m.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>{m.role}</span>
-                            </td>
-                            <td className="px-6 py-4">
-                               {m.lat && m.lng ? (
-                                 <span className="text-[9px] font-bold text-green-600 uppercase bg-green-50 px-2 py-1 rounded-lg">Mapeado</span>
-                               ) : (
-                                 <span className="text-[9px] font-bold text-gray-400 uppercase bg-gray-50 px-2 py-1 rounded-lg">Sem Mapa</span>
-                               )}
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-2">
-                                <span className={`w-2 h-2 rounded-full ${m.active ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                                <span className="font-bold text-[11px]">{m.active ? 'ATIVO' : 'PENDENTE'}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                                <button onClick={() => setEditingMember(m)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">Editar</button>
-                            </td>
+            <div className="overflow-x-auto custom-scrollbar">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className={`${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'} text-[10px] font-black text-gray-400 uppercase tracking-widest`}>
+                        <tr>
+                        <th className="px-6 py-4 text-left">Membro</th>
+                        <th className="px-6 py-4 text-left">Função</th>
+                        <th className="px-6 py-4 text-left">Localização</th>
+                        <th className="px-6 py-4 text-left">Status</th>
+                        <th className="px-6 py-4 text-right">Ação</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-sm`}>
+                        {sortedMembers.map(m => (
+                            <tr key={m.id} className={`${isHospitalMode ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}>
+                                <td className="px-6 py-4">
+                                <p className="font-bold">{m.name}</p>
+                                <p className="text-[10px] text-gray-500">{m.email}</p>
+                                </td>
+                                <td className="px-6 py-4">
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${m.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>{m.role}</span>
+                                </td>
+                                <td className="px-6 py-4">
+                                {m.lat && m.lng ? (
+                                    <span className="text-[9px] font-bold text-green-600 uppercase bg-green-50 px-2 py-1 rounded-lg">Mapeado</span>
+                                ) : (
+                                    <span className="text-[9px] font-bold text-gray-400 uppercase bg-gray-50 px-2 py-1 rounded-lg">Sem Mapa</span>
+                                )}
+                                </td>
+                                <td className="px-6 py-4">
+                                <div className="flex items-center gap-2">
+                                    <span className={`w-2 h-2 rounded-full ${m.active ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                    <span className="font-bold text-[11px]">{m.active ? 'ATIVO' : 'PENDENTE'}</span>
+                                </div>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                    <button onClick={() => setEditingMember(m)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">Editar</button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
       )}
 
@@ -329,12 +331,12 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       {/* MODAL: EDITAR MEMBRO */}
       {editingMember && (
           <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
-             <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
-                <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center">
+             <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+                <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center shrink-0">
                     <span className="text-lg">Configurar Voluntário</span>
                     <button onClick={() => setEditingMember(null)} className="text-3xl leading-none">&times;</button>
                 </div>
-                <form onSubmit={handleSaveMember} className="p-8 space-y-4">
+                <form onSubmit={handleSaveMember} className="p-8 space-y-4 flex-grow overflow-y-auto custom-scrollbar">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nome Completo</label>
                       <input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.name || ''} onChange={e => setEditingMember({...editingMember, name: e.target.value})} />
@@ -359,7 +361,9 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                         </select>
                       </div>
                     </div>
-                    <Button className="w-full rounded-xl py-4" type="submit">Salvar Alterações</Button>
+                    <div className="pt-4">
+                        <Button className="w-full rounded-xl py-4" type="submit">Salvar Alterações</Button>
+                    </div>
                 </form>
              </div>
           </div>
@@ -368,12 +372,12 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       {/* MODAL: EDITAR HOSPITAL */}
       {editingHospital && (
           <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
-             <div className={`w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
-                <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center">
+             <div className={`w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+                <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center shrink-0">
                     <span className="text-lg">Configurar Unidade</span>
                     <button onClick={() => setEditingHospital(null)} className="text-3xl leading-none">&times;</button>
                 </div>
-                <form onSubmit={handleSaveHospital} className="p-8 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
+                <form onSubmit={handleSaveHospital} className="p-8 space-y-4 flex-grow overflow-y-auto custom-scrollbar">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nome da Instituição</label>
                       <input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingHospital.name || ''} onChange={e => setEditingHospital({...editingHospital, name: e.target.value})} />
@@ -408,7 +412,9 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Informações para IA (Briefing)</label>
                       <textarea rows={4} className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} placeholder="Ex: Regras de crachá, pacientes cirúrgicos as terças, estacionamento no fundo..." value={editingHospital.importantInfo || ''} onChange={e => setEditingHospital({...editingHospital, importantInfo: e.target.value})} />
                     </div>
-                    <Button className="w-full rounded-xl py-4" type="submit">Atualizar Unidade</Button>
+                    <div className="pt-4">
+                        <Button className="w-full rounded-xl py-4" type="submit">Atualizar Unidade</Button>
+                    </div>
                 </form>
              </div>
           </div>
@@ -417,12 +423,12 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       {/* MODAL: EDITAR ROTA */}
       {editingRoute && (
           <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
-             <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
-                <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center">
+             <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+                <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center shrink-0">
                     <span className="text-lg">Configurar Rota</span>
                     <button onClick={() => setEditingRoute(null)} className="text-3xl leading-none">&times;</button>
                 </div>
-                <form onSubmit={handleSaveRoute} className="p-8 space-y-4">
+                <form onSubmit={handleSaveRoute} className="p-8 space-y-4 flex-grow overflow-y-auto custom-scrollbar">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nome da Rota Logística</label>
                       <input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingRoute.name || ''} onChange={e => setEditingRoute({...editingRoute, name: e.target.value})} />
@@ -454,7 +460,9 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                           <option value="false">Rota Suspensa</option>
                       </select>
                     </div>
-                    <Button className="w-full rounded-xl py-4" type="submit">Salvar Rota</Button>
+                    <div className="pt-4">
+                        <Button className="w-full rounded-xl py-4" type="submit">Salvar Rota</Button>
+                    </div>
                 </form>
              </div>
           </div>

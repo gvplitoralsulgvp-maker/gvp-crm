@@ -122,7 +122,7 @@ const Layout: React.FC<{
   }
 
   return (
-    <div className={`h-screen flex overflow-hidden ${isHospitalMode ? 'bg-[#1a1c1e] text-gray-200' : 'bg-gray-50 text-gray-900'} ${isNightMode ? 'night-shift' : ''}`}>
+    <div className={`h-[100dvh] flex overflow-hidden ${isHospitalMode ? 'bg-[#1a1c1e] text-gray-200' : 'bg-gray-50 text-gray-900'} ${isNightMode ? 'night-shift' : ''}`}>
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col ${isHospitalMode ? 'bg-[#212327] border-r border-gray-800' : 'bg-white shadow-xl'}`}>
         <div className="p-6 border-b flex items-center justify-between border-gray-800/10 shrink-0">
           <div className="flex items-center gap-2">
@@ -206,7 +206,7 @@ const Layout: React.FC<{
           </div>
         </header>
 
-        <main className="flex-grow overflow-y-auto custom-scrollbar p-4 md:p-6 bg-transparent">
+        <main className="flex-grow overflow-y-auto custom-scrollbar p-4 md:p-6 bg-transparent pb-24 md:pb-6">
           <Routes>
             <Route path="/dashboard" element={<Dashboard state={state} onUpdateState={onUpdateState} isPrivacyMode={isPrivacyMode} isHospitalMode={isHospitalMode} />} />
             <Route path="/patients" element={<PatientRegistry state={state} onUpdateState={onUpdateState} isPrivacyMode={isPrivacyMode} isHospitalMode={isHospitalMode} />} />
@@ -251,7 +251,7 @@ const App: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
+      <div className="h-[100dvh] flex items-center justify-center bg-gray-50">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );

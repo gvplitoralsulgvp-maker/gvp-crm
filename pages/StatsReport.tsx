@@ -106,26 +106,28 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
            </div>
 
            <div className={`rounded-xl border overflow-hidden ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
-              <table className="min-w-full divide-y divide-gray-800/10">
-                 <thead className="bg-gray-50/5 text-[10px] font-black uppercase text-gray-400">
-                    <tr><th className="px-6 py-4 text-left">Data</th><th className="px-6 py-4 text-left">Rota</th><th className="px-6 py-4 text-left">Membros Escalados</th><th className="px-6 py-4 text-left">Ocorrência</th></tr>
-                 </thead>
-                 <tbody className="divide-y divide-gray-800/10 text-sm">
-                    {missedVisits.sort((a,b) => b.date.localeCompare(a.date)).map(v => (
-                      <tr key={v.id}>
-                        <td className="px-6 py-4 font-bold text-red-500">{new Date(v.date + 'T12:00:00').toLocaleDateString()}</td>
-                        <td className="px-6 py-4 font-bold">{state.routes.find(r => r.id === v.routeId)?.name}</td>
-                        <td className="px-6 py-4 text-gray-500">{v.memberIds.map(id => state.members.find(m => m.id === id)?.name).join(' & ')}</td>
-                        <td className="px-6 py-4">
-                           <span className="px-2 py-1 bg-red-100 text-red-600 rounded text-[10px] font-black uppercase">Visita não efetuada</span>
-                        </td>
-                      </tr>
-                    ))}
-                    {missedVisits.length === 0 && (
-                        <tr><td colSpan={4} className="p-10 text-center text-gray-400 italic">Nenhuma visita perdida registrada. Parabéns à equipe!</td></tr>
-                    )}
-                 </tbody>
-              </table>
+              <div className="overflow-x-auto custom-scrollbar">
+                  <table className="min-w-full divide-y divide-gray-800/10">
+                     <thead className="bg-gray-50/5 text-[10px] font-black uppercase text-gray-400">
+                        <tr><th className="px-6 py-4 text-left">Data</th><th className="px-6 py-4 text-left">Rota</th><th className="px-6 py-4 text-left">Membros Escalados</th><th className="px-6 py-4 text-left">Ocorrência</th></tr>
+                     </thead>
+                     <tbody className="divide-y divide-gray-800/10 text-sm">
+                        {missedVisits.sort((a,b) => b.date.localeCompare(a.date)).map(v => (
+                          <tr key={v.id}>
+                            <td className="px-6 py-4 font-bold text-red-500">{new Date(v.date + 'T12:00:00').toLocaleDateString()}</td>
+                            <td className="px-6 py-4 font-bold">{state.routes.find(r => r.id === v.routeId)?.name}</td>
+                            <td className="px-6 py-4 text-gray-500">{v.memberIds.map(id => state.members.find(m => m.id === id)?.name).join(' & ')}</td>
+                            <td className="px-6 py-4">
+                               <span className="px-2 py-1 bg-red-100 text-red-600 rounded text-[10px] font-black uppercase">Visita não efetuada</span>
+                            </td>
+                          </tr>
+                        ))}
+                        {missedVisits.length === 0 && (
+                            <tr><td colSpan={4} className="p-10 text-center text-gray-400 italic">Nenhuma visita perdida registrada. Parabéns à equipe!</td></tr>
+                        )}
+                     </tbody>
+                  </table>
+              </div>
            </div>
         </div>
       )}
@@ -138,20 +140,22 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
            </div>
 
            <div className={`rounded-xl border overflow-hidden ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
-              <table className="min-w-full divide-y divide-gray-800/10">
-                 <thead className="bg-gray-50/5 text-[10px] font-black uppercase text-gray-400">
-                    <tr><th className="px-6 py-4 text-left">Data</th><th className="px-6 py-4 text-left">Hospital</th><th className="px-6 py-4 text-left">Relato da Interação</th></tr>
-                 </thead>
-                 <tbody className="divide-y divide-gray-800/10 text-sm">
-                    {currentSocialVisits.sort((a,b) => b.date.localeCompare(a.date)).map(v => (
-                      <tr key={v.id}>
-                        <td className="px-6 py-4 font-bold">{new Date(v.date + 'T12:00:00').toLocaleDateString()}</td>
-                        <td className="px-6 py-4 text-indigo-500 font-bold">{state.hospitals.find(h => h.id === v.hospitalId)?.name}</td>
-                        <td className="px-6 py-4"><p className="text-xs italic text-gray-500 max-w-lg">"{v.report?.notes}"</p><p className="text-[10px] mt-1 text-gray-400">Por: {v.report?.doctorName}</p></td>
-                      </tr>
-                    ))}
-                 </tbody>
-              </table>
+              <div className="overflow-x-auto custom-scrollbar">
+                  <table className="min-w-full divide-y divide-gray-800/10">
+                     <thead className="bg-gray-50/5 text-[10px] font-black uppercase text-gray-400">
+                        <tr><th className="px-6 py-4 text-left">Data</th><th className="px-6 py-4 text-left">Hospital</th><th className="px-6 py-4 text-left">Relato da Interação</th></tr>
+                     </thead>
+                     <tbody className="divide-y divide-gray-800/10 text-sm">
+                        {currentSocialVisits.sort((a,b) => b.date.localeCompare(a.date)).map(v => (
+                          <tr key={v.id}>
+                            <td className="px-6 py-4 font-bold">{new Date(v.date + 'T12:00:00').toLocaleDateString()}</td>
+                            <td className="px-6 py-4 text-indigo-500 font-bold">{state.hospitals.find(h => h.id === v.hospitalId)?.name}</td>
+                            <td className="px-6 py-4"><p className="text-xs italic text-gray-500 max-w-lg">"{v.report?.notes}"</p><p className="text-[10px] mt-1 text-gray-400">Por: {v.report?.doctorName}</p></td>
+                          </tr>
+                        ))}
+                     </tbody>
+                  </table>
+              </div>
            </div>
         </div>
       )}

@@ -152,12 +152,12 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
       {/* Modal de Designação Admin */}
       {designatingSocial && (
         <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
-           <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
-              <div className="bg-indigo-600 p-6 text-white font-bold flex justify-between items-center">
+           <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+              <div className="bg-indigo-600 p-6 text-white font-bold flex justify-between items-center shrink-0">
                  <span className="text-lg">Designação Assistência Social</span>
                  <button onClick={() => setDesignatingSocial(null)} className="text-3xl leading-none">&times;</button>
               </div>
-              <div className="p-8 space-y-6">
+              <div className="p-8 space-y-6 flex-grow overflow-y-auto custom-scrollbar">
                  <div>
                     <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Instituição Alvo</label>
                     <p className="font-bold text-lg">{state.hospitals.find(h => h.id === designatingSocial)?.name}</p>
