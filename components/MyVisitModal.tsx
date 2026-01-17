@@ -62,12 +62,13 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
 
   const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
   
-  // Fix: Casting 'as string' para evitar erro de tipagem no includes
-  const routePatients = patients.filter(p => 
-    p.active && 
-    p.hospitalName && 
-    route.hospitals?.includes(p.hospitalName as string)
-  );
+  // Fix: Strict null check to avoid type errors in filter/includes
+  const routePatients = patients.filter(p => {
+    const isActive = p.active;
+    const hasName = typeof p.hospitalName === 'string';
+    const routeHasHospitals = Array.isArray(route.hospitals);
+    return isActive && hasName && routeHasHospitals && route.hospitals!.includes(p.hospitalName!);
+  });
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black bg-opacity-60 p-4 backdrop-blur-sm">

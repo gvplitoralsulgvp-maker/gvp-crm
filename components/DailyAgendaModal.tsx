@@ -48,12 +48,13 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
             const count = memberIds.length;
             const hasReport = !!slot?.report;
             
-            // Fix: Casting 'as string' para satisfazer o compilador TS no Vercel
-            const routePatients = patients.filter(p => 
-              p.active && 
-              p.hospitalName && 
-              route.hospitals?.includes(p.hospitalName as string)
-            );
+            // Fix: Strict null check and casting to avoid compilation errors
+            const routePatients = patients.filter(p => {
+              const isActive = p.active;
+              const hasName = typeof p.hospitalName === 'string';
+              const routeHasHospitals = Array.isArray(route.hospitals);
+              return isActive && hasName && routeHasHospitals && route.hospitals!.includes(p.hospitalName!);
+            });
 
             return (
               <div key={route.id} className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-xl shadow-sm border overflow-hidden p-5 flex flex-col gap-4`}>

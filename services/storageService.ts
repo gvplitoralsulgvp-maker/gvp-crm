@@ -25,6 +25,7 @@ const sanitizeForDb = (tableName: string, data: any) => {
 
   if (tableName === 'members') {
     delete cleanData.password;
+    // Removendo campos que não existem no banco de dados físico
     if ('circuit' in cleanData) delete cleanData.circuit;
   }
   
@@ -105,16 +106,27 @@ export const loadState = async (): Promise<AppState> => {
     
     const results = await Promise.all(tables.map(t => supabase!.from(t).select('*')));
     
-    const finalState: AppState = { ...baseState };
+    // Explicitly typed finalState to avoid inference issues with spread
+    const finalState: AppState = {
+      currentUser: baseState.currentUser,
+      members: baseState.members,
+      hospitals: baseState.hospitals,
+      routes: baseState.routes,
+      visits: baseState.visits,
+      socialWorkerVisits: baseState.socialWorkerVisits,
+      patients: baseState.patients,
+      logs: baseState.logs,
+      notifications: baseState.notifications
+    };
     
     tables.forEach((t, idx) => {
       const dbData = results[idx].data || [];
       const camelData = mapFromDb(dbData);
-      let stateKey = t.replace(/(_\w)/g, m => m[1].toUpperCase());
+      const stateKey = t.replace(/(_\w)/g, m => m[1].toUpperCase());
       
       if (stateKey === 'socialWorkerVisits') {
           finalState.socialWorkerVisits = camelData as SocialWorkerVisit[];
-      } else {
+      } else if (stateKey in finalState) {
           (finalState as any)[stateKey] = camelData;
       }
     });
@@ -131,6 +143,6 @@ export const loadState = async (): Promise<AppState> => {
 };
 
 export const saveState = async (state: AppState) => {
-  // saveState depreciado
+  // saveState depreciado, mantido apenas para compatibilidade de assinatura se necessário.
   return Promise.resolve();
 };
