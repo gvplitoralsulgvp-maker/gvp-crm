@@ -3,7 +3,7 @@ import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital,
 import { supabase } from './supabaseClient';
 
 /**
- * Estado inicial seguro e completo.
+ * Retorna o estado inicial limpo.
  */
 export const createDefaultState = (): AppState => ({
   currentUser: null,
@@ -18,34 +18,36 @@ export const createDefaultState = (): AppState => ({
 });
 
 /**
- * Sanitização rigorosa para o banco de dados.
+ * Sanitização para o banco de dados (Snake Case).
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
 
   if (tableName === 'members') {
-    delete cleanData.password;
-    if ('circuit' in cleanData) delete cleanData.circuit;
+    delete (cleanData as any).password;
+    delete (cleanData as any).circuit;
   }
   
   if (tableName === 'patients') {
-    delete cleanData.hospitalName;
+    delete (cleanData as any).hospitalName;
   }
   
   if (tableName === 'routes') {
-    delete cleanData.hospitals;
-    if (!cleanData.hospitalIds) cleanData.hospitalIds = [];
+    delete (cleanData as any).hospitals;
   }
 
   const snakeCaseData: any = {};
   Object.keys(cleanData).forEach(key => {
     const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-    snakeCaseData[snakeKey] = cleanData[key];
+    snakeCaseData[snakeKey] = (cleanData as any)[key];
   });
 
   return snakeCaseData;
 };
 
+/**
+ * Mapeamento do banco para Camel Case.
+ */
 const mapFromDb = (data: any[]) => {
   return data.map((item: any) => {
     const camelItem: any = {};
@@ -57,6 +59,9 @@ const mapFromDb = (data: any[]) => {
   });
 };
 
+/**
+ * Atualização Atômica.
+ */
 export const atomicUpdate = async (tableName: string, data: any) => {
   if (!supabase) return;
   const sanitized = sanitizeForDb(tableName, data);
@@ -64,6 +69,9 @@ export const atomicUpdate = async (tableName: string, data: any) => {
   if (error) throw error;
 };
 
+/**
+ * Exclusão Atômica.
+ */
 export const atomicDelete = async (tableName: string, id: string) => {
   if (!supabase) return;
   const { error } = await supabase.from(tableName).delete().eq('id', id);
@@ -71,11 +79,11 @@ export const atomicDelete = async (tableName: string, id: string) => {
 };
 
 /**
- * Carregamento de estado com casting forçado para evitar erro de propriedade faltante no build.
+ * Carregamento do Estado completo.
  */
 export const loadState = async (): Promise<AppState> => {
-  const defaultState = createDefaultState();
-  if (!supabase) return defaultState;
+  const emptyState = createDefaultState();
+  if (!supabase) return emptyState;
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -92,33 +100,26 @@ export const loadState = async (): Promise<AppState> => {
     ];
     
     const results = await Promise.all(tables.map(t => supabase!.from(t).select('*')));
-    
-    // Objeto temporário para montagem
-    const loadedData: any = {};
+    const loadedData: Record<string, any[]> = {};
     
     tables.forEach((t, idx) => {
       const dbData = results[idx].data || [];
       const camelData = mapFromDb(dbData);
-      
-      let stateKey = t.replace(/(_\w)/g, m => m[1].toUpperCase());
-      if (stateKey === 'socialWorkerVisits') {
-          loadedData.socialWorkerVisits = camelData;
-      } else {
-          loadedData[stateKey] = camelData;
-      }
+      const stateKey = t.replace(/(_\w)/g, m => m[1].toUpperCase());
+      loadedData[stateKey] = camelData;
     });
 
-    // Garantimos que TODAS as chaves de AppState existam antes do cast
+    // Montagem forçada para satisfazer a interface AppState
     const finalState: AppState = {
       currentUser: null,
-      members: loadedData.members || [],
-      hospitals: loadedData.hospitals || [],
-      routes: loadedData.routes || [],
-      visits: loadedData.visits || [],
-      socialWorkerVisits: loadedData.socialWorkerVisits || [],
-      patients: loadedData.patients || [],
-      logs: loadedData.logs || [],
-      notifications: loadedData.notifications || []
+      members: (loadedData.members || []) as Member[],
+      hospitals: (loadedData.hospitals || []) as Hospital[],
+      routes: (loadedData.routes || []) as VisitRoute[],
+      visits: (loadedData.visits || []) as VisitSlot[],
+      socialWorkerVisits: (loadedData.socialWorkerVisits || []) as SocialWorkerVisit[],
+      patients: (loadedData.patients || []) as Patient[],
+      logs: (loadedData.logs || []) as LogEntry[],
+      notifications: (loadedData.notifications || []) as Notification[]
     };
 
     if (session?.user) {
@@ -127,11 +128,14 @@ export const loadState = async (): Promise<AppState> => {
 
     return finalState;
   } catch (e) {
-    console.error("[Storage] Erro no loadState:", e);
-    return defaultState;
+    console.error("[Storage] Erro fatal no loadState:", e);
+    return emptyState;
   }
 };
 
+/**
+ * SaveState depreciado.
+ */
 export const saveState = async (state: AppState) => {
   return Promise.resolve();
 };

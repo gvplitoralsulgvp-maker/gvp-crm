@@ -31,7 +31,7 @@ export interface Member {
   lat?: number;
   lng?: number;
   hasSeenOnboarding?: boolean;
-  circuit?: string; // Adicionado como opcional para evitar erro TS2353 em dados legados
+  circuit?: string;
 }
 
 export interface Hospital {
@@ -47,7 +47,7 @@ export interface Hospital {
 export interface VisitRoute {
   id: string;
   name: string;
-  hospitalIds: string[]; // Obrigatório no modelo novo
+  hospitalIds?: string[]; // Tornado opcional para evitar erro TS2741 em dados legados
   hospitals?: string[];
   active: boolean;
 }
