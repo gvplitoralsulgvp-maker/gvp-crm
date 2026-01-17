@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { VisitRoute, VisitSlot, Member, UserRole, Patient } from '../types';
+import { VisitRoute, VisitSlot, Member, Patient } from '../types';
 import { Button } from './Button';
 
 interface DailyAgendaModalProps {
@@ -20,7 +20,7 @@ interface DailyAgendaModalProps {
 }
 
 export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
-  isOpen, onClose, date, routes, visits, members, patients, currentUser, isPrivacyMode, isHospitalMode, onRouteClick, onReportClick, onPatientClick
+  isOpen, onClose, date, routes, visits, members, patients, isPrivacyMode, isHospitalMode, onRouteClick, onReportClick, onPatientClick
 }) => {
   if (!isOpen) return null;
 
@@ -48,11 +48,11 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
             const count = memberIds.length;
             const hasReport = !!slot?.report;
             
-            // Pacientes nesta rota (Verificação de segurança para hospitais e hospitalName)
+            // Fix: Casting 'as string' para satisfazer o compilador TS no Vercel
             const routePatients = patients.filter(p => 
               p.active && 
               p.hospitalName && 
-              route.hospitals?.includes(p.hospitalName)
+              route.hospitals?.includes(p.hospitalName as string)
             );
 
             return (
@@ -65,7 +65,6 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
                     </p>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-                       {/* Dupla */}
                        <div className="space-y-1">
                           <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Membros Escalados</p>
                           {count === 0 ? (
@@ -80,7 +79,6 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
                           )}
                        </div>
 
-                       {/* Pacientes */}
                        <div className="space-y-1">
                           <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Pacientes na Rota ({routePatients.length})</p>
                           {routePatients.length === 0 ? (

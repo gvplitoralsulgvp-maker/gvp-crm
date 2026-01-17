@@ -25,7 +25,6 @@ export const SlotModal: React.FC<SlotModalProps> = ({
   const isAdmin = currentUser.role === UserRole.ADMIN;
 
   const toggleMember = (id: string) => {
-    // Permission check
     if (!isAdmin && id !== currentUser.id) {
         alert("Você só pode adicionar ou remover seu próprio nome da agenda.");
         return;
@@ -34,7 +33,6 @@ export const SlotModal: React.FC<SlotModalProps> = ({
     if (selectedIds.includes(id)) {
       setSelectedIds(selectedIds.filter(mid => mid !== id));
     } else {
-      // Check limits
       if (selectedIds.length < 2) {
         setSelectedIds([...selectedIds, id]);
       } else {
@@ -48,7 +46,6 @@ export const SlotModal: React.FC<SlotModalProps> = ({
     m.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Sorting: Current User first, then Selected ones, then Alphabetical
   filteredMembers.sort((a, b) => {
     if (a.id === currentUser.id) return -1;
     if (b.id === currentUser.id) return 1;

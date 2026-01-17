@@ -2,6 +2,9 @@
 import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital, VisitRoute, SocialWorkerVisit } from '../types';
 import { supabase } from './supabaseClient';
 
+/**
+ * Retorna o estado inicial limpo e tipado para a aplicação.
+ */
 export const createDefaultState = (): AppState => ({
   currentUser: null,
   members: [],
@@ -15,15 +18,15 @@ export const createDefaultState = (): AppState => ({
 });
 
 /**
- * Converte nomes de campos de camelCase para snake_case para o PostgreSQL
+ * Converte nomes de campos de camelCase para snake_case para o PostgreSQL.
+ * Também remove campos virtuais que não existem na estrutura física do banco.
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
 
-  // Remover campos virtuais de UI que não existem no banco
   if (tableName === 'members') {
     delete cleanData.password;
-    // Garante que não enviamos campos inexistentes como 'circuit'
+    // Removemos 'circuit' caso ele tenha vindo de alguma versão antiga de testes
     if ('circuit' in cleanData) delete cleanData.circuit;
   }
   
@@ -33,11 +36,12 @@ const sanitizeForDb = (tableName: string, data: any) => {
   
   if (tableName === 'routes') {
     delete cleanData.hospitals;
+    // Garante que hospitalIds seja sempre um array para evitar erros de restrição no banco
+    if (!cleanData.hospitalIds) cleanData.hospitalIds = [];
   }
 
   const snakeCaseData: any = {};
   Object.keys(cleanData).forEach(key => {
-    // Converte camelCase para snake_case (ex: hospitalId -> hospital_id)
     const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
     snakeCaseData[snakeKey] = cleanData[key];
   });
@@ -46,13 +50,12 @@ const sanitizeForDb = (tableName: string, data: any) => {
 };
 
 /**
- * Converte nomes de campos de snake_case para camelCase para o React
+ * Converte nomes de campos de snake_case do banco para camelCase do React.
  */
 const mapFromDb = (data: any[]) => {
   return data.map((item: any) => {
     const camelItem: any = {};
     Object.keys(item).forEach(key => {
-      // Converte snake_case para camelCase (ex: hospital_id -> hospitalId)
       const camelKey = key.replace(/(_\w)/g, m => m[1].toUpperCase());
       camelItem[camelKey] = item[key];
     });
@@ -60,15 +63,12 @@ const mapFromDb = (data: any[]) => {
   });
 };
 
+/**
+ * Executa um Upsert (Insert ou Update) atômico em uma tabela do Supabase.
+ */
 export const atomicUpdate = async (tableName: string, data: any) => {
   if (!supabase) return;
   const sanitized = sanitizeForDb(tableName, data);
-  
-  // Garantia adicional de tipos para rotas antes do upsert
-  if (tableName === 'routes' && !sanitized.hospital_ids) {
-    sanitized.hospital_ids = [];
-  }
-
   const { error } = await supabase.from(tableName).upsert(sanitized);
   if (error) {
     console.error(`[Storage] Erro no upsert em ${tableName}:`, error);
@@ -76,12 +76,18 @@ export const atomicUpdate = async (tableName: string, data: any) => {
   }
 };
 
+/**
+ * Remove um registro de uma tabela pelo ID.
+ */
 export const atomicDelete = async (tableName: string, id: string) => {
   if (!supabase) return;
   const { error } = await supabase.from(tableName).delete().eq('id', id);
   if (error) throw error;
 };
 
+/**
+ * Carrega todo o estado da aplicação do Supabase.
+ */
 export const loadState = async (): Promise<AppState> => {
   const baseState = createDefaultState();
   if (!supabase) return baseState;
@@ -89,7 +95,7 @@ export const loadState = async (): Promise<AppState> => {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     
-    // Lista completa de tabelas sincronizadas
+    // Lista de tabelas físicas sincronizadas
     const tables = [
       'members', 
       'hospitals', 
@@ -110,11 +116,14 @@ export const loadState = async (): Promise<AppState> => {
       const camelData = mapFromDb(dbData);
       
       // Mapeia para a chave correta no AppState (camelCase)
-      const stateKey = t.replace(/(_\w)/g, m => m[1].toUpperCase());
+      let stateKey = t.replace(/(_\w)/g, m => m[1].toUpperCase());
       
-      // Correção especial para social_worker_visits que vira socialWorkerVisits
-      const actualKey = stateKey === 'socialWorkerVisits' ? 'socialWorkerVisits' : stateKey;
-      (finalState as any)[actualKey] = camelData;
+      // Caso especial: social_worker_visits -> socialWorkerVisits
+      if (stateKey === 'socialWorkerVisits') {
+          finalState.socialWorkerVisits = camelData as SocialWorkerVisit[];
+      } else {
+          (finalState as any)[stateKey] = camelData;
+      }
     });
 
     if (session?.user) {
@@ -128,7 +137,9 @@ export const loadState = async (): Promise<AppState> => {
   }
 };
 
+/**
+ * Legado para manter compatibilidade de assinatura se necessário em outros arquivos.
+ */
 export const saveState = async (state: AppState) => {
-  // saveState está depreciado em favor de atomicUpdate por performance
-  console.warn("saveState depreciado. Use atomicUpdate.");
+  console.info("saveState no longer recommended. Use atomicUpdate.");
 };

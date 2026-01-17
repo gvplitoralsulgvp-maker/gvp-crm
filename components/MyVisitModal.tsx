@@ -28,7 +28,7 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
 }) => {
   const [briefing, setBriefing] = useState<string | null>(null);
   const [isBriefingLoading, setIsBriefingLoading] = useState(false);
-  const [nearbyHospital, setNearbyHospital] = useState<Hospital | null>(null);
+  const [, setNearbyHospital] = useState<Hospital | null>(null);
   const [sentOnTheWay, setSentOnTheWay] = useState(false);
 
   useEffect(() => {
@@ -62,11 +62,11 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
 
   const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
   
-  // Verificação de segurança: p.hospitalName é opcional, route.hospitals é opcional
+  // Fix: Casting 'as string' para evitar erro de tipagem no includes
   const routePatients = patients.filter(p => 
     p.active && 
     p.hospitalName && 
-    route.hospitals?.includes(p.hospitalName)
+    route.hospitals?.includes(p.hospitalName as string)
   );
 
   return (
@@ -81,7 +81,6 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
         </div>
 
         <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
-          {/* Ações Rápidas */}
           <div className="grid grid-cols-2 gap-4">
              <button 
                 onClick={handleOnTheWay}
@@ -111,7 +110,6 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
              </button>
           </div>
 
-          {/* Pacientes na Rota */}
           <div className={`p-5 rounded-2xl border shadow-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800' : 'bg-white border-gray-100'}`}>
              <h4 className={`text-[11px] font-bold uppercase tracking-widest mb-4 flex items-center gap-2 ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>
                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
@@ -147,7 +145,6 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
              )}
           </div>
 
-          {/* Informações dos Hospitais */}
           {hospitalDetails.some(h => !!h.importantInfo) && (
             <div className={`p-5 rounded-2xl border-2 animate-fade-in ${isHospitalMode ? 'bg-blue-900/10 border-blue-900/30' : 'bg-blue-50/50 border-blue-100/50'}`}>
               <h4 className={`text-[11px] font-bold uppercase tracking-widest mb-4 flex items-center gap-2 ${isHospitalMode ? 'text-blue-400' : 'text-blue-700'}`}>
@@ -165,7 +162,6 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
             </div>
           )}
 
-          {/* Briefing Gemini */}
           <div className={`${isHospitalMode ? 'bg-blue-900/10 border-blue-900/50 shadow-black' : 'bg-blue-50 border-blue-100 shadow-sm'} p-5 rounded-2xl border-2 space-y-4`}>
              <div className="flex justify-between items-center">
                  <h4 className={`text-[11px] font-bold uppercase tracking-widest flex items-center gap-2 ${isHospitalMode ? 'text-blue-400' : 'text-blue-600'}`}>
@@ -185,7 +181,6 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
              )}
           </div>
 
-          {/* Parceiro de Visita */}
           <div className={`flex items-center gap-5 p-5 rounded-2xl border shadow-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800' : 'bg-gray-50 border-gray-100'}`}>
              <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xl shadow-inner border-2 border-white">{partner ? partner.name.substring(0, 2).toUpperCase() : '?'}</div>
              <div className="flex-grow">
@@ -195,7 +190,6 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
           </div>
         </div>
 
-        {/* Footer Actions */}
         <div className={`p-5 border-t grid grid-cols-3 gap-3 ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
           <button onClick={onCancelVisit} className="text-red-500 hover:bg-red-500/10 text-xs font-bold uppercase py-2 rounded-lg">Cancelar</button>
           <button onClick={onSwapRequest} className="text-orange-600 hover:bg-orange-500/10 text-xs font-bold uppercase py-2 rounded-lg">Troca</button>

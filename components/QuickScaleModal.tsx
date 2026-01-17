@@ -102,8 +102,6 @@ export const QuickScaleModal: React.FC<QuickScaleModalProps> = ({ isOpen, onClos
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black bg-opacity-50 p-4">
       <div className={`rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327]' : 'bg-white'}`}>
-        
-        {/* Header */}
         <div className="bg-blue-600 px-6 py-5 flex justify-between items-center flex-shrink-0">
           <div>
             <h3 className="text-white font-bold text-lg">Agendar Visita</h3>
@@ -114,7 +112,6 @@ export const QuickScaleModal: React.FC<QuickScaleModalProps> = ({ isOpen, onClos
           </button>
         </div>
 
-        {/* Steps */}
         <div className="p-6 flex-grow overflow-y-auto custom-scrollbar">
           {step === 1 && (
              <div className="space-y-6 animate-fade-in">
@@ -219,7 +216,6 @@ export const QuickScaleModal: React.FC<QuickScaleModalProps> = ({ isOpen, onClos
           )}
         </div>
 
-        {/* Footer */}
         <div className={`p-6 border-t flex justify-between gap-3 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800' : 'bg-white border-gray-100'}`}>
           {step === 1 ? (
               <>
