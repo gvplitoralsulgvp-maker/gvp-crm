@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient';
 
 /**
  * FABRICA DE ESTADO PADRÃO
- * Garante que o estado inicial tenha todas as chaves necessárias.
+ * Garante que o estado inicial tenha todas as chaves exigidas pela interface AppState.
  */
 export const createDefaultState = (): AppState => ({
   currentUser: null,
@@ -18,7 +18,7 @@ export const createDefaultState = (): AppState => ({
 });
 
 /**
- * Mapeador de Banco para App
+ * Mapeador de Banco (snake_case) para App (camelCase)
  */
 function mapFromDb<T>(data: any[] | null): T[] {
   if (!data || !Array.isArray(data)) return [] as T[];
@@ -35,7 +35,7 @@ function mapFromDb<T>(data: any[] | null): T[] {
 
 /**
  * CARREGAMENTO DE ESTADO
- * Esta função agora é blindada: ela constrói o objeto explicitamente.
+ * Busca dados no Supabase e monta o objeto AppState completo.
  */
 export const loadState = async (): Promise<AppState> => {
   const defaultState = createDefaultState();
@@ -59,7 +59,8 @@ export const loadState = async (): Promise<AppState> => {
 
     const membersList = mapFromDb<Member>(resMem.data);
 
-    // MONTAGEM EXPLÍCITA: Resolve o erro TS2741 garantindo todas as chaves
+    // MONTAGEM EXPLÍCITA: Garante que TODAS as propriedades de AppState existam.
+    // Isso resolve o erro TS2741.
     const finalState: AppState = {
       currentUser: null,
       members: membersList,
@@ -78,16 +79,17 @@ export const loadState = async (): Promise<AppState> => {
 
     return finalState;
   } catch (error) {
-    console.error("[StorageService] Erro fatal ao carregar dados:", error);
+    console.error("[StorageService] Erro ao carregar dados:", error);
     return defaultState;
   }
 };
 
 /**
- * Utilitário de Sanitização para persistência atômica
+ * Utilitário de Sanitização para persistência
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
+  // Remover campos que não existem no banco de dados
   if (tableName === 'members') delete (cleanData as any).password;
   if (tableName === 'patients') delete (cleanData as any).hospitalName;
   if (tableName === 'routes') delete (cleanData as any).hospitals;
@@ -114,6 +116,6 @@ export const atomicDelete = async (tableName: string, id: string) => {
 };
 
 export const saveState = async (state: AppState) => {
-  // Persistência agora é feita via atomicUpdate por evento para maior confiabilidade
+  // A persistência é feita via atomicUpdate durante as ações do usuário
   return Promise.resolve();
 };
