@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { AppState, VisitRoute, VisitSlot, VisitStatus, VisitReport, Patient } from '../types';
+import { AppState, VisitRoute, VisitSlot, VisitStatus, VisitReport } from '../types';
 import { FullCalendar } from '../components/FullCalendar';
 import { DailyAgendaModal } from '../components/DailyAgendaModal';
 import { FinishVisitModal } from '../components/FinishVisitModal';
@@ -17,7 +17,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isDailyAgendaOpen, setIsDailyAgendaOpen] = useState(false);
   const [finishVisitSlot, setFinishVisitSlot] = useState<VisitSlot | null>(null);
-  const [selectionModalData, setSelectionModalData] = useState<{route: VisitRoute, slot: VisitSlot | undefined} | null>(null);
+  const [, setSelectionModalData] = useState<{route: VisitRoute, slot: VisitSlot | undefined} | null>(null);
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -32,7 +32,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
     );
   }, [state.visits, state.currentUser, todayStr]);
 
-  const handleFinishVisit = async (notes: string, patientUpdates?: any) => {
+  const handleFinishVisit = async (notes: string) => {
     if (!finishVisitSlot || !state.currentUser) return;
 
     const report: VisitReport = {
@@ -51,10 +51,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
     try {
       await atomicUpdate('visits', updatedVisit);
       const updatedVisits = state.visits.map(v => v.id === updatedVisit.id ? updatedVisit : v);
-      
-      // Se houver atualizações de pacientes no futuro, processar aqui
-      // Por enquanto, atualizamos apenas o status da visita
-      
       onUpdateState({ ...state, visits: updatedVisits });
       setFinishVisitSlot(null);
     } catch (err) {
@@ -121,9 +117,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
           onClose={() => setFinishVisitSlot(null)} 
           onConfirm={handleFinishVisit} 
           patients={state.patients.filter(p => {
-              const currentSlot = finishVisitSlot;
-              if (!currentSlot) return false;
-              const route = state.routes.find(r => r.id === currentSlot.routeId);
+              if (!finishVisitSlot) return false;
+              const route = state.routes.find(r => r.id === finishVisitSlot.routeId);
               const hospitalIds = route?.hospitalIds || [];
               return p.active && hospitalIds.includes(p.hospitalId);
           })}

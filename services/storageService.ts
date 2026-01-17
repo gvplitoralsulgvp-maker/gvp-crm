@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 
 /**
  * Retorna o estado inicial completo e tipado.
- * Isso garante que todas as propriedades exigidas pela interface AppState estejam presentes.
+ * O TypeScript exige que TODAS as propriedades de AppState estejam presentes.
  */
 export const createDefaultState = (): AppState => {
   return {
@@ -83,7 +83,7 @@ export const atomicDelete = async (tableName: string, id: string) => {
 
 /**
  * Carrega o estado completo do banco de dados.
- * Garante que o retorno seja um AppState válido com todas as propriedades inicializadas.
+ * O uso de mapeamento manual evita erros de propriedades ausentes (TS2741).
  */
 export const loadState = async (): Promise<AppState> => {
   const state = createDefaultState();
@@ -92,6 +92,7 @@ export const loadState = async (): Promise<AppState> => {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     
+    // Lista de tabelas para busca paralela
     const tables = [
       'members', 
       'hospitals', 
@@ -104,27 +105,25 @@ export const loadState = async (): Promise<AppState> => {
     ];
     
     const results = await Promise.all(tables.map(t => supabase!.from(t).select('*')));
-    const loadedData: Record<string, any[]> = {};
     
-    tables.forEach((t, idx) => {
+    // Criamos um objeto temporário para armazenar os dados carregados
+    const data: any = {};
+    tables.forEach((tableName, idx) => {
       const dbData = results[idx].data || [];
-      const camelData = mapFromDb(dbData);
-      // Converte nome da tabela para chave do estado (ex: social_worker_visits -> socialWorkerVisits)
-      const stateKey = t.replace(/(_\w)/g, m => m[1].toUpperCase());
-      loadedData[stateKey] = camelData;
+      data[tableName] = mapFromDb(dbData);
     });
 
-    // Construção explícita da resposta para evitar erro de propriedade ausente
+    // Construção EXPLÍCITA do AppState para garantir conformidade com a interface
     const finalState: AppState = {
       currentUser: null,
-      members: (loadedData.members || []) as Member[],
-      hospitals: (loadedData.hospitals || []) as Hospital[],
-      routes: (loadedData.routes || []) as VisitRoute[],
-      visits: (loadedData.visits || []) as VisitSlot[],
-      socialWorkerVisits: (loadedData.socialWorkerVisits || []) as SocialWorkerVisit[],
-      patients: (loadedData.patients || []) as Patient[],
-      logs: (loadedData.logs || []) as LogEntry[],
-      notifications: (loadedData.notifications || []) as Notification[]
+      members: (data['members'] || []) as Member[],
+      hospitals: (data['hospitals'] || []) as Hospital[],
+      routes: (data['routes'] || []) as VisitRoute[],
+      visits: (data['visits'] || []) as VisitSlot[],
+      socialWorkerVisits: (data['social_worker_visits'] || []) as SocialWorkerVisit[],
+      patients: (data['patients'] || []) as Patient[],
+      logs: (data['logs'] || []) as LogEntry[],
+      notifications: (data['notifications'] || []) as Notification[]
     };
 
     if (session?.user) {
@@ -133,13 +132,13 @@ export const loadState = async (): Promise<AppState> => {
 
     return finalState;
   } catch (e) {
-    console.error("[Storage] Erro ao carregar estado:", e);
+    console.error("[Storage] Erro crítico no loadState:", e);
     return state;
   }
 };
 
 /**
- * SaveState depreciado, mantido apenas para compatibilidade de interface se necessário.
+ * SaveState depreciado em favor de atomicUpdate.
  */
 export const saveState = async (state: AppState) => {
   return Promise.resolve();
