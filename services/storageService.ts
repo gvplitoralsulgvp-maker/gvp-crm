@@ -2,9 +2,8 @@ import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital,
 import { supabase } from './supabaseClient';
 
 /** 
- * VERSÃO DO ARQUIVO: 2.0.1 - CORREÇÃO TS2741 
- * Este arquivo foi reestruturado para garantir que 'socialWorkerVisits' 
- * nunca esteja ausente do objeto AppState.
+ * GVP STORAGE SERVICE - V3
+ * Responsável pela persistência e carregamento do estado global via Supabase.
  */
 
 export const createDefaultState = (): AppState => ({
@@ -53,7 +52,7 @@ export const loadState = async (): Promise<AppState> => {
 
     const membersList = mapFromDb<Member>(resMem.data);
 
-    // Montagem do estado com cast explícito para evitar inferência 'never[]'
+    // Montagem do estado garantindo todas as propriedades da interface AppState
     const finalState: AppState = {
       currentUser: null,
       members: membersList as Member[],
@@ -72,7 +71,7 @@ export const loadState = async (): Promise<AppState> => {
 
     return finalState;
   } catch (error) {
-    console.error("[StorageService] Falha crítica no carregamento:", error);
+    console.error("[StorageService] Erro crítico no loadState:", error);
     return defaultState;
   }
 };
@@ -105,6 +104,5 @@ export const atomicDelete = async (tableName: string, id: string) => {
 };
 
 export const saveState = async (state: AppState): Promise<void> => {
-  // A persistência é atômica via atomicUpdate
   return Promise.resolve();
 };

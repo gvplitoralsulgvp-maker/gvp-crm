@@ -89,6 +89,18 @@ export interface Patient {
   floor?: string;
   wing?: string;
   bed?: string;
+  room?: string;
+  phone?: string;
+  age?: string;
+  gender?: string;
+  companionName?: string;
+  companionPhone?: string;
+  spiritualStatus?: string;
+  localElder?: string;
+  visitTime?: string;
+  isSurgical?: boolean;
+  surgeryDate?: string;
+  clinicalStatus?: string;
   isIsolation?: boolean;
   isolationType?: string;
   notes?: string;
