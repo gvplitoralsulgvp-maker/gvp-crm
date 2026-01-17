@@ -3,28 +3,27 @@ import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital,
 import { supabase } from './supabaseClient';
 
 /**
- * ESTADO BASE GARANTIDO
- * Criamos uma função que retorna um objeto AppState completo com tipos explícitos.
+ * FABRICA DE ESTADO PADRÃO
+ * Garante que o objeto retornado tenha TODAS as chaves da interface AppState.
+ * O uso de 'as' em arrays vazios evita a inferência de 'never[]'.
  */
-export const createDefaultState = (): AppState => {
-  const state: AppState = {
-    currentUser: null,
-    members: [] as Member[],
-    hospitals: [] as Hospital[],
-    routes: [] as VisitRoute[],
-    visits: [] as VisitSlot[],
-    socialWorkerVisits: [] as SocialWorkerVisit[],
-    patients: [] as Patient[],
-    logs: [] as LogEntry[],
-    notifications: [] as Notification[]
-  };
-  return state;
-};
+export const createDefaultState = (): AppState => ({
+  currentUser: null,
+  members: [] as Member[],
+  hospitals: [] as Hospital[],
+  routes: [] as VisitRoute[],
+  visits: [] as VisitSlot[],
+  socialWorkerVisits: [] as SocialWorkerVisit[],
+  patients: [] as Patient[],
+  logs: [] as LogEntry[],
+  notifications: [] as Notification[]
+});
 
 /**
- * Função utilitária de mapeamento (Snake -> Camel)
+ * Conversor de Snake Case (DB) para Camel Case (App)
+ * Usado individualmente para garantir tipagem.
  */
-function mapCollection<T>(data: any[] | null): T[] {
+function toCamel<T>(data: any[] | null): T[] {
   if (!data) return [] as T[];
   return data.map((item: any) => {
     const camelItem: any = {};
@@ -37,27 +36,19 @@ function mapCollection<T>(data: any[] | null): T[] {
 }
 
 /**
- * Carregamento do Estado.
+ * Carregamento do Estado Principal
  */
 export const loadState = async (): Promise<AppState> => {
-  // Inicializa com o default garantido
-  const finalState: AppState = createDefaultState();
+  const state = createDefaultState();
   
-  if (!supabase) return finalState;
+  if (!supabase) return state;
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
 
-    // Consultas individuais
+    // Buscas paralelas no Supabase
     const [
-      resMembers,
-      resHospitals,
-      resRoutes,
-      resVisits,
-      resSocial,
-      resPatients,
-      resLogs,
-      resNotifs
+      resMem, resHos, resRou, resVis, resSoc, resPat, resLog, resNot
     ] = await Promise.all([
       supabase.from('members').select('*'),
       supabase.from('hospitals').select('*'),
@@ -69,29 +60,40 @@ export const loadState = async (): Promise<AppState> => {
       supabase.from('notifications').select('*')
     ]);
 
-    // Preenchimento manual garantindo a tipagem de cada campo
-    finalState.members = mapCollection<Member>(resMembers.data);
-    finalState.hospitals = mapCollection<Hospital>(resHospitals.data);
-    finalState.routes = mapCollection<VisitRoute>(resRoutes.data);
-    finalState.visits = mapCollection<VisitSlot>(resVisits.data);
-    finalState.socialWorkerVisits = mapCollection<SocialWorkerVisit>(resSocial.data);
-    finalState.patients = mapCollection<Patient>(resPatients.data);
-    finalState.logs = mapCollection<LogEntry>(resLogs.data);
-    finalState.notifications = mapCollection<Notification>(resNotifs.data);
+    // Montagem do objeto final campo a campo para satisfazer o TypeScript
+    const finalState: AppState = {
+      currentUser: null,
+      members: voicesToCamel<Member>(resMem.data),
+      hospitals: voicesToCamel<Hospital>(resHos.data),
+      routes: voicesToCamel<VisitRoute>(resRou.data),
+      visits: voicesToCamel<VisitSlot>(resVis.data),
+      socialWorkerVisits: voicesToCamel<SocialWorkerVisit>(resSoc.data),
+      patients: voicesToCamel<Patient>(resPat.data),
+      logs: voicesToCamel<LogEntry>(resLog.data),
+      notifications: voicesToCamel<Notification>(resNot.data)
+    };
 
+    // Define o usuário atual se houver sessão
     if (session?.user) {
       finalState.currentUser = finalState.members.find(m => m.id === session.user.id) || null;
     }
 
     return finalState;
   } catch (error) {
-    console.error("[Storage] Erro no carregamento:", error);
-    return createDefaultState();
+    console.error("[Storage] Falha no carregamento:", error);
+    return state;
   }
 };
 
 /**
- * Sanitização para o banco de dados.
+ * Atalho interno para a função de mapeamento
+ */
+function voicesToCamel<T>(data: any): T[] {
+    return toCamel<T>(data);
+}
+
+/**
+ * Sanitização para o banco de dados (converte Camel para Snake)
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
@@ -121,5 +123,6 @@ export const atomicDelete = async (tableName: string, id: string) => {
 };
 
 export const saveState = async (state: AppState) => {
+  // Implementação futura ou via atomicUpdate
   return Promise.resolve();
 };
