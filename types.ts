@@ -47,7 +47,7 @@ export interface Hospital {
 export interface VisitRoute {
   id: string;
   name: string;
-  hospitalIds?: string[]; // Tornado opcional para evitar erro TS2741 em dados legados
+  hospitalIds?: string[];
   hospitals?: string[];
   active: boolean;
 }

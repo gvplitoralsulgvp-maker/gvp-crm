@@ -3,25 +3,31 @@ import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital,
 import { supabase } from './supabaseClient';
 
 /**
- * Retorna o estado inicial completo e tipado.
- * O TypeScript exige que TODAS as propriedades de AppState estejam presentes.
+ * Constante de Estado Inicial (Molde).
+ * GARANTE que todas as propriedades obrigatórias da interface AppState estejam presentes.
+ * Isso evita o erro TS2741 durante o build.
  */
-export const createDefaultState = (): AppState => {
-  return {
-    currentUser: null,
-    members: [],
-    hospitals: [],
-    routes: [],
-    visits: [],
-    socialWorkerVisits: [],
-    patients: [],
-    logs: [],
-    notifications: []
-  };
+const EMPTY_STATE: AppState = {
+  currentUser: null,
+  members: [],
+  hospitals: [],
+  routes: [],
+  visits: [],
+  socialWorkerVisits: [],
+  patients: [],
+  logs: [],
+  notifications: []
 };
 
 /**
- * Sanitização para o banco de dados (converte camelCase para snake_case).
+ * Cria um estado padrão limpo.
+ */
+export const createDefaultState = (): AppState => ({
+  ...EMPTY_STATE
+});
+
+/**
+ * Converte camelCase para snake_case para o banco de dados.
  */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
@@ -49,7 +55,7 @@ const sanitizeForDb = (tableName: string, data: any) => {
 };
 
 /**
- * Mapeamento do banco (snake_case) para o App (camelCase).
+ * Converte snake_case para camelCase vindo do banco.
  */
 const mapFromDb = (data: any[]) => {
   return data.map((item: any) => {
@@ -82,17 +88,16 @@ export const atomicDelete = async (tableName: string, id: string) => {
 };
 
 /**
- * Carrega o estado completo do banco de dados.
- * O uso de mapeamento manual evita erros de propriedades ausentes (TS2741).
+ * Carrega o estado completo.
+ * Implementação Robusta: Começa com o EMPTY_STATE e preenche os dados.
  */
 export const loadState = async (): Promise<AppState> => {
-  const state = createDefaultState();
-  if (!supabase) return state;
+  if (!supabase) return createDefaultState();
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
     
-    // Lista de tabelas para busca paralela
+    // Lista de tabelas para consulta
     const tables = [
       'members', 
       'hospitals', 
@@ -105,25 +110,23 @@ export const loadState = async (): Promise<AppState> => {
     ];
     
     const results = await Promise.all(tables.map(t => supabase!.from(t).select('*')));
+    const rawData: Record<string, any[]> = {};
     
-    // Criamos um objeto temporário para armazenar os dados carregados
-    const data: any = {};
-    tables.forEach((tableName, idx) => {
-      const dbData = results[idx].data || [];
-      data[tableName] = mapFromDb(dbData);
+    tables.forEach((t, idx) => {
+      rawData[t] = mapFromDb(results[idx].data || []);
     });
 
-    // Construção EXPLÍCITA do AppState para garantir conformidade com a interface
+    // Montagem do estado final garantindo tipagem de arrays para evitar never[]
     const finalState: AppState = {
       currentUser: null,
-      members: (data['members'] || []) as Member[],
-      hospitals: (data['hospitals'] || []) as Hospital[],
-      routes: (data['routes'] || []) as VisitRoute[],
-      visits: (data['visits'] || []) as VisitSlot[],
-      socialWorkerVisits: (data['social_worker_visits'] || []) as SocialWorkerVisit[],
-      patients: (data['patients'] || []) as Patient[],
-      logs: (data['logs'] || []) as LogEntry[],
-      notifications: (data['notifications'] || []) as Notification[]
+      members: (rawData['members'] || []) as Member[],
+      hospitals: (rawData['hospitals'] || []) as Hospital[],
+      routes: (rawData['routes'] || []) as VisitRoute[],
+      visits: (rawData['visits'] || []) as VisitSlot[],
+      socialWorkerVisits: (rawData['social_worker_visits'] || []) as SocialWorkerVisit[],
+      patients: (rawData['patients'] || []) as Patient[],
+      logs: (rawData['logs'] || []) as LogEntry[],
+      notifications: (rawData['notifications'] || []) as Notification[]
     };
 
     if (session?.user) {
@@ -132,13 +135,13 @@ export const loadState = async (): Promise<AppState> => {
 
     return finalState;
   } catch (e) {
-    console.error("[Storage] Erro crítico no loadState:", e);
-    return state;
+    console.error("[Storage] Erro ao carregar estado do Supabase:", e);
+    return createDefaultState();
   }
 };
 
 /**
- * SaveState depreciado em favor de atomicUpdate.
+ * Função mantida apenas para compatibilidade, o salvamento agora é atômico.
  */
 export const saveState = async (state: AppState) => {
   return Promise.resolve();
