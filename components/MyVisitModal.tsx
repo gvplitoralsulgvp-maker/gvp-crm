@@ -61,6 +61,8 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
   if (!isOpen || !route) return null;
 
   const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const todayStr = new Date().toISOString().split('T')[0];
+  const isFuture = date > todayStr;
   
   const routePatients = patients.filter(p => {
     const isActive = p.active;
@@ -87,14 +89,15 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
           <div className="grid grid-cols-2 gap-4">
              <button 
                 onClick={handleOnTheWay}
-                disabled={sentOnTheWay || !partner}
+                disabled={sentOnTheWay || !partner || isFuture}
                 className={`flex items-center justify-center gap-2 p-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all border-2 ${
-                    sentOnTheWay 
-                    ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-default' 
+                    sentOnTheWay || isFuture
+                    ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-60' 
                     : isHospitalMode 
                         ? 'bg-blue-900/20 border-blue-900/50 text-blue-400 hover:bg-blue-900/40' 
                         : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
                 }`}
+                title={isFuture ? "Disponível apenas no dia da visita" : ""}
              >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
                 {sentOnTheWay ? 'Avisado!' : 'A caminho'}
@@ -102,11 +105,15 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
 
              <button 
                 onClick={onFinishVisit}
+                disabled={isFuture}
                 className={`flex items-center justify-center gap-2 p-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all border-2 ${
-                    isHospitalMode 
+                    isFuture
+                    ? (isHospitalMode ? 'bg-gray-800 border-gray-700 text-gray-600 cursor-not-allowed' : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed')
+                    : (isHospitalMode 
                         ? 'bg-green-900/20 border-green-900/50 text-green-400 hover:bg-green-900/40' 
-                        : 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
+                        : 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100')
                 }`}
+                title={isFuture ? "Visitas futuras não podem ser finalizadas" : ""}
              >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                 Finalizar Visita

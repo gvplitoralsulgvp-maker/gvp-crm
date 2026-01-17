@@ -22,7 +22,7 @@ export const CancelVisitModal: React.FC<CancelVisitModalProps> = ({ isOpen, onCl
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black bg-opacity-50 p-4">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black bg-opacity-50 p-4 backdrop-blur-sm">
       <div className={`rounded-lg shadow-xl w-full max-w-sm overflow-hidden animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className="bg-red-600 px-6 py-4 flex justify-between items-center">
           <h3 className="text-white font-bold text-lg">Cancelar Minha Visita</h3>

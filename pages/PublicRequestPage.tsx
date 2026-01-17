@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { AppState, Patient, LogEntry, Notification, UserRole } from '../types';
 import { Button } from '../components/Button';
 import { useNavigate } from 'react-router-dom';
+import { atomicUpdate } from '../services/storageService';
 
 interface PublicRequestPageProps {
   state: AppState;
@@ -49,73 +50,86 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
 
     setIsSubmitting(true);
 
-    const selectedHospital = validHospitals.find(h => h.id === formData.hospitalId);
-    const hospitalNameDisplay = selectedHospital ? selectedHospital.name : 'Hospital';
+    try {
+      const selectedHospital = validHospitals.find(h => h.id === formData.hospitalId);
+      const hospitalNameDisplay = selectedHospital ? selectedHospital.name : 'Hospital';
 
-    const newPatient: Patient = {
-      id: crypto.randomUUID(),
-      name: formData.name,
-      phone: formData.phone,
-      age: formData.age,
-      gender: formData.gender,
-      companionName: formData.companionName,
-      companionPhone: formData.companionPhone,
-      spiritualStatus: formData.spiritualStatus,
-      localElder: formData.localElder,
-      hospitalId: formData.hospitalId,
-      hospitalName: hospitalNameDisplay,
-      room: formData.room,
-      floor: formData.floor,
-      wing: formData.wing,
-      bed: formData.bed,
-      visitTime: formData.visitTime,
-      isSurgical: formData.isSurgical,
-      surgeryDate: formData.surgeryDate,
-      clinicalStatus: formData.clinicalStatus,
-      treatment: formData.treatment || 'Solicitação via Portal COLIH',
-      admissionDate: new Date().toISOString().split('T')[0],
-      active: true,
-      notes: formData.notes,
-      isExternalRequest: true,
-      needsAccommodation: false,
-      hasDirectivesCard: false,
-      agentsNotified: false,
-      formsConsidered: false,
-      hasS55: false
-    };
-
-    const newLog: LogEntry = {
-      id: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
-      userId: 'PORTAL_PUBLICO',
-      userName: 'Portal Externo COLIH',
-      action: 'Solicitação de Visita',
-      details: `Novo paciente (${newPatient.name}) cadastrado para o hospital ${hospitalNameDisplay}.`
-    };
-
-    const adminNotifications: Notification[] = state.members
-      .filter(m => m.role === UserRole.ADMIN)
-      .map(admin => ({
+      const newPatient: Patient = {
         id: crypto.randomUUID(),
-        userId: admin.id,
-        message: `🚨 Nova solicitação COLIH: ${newPatient.name} no ${hospitalNameDisplay}.`,
-        type: 'warning',
-        read: false,
-        timestamp: new Date().toISOString()
-      }));
+        name: formData.name,
+        phone: formData.phone,
+        age: formData.age,
+        gender: formData.gender,
+        companionName: formData.companionName,
+        companionPhone: formData.companionPhone,
+        spiritualStatus: formData.spiritualStatus,
+        localElder: formData.localElder,
+        hospitalId: formData.hospitalId,
+        hospitalName: hospitalNameDisplay,
+        room: formData.room,
+        floor: formData.floor,
+        wing: formData.wing,
+        bed: formData.bed,
+        visitTime: formData.visitTime,
+        isSurgical: formData.isSurgical,
+        surgeryDate: formData.surgeryDate,
+        clinicalStatus: formData.clinicalStatus,
+        treatment: formData.treatment || 'Solicitação via Portal COLIH',
+        admissionDate: new Date().toISOString().split('T')[0],
+        active: true,
+        notes: formData.notes,
+        isExternalRequest: true,
+        needsAccommodation: false,
+        hasDirectivesCard: false,
+        agentsNotified: false,
+        formsConsidered: false,
+        hasS55: false
+      };
 
-    onUpdateState({
-      ...state,
-      patients: [newPatient, ...state.patients],
-      logs: [newLog, ...state.logs],
-      notifications: [...adminNotifications, ...state.notifications]
-    });
+      const newLog: LogEntry = {
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        userId: 'PORTAL_PUBLICO',
+        userName: 'Portal Externo COLIH',
+        action: 'Solicitação de Visita',
+        details: `Novo paciente (${newPatient.name}) cadastrado para o hospital ${hospitalNameDisplay}.`
+      };
 
-    setTimeout(() => {
+      const adminNotifications: Notification[] = state.members
+        .filter(m => m.role === UserRole.ADMIN)
+        .map(admin => ({
+          id: crypto.randomUUID(),
+          userId: admin.id,
+          message: `🚨 Nova solicitação COLIH: ${newPatient.name} no ${hospitalNameDisplay}.`,
+          type: 'warning',
+          read: false,
+          timestamp: new Date().toISOString()
+        }));
+
+      // Persistência no Banco de Dados (Supabase)
+      await atomicUpdate('patients', newPatient);
+      await atomicUpdate('logs', newLog);
+      
+      // Salva notificações em paralelo
+      await Promise.all(adminNotifications.map(n => atomicUpdate('notifications', n)));
+
+      // Atualiza estado local apenas após sucesso no banco
+      onUpdateState({
+        ...state,
+        patients: [newPatient, ...state.patients],
+        logs: [newLog, ...state.logs],
+        notifications: [...adminNotifications, ...state.notifications]
+      });
+
       setIsSubmitting(false);
       setIsSuccess(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 800);
+
+    } catch (error) {
+      console.error("Erro ao salvar solicitação pública:", error);
+      alert("Houve um erro de conexão ao tentar salvar os dados. Por favor, tente novamente.");
+      setIsSubmitting(false);
+    }
   };
 
   if (isSuccess) {

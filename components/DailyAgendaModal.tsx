@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { VisitRoute, VisitSlot, Member, Patient } from '../types';
+import { VisitRoute, VisitSlot, Member, Patient, UserRole } from '../types';
 import { Button } from './Button';
 
 interface DailyAgendaModalProps {
@@ -20,7 +20,7 @@ interface DailyAgendaModalProps {
 }
 
 export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
-  isOpen, onClose, date, routes, visits, members, patients, isPrivacyMode, isHospitalMode, onRouteClick, onReportClick, onPatientClick
+  isOpen, onClose, date, routes, visits, members, patients, currentUser, isPrivacyMode, isHospitalMode, onRouteClick, onReportClick, onPatientClick
 }) => {
   if (!isOpen) return null;
 
@@ -57,6 +57,34 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
               
               return rHospitals.includes(hName);
             });
+
+            const isUserInRoute = currentUser && memberIds.includes(currentUser.id);
+            const isAdmin = currentUser?.role === UserRole.ADMIN;
+            
+            let buttonLabel = 'Entrar na Rota';
+            let isButtonDisabled = false;
+            let buttonClass = 'bg-blue-600 text-white hover:bg-blue-700';
+
+            if (isAdmin) {
+                buttonLabel = 'Gerenciar Dupla';
+                buttonClass = isHospitalMode 
+                    ? 'bg-[#1a1c1e] text-gray-300 border border-gray-700 hover:bg-gray-800' 
+                    : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50';
+            } else {
+                if (isUserInRoute) {
+                    buttonLabel = 'Escalado';
+                    isButtonDisabled = true;
+                    buttonClass = isHospitalMode
+                        ? 'bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed'
+                        : 'bg-gray-200 text-gray-400 border border-gray-300 cursor-not-allowed';
+                } else if (count >= 2) {
+                    buttonLabel = 'Rota Cheia';
+                    isButtonDisabled = true;
+                    buttonClass = isHospitalMode
+                        ? 'bg-gray-800/50 text-gray-600 border border-gray-800 cursor-not-allowed'
+                        : 'bg-gray-100 text-gray-400 border border-gray-100 cursor-not-allowed';
+                }
+            }
 
             return (
               <div key={route.id} className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-xl shadow-sm border overflow-hidden p-5 flex flex-col gap-4`}>
@@ -119,8 +147,12 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
                       {slot && hasReport && (
                           <button onClick={() => onReportClick(slot)} className={`flex-1 py-3 sm:py-2 text-[11px] font-bold rounded-xl border transition-all ${isHospitalMode ? 'bg-blue-950/20 border-blue-900/50 text-blue-400' : 'bg-blue-50 border-blue-100 text-blue-600'}`}>Ver Relatório</button>
                       )}
-                      <button onClick={() => onRouteClick(route, slot)} className={`flex-1 py-3 sm:py-2 text-[11px] font-bold rounded-xl transition-all shadow-sm ${count < 2 ? 'bg-blue-600 text-white hover:bg-blue-700' : (isHospitalMode ? 'bg-[#1a1c1e] text-gray-400 border border-gray-700 hover:bg-gray-800' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50')}`}>
-                          {count < 2 ? 'Entrar na Rota' : 'Gerenciar Dupla'}
+                      <button 
+                        onClick={() => onRouteClick(route, slot)}
+                        disabled={isButtonDisabled}
+                        className={`flex-1 py-3 sm:py-2 text-[11px] font-bold rounded-xl transition-all shadow-sm ${buttonClass}`}
+                      >
+                          {buttonLabel}
                       </button>
                   </div>
                 </div>

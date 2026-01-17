@@ -32,8 +32,7 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
   const getDayStatus = (dateStr: string) => {
     const todayStr = new Date().toISOString().split('T')[0];
     const dayVisits = visits.filter(v => v.date === dateStr);
-    const activeRoutes = routes.filter(r => r.active);
-    const totalSlots = activeRoutes.length * 2;
+    const totalSlots = activeRoutesCount * 2;
     
     if (dayVisits.length === 0) return 'empty';
 
@@ -79,7 +78,7 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
       </div>
 
       <div className={`grid grid-cols-7 border-l border-t ${isHospitalMode ? 'border-gray-800' : 'border-gray-50'}`}>
-        {emptySlots.map(i => <div key={`empty-${i}`} className={`h-24 sm:h-32 border-r border-b ${isHospitalMode ? 'border-gray-800 bg-[#1a1c1e]/50' : 'border-gray-50 bg-gray-50/20'}`} />)}
+        {emptySlots.map(i => <div key={`empty-${i}`} className={`h-16 sm:h-32 border-r border-b ${isHospitalMode ? 'border-gray-800 bg-[#1a1c1e]/50' : 'border-gray-50 bg-gray-50/20'}`} />)}
         
         {daysArray.map(day => {
           const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -102,19 +101,26 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
             <div 
               key={day}
               onClick={() => onChange(dateStr)}
-              className={`h-24 sm:h-32 border-r border-b relative cursor-pointer transition-all flex flex-col items-center justify-start p-2
+              className={`h-16 sm:h-32 border-r border-b relative cursor-pointer transition-all flex flex-col items-center justify-start p-1 sm:p-2
                 ${isHospitalMode ? 'border-gray-800' : 'border-gray-50'}
                 ${isSelected ? (isHospitalMode ? 'bg-blue-900/20 ring-2 ring-inset ring-blue-500/50' : 'bg-blue-50 ring-2 ring-inset ring-blue-500') : (isHospitalMode ? 'bg-[#212327] hover:bg-[#2d3135]' : 'bg-white hover:bg-blue-50/50')}
               `}
             >
-              <span className={`text-xs font-bold w-7 h-7 flex items-center justify-center rounded-full ${
+              <span className={`text-xs font-bold w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-full mb-1 ${
                 isToday ? 'bg-blue-600 text-white shadow-md' : (isHospitalMode ? 'text-gray-400' : 'text-gray-500')
               }`}>
                 {day}
               </span>
 
-              <div className="mt-auto mb-2 flex flex-col items-center gap-1 w-full">
-                {/* Badge do Usuário Logado e Parceiro */}
+              {/* Mobile View: Dots Only */}
+              <div className="sm:hidden flex flex-col items-center gap-1">
+                 {userScheduled && <div className="w-2 h-2 rounded-full bg-blue-600"></div>}
+                 {!userScheduled && status === 'missed' && <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>}
+                 {!userScheduled && status === 'partial' && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400"></div>}
+              </div>
+
+              {/* Desktop View: Full Details */}
+              <div className="hidden sm:flex mt-auto mb-2 flex-col items-center gap-1 w-full">
                 {userScheduled && currentUser && (
                   <div className="flex flex-col items-center gap-0.5 w-full">
                     <div className="px-1.5 py-0.5 rounded bg-blue-600 text-white text-[8px] font-black uppercase tracking-tighter shadow-sm animate-fade-in truncate max-w-full">

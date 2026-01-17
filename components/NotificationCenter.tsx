@@ -55,7 +55,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl ring-1 ring-black ring-opacity-5 z-50 overflow-hidden origin-top-right transform transition-all">
+        <div className={`
+            bg-white rounded-lg shadow-xl ring-1 ring-black ring-opacity-5 z-50 overflow-hidden transition-all
+            fixed top-16 right-2 left-2 w-auto
+            md:absolute md:top-full md:right-0 md:left-auto md:mt-2 md:w-80
+        `}>
           <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex justify-between items-center">
             <h3 className="text-sm font-semibold text-gray-700">Notificações</h3>
             {notifications.length > 0 && (
@@ -83,8 +87,8 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ notifica
                   >
                     <div className="flex items-start">
                         <div className={`flex-shrink-0 mt-1 w-2 h-2 rounded-full mr-3 ${!notif.read ? 'bg-blue-500' : 'bg-transparent'}`}></div>
-                        <div className="flex-1">
-                            <p className={`text-sm ${!notif.read ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>
+                        <div className="flex-1 min-w-0">
+                            <p className={`text-sm break-words ${!notif.read ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>
                                 {notif.message}
                             </p>
                             <p className="text-xs text-gray-400 mt-1">
