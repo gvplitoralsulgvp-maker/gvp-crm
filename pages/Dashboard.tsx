@@ -1,11 +1,10 @@
 
+// Import React to provide access to the React namespace used for types like React.FC
 import React, { useState, useMemo } from 'react';
-import { AppState, VisitRoute, VisitSlot, VisitStatus, VisitReport, Patient } from '../types';
+import { AppState, VisitRoute, VisitSlot, VisitStatus, VisitReport } from '../types';
 import { FullCalendar } from '../components/FullCalendar';
-import { SlotModal } from '../components/SlotModal';
 import { DailyAgendaModal } from '../components/DailyAgendaModal';
 import { FinishVisitModal } from '../components/FinishVisitModal';
-import { Button } from '../components/Button';
 import { atomicUpdate } from '../services/storageService';
 
 interface DashboardProps {
@@ -19,11 +18,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isDailyAgendaOpen, setIsDailyAgendaOpen] = useState(false);
   const [finishVisitSlot, setFinishVisitSlot] = useState<VisitSlot | null>(null);
-  const [selectionModalData, setSelectionModalData] = useState<{route: VisitRoute, slot: VisitSlot | undefined} | null>(null);
+  const [, setSelectionModalData] = useState<{route: VisitRoute, slot: VisitSlot | undefined} | null>(null);
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Identifica visitas passadas que o usuário participou mas não relatou
   const pendingReports = useMemo(() => {
     if (!state.currentUser) return [];
     return state.visits.filter(v => 
@@ -115,8 +113,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
           onClose={() => setFinishVisitSlot(null)} 
           onConfirm={handleFinishVisit} 
           patients={state.patients.filter(p => {
-              const route = state.routes.find(r => r.id === finishVisitSlot.routeId);
-              return p.active && (route?.hospitalIds || []).includes(p.hospitalId);
+              const currentSlot = finishVisitSlot;
+              if (!currentSlot) return false;
+              const route = state.routes.find(r => r.id === currentSlot.routeId);
+              const hospitalIds = route?.hospitalIds || [];
+              return p.active && hospitalIds.includes(p.hospitalId);
           })}
           isHospitalMode={isHospitalMode} 
         />

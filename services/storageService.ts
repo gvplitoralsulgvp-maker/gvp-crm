@@ -3,22 +3,27 @@ import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital,
 import { supabase } from './supabaseClient';
 
 /**
- * Retorna o estado inicial limpo.
- * Explicitamente tipado como AppState para garantir que todas as propriedades existam.
+ * Constante de estado inicial para garantir que todas as propriedades 
+ * obrigatórias da interface AppState estejam sempre presentes.
  */
-export const createDefaultState = (): AppState => {
-  return {
-    currentUser: null,
-    members: [],
-    hospitals: [],
-    routes: [],
-    visits: [],
-    socialWorkerVisits: [],
-    patients: [],
-    logs: [],
-    notifications: []
-  };
+const INITIAL_STATE: AppState = {
+  currentUser: null,
+  members: [],
+  hospitals: [],
+  routes: [],
+  visits: [],
+  socialWorkerVisits: [],
+  patients: [],
+  logs: [],
+  notifications: []
 };
+
+/**
+ * Retorna uma cópia limpa do estado inicial.
+ */
+export const createDefaultState = (): AppState => ({
+  ...INITIAL_STATE
+});
 
 /**
  * Sanitização para o banco de dados (Snake Case).
@@ -85,8 +90,7 @@ export const atomicDelete = async (tableName: string, id: string) => {
  * Carregamento do Estado completo.
  */
 export const loadState = async (): Promise<AppState> => {
-  const emptyState = createDefaultState();
-  if (!supabase) return emptyState;
+  if (!supabase) return INITIAL_STATE;
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -112,9 +116,9 @@ export const loadState = async (): Promise<AppState> => {
       loadedData[stateKey] = camelData;
     });
 
-    // Construção robusta do estado final
+    // Construção segura do estado final partindo do INITIAL_STATE
     const finalState: AppState = {
-      currentUser: null,
+      ...INITIAL_STATE,
       members: (loadedData.members || []) as Member[],
       hospitals: (loadedData.hospitals || []) as Hospital[],
       routes: (loadedData.routes || []) as VisitRoute[],
@@ -132,12 +136,12 @@ export const loadState = async (): Promise<AppState> => {
     return finalState;
   } catch (e) {
     console.error("[Storage] Erro fatal no loadState:", e);
-    return emptyState;
+    return INITIAL_STATE;
   }
 };
 
 /**
- * SaveState depreciado em favor de atomicUpdate.
+ * SaveState depreciado.
  */
 export const saveState = async (state: AppState) => {
   return Promise.resolve();
