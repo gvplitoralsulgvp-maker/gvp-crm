@@ -1,10 +1,12 @@
 import { AppState, Member, VisitSlot, Patient, LogEntry, Notification, Hospital, VisitRoute, SocialWorkerVisit } from '../types';
 import { supabase } from './supabaseClient';
 
-/**
- * FABRICA DE ESTADO PADRÃO
- * Garante que o estado inicial tenha todas as chaves exigidas pela interface AppState.
+/** 
+ * VERSÃO DO ARQUIVO: 2.0.1 - CORREÇÃO TS2741 
+ * Este arquivo foi reestruturado para garantir que 'socialWorkerVisits' 
+ * nunca esteja ausente do objeto AppState.
  */
+
 export const createDefaultState = (): AppState => ({
   currentUser: null,
   members: [] as Member[],
@@ -17,12 +19,8 @@ export const createDefaultState = (): AppState => ({
   notifications: [] as Notification[]
 });
 
-/**
- * Mapeador de Banco (snake_case) para App (camelCase)
- */
 function mapFromDb<T>(data: any[] | null): T[] {
   if (!data || !Array.isArray(data)) return [] as T[];
-  
   return data.map((item: any) => {
     const camelItem: any = {};
     Object.keys(item).forEach(key => {
@@ -33,10 +31,6 @@ function mapFromDb<T>(data: any[] | null): T[] {
   });
 }
 
-/**
- * CARREGAMENTO DE ESTADO
- * Busca dados no Supabase e monta o objeto AppState completo.
- */
 export const loadState = async (): Promise<AppState> => {
   const defaultState = createDefaultState();
   if (!supabase) return defaultState;
@@ -59,37 +53,32 @@ export const loadState = async (): Promise<AppState> => {
 
     const membersList = mapFromDb<Member>(resMem.data);
 
-    // MONTAGEM EXPLÍCITA: Garante que TODAS as propriedades de AppState existam.
-    // Isso resolve o erro TS2741.
+    // Montagem do estado com cast explícito para evitar inferência 'never[]'
     const finalState: AppState = {
       currentUser: null,
-      members: membersList,
-      hospitals: mapFromDb<Hospital>(resHos.data),
-      routes: mapFromDb<VisitRoute>(resRou.data),
-      visits: mapFromDb<VisitSlot>(resVis.data),
-      socialWorkerVisits: mapFromDb<SocialWorkerVisit>(resSoc.data),
-      patients: mapFromDb<Patient>(resPat.data),
-      logs: mapFromDb<LogEntry>(resLog.data),
-      notifications: mapFromDb<Notification>(resNot.data)
+      members: membersList as Member[],
+      hospitals: mapFromDb<Hospital>(resHos.data) as Hospital[],
+      routes: mapFromDb<VisitRoute>(resRou.data) as VisitRoute[],
+      visits: mapFromDb<VisitSlot>(resVis.data) as VisitSlot[],
+      socialWorkerVisits: mapFromDb<SocialWorkerVisit>(resSoc.data) as SocialWorkerVisit[],
+      patients: mapFromDb<Patient>(resPat.data) as Patient[],
+      logs: mapFromDb<LogEntry>(resLog.data) as LogEntry[],
+      notifications: mapFromDb<Notification>(resNot.data) as Notification[]
     };
 
     if (session?.user) {
-      finalState.currentUser = membersList.find(m => m.id === session.user.id) || null;
+      finalState.currentUser = (membersList.find(m => m.id === session.user.id) || null) as Member | null;
     }
 
     return finalState;
   } catch (error) {
-    console.error("[StorageService] Erro ao carregar dados:", error);
+    console.error("[StorageService] Falha crítica no carregamento:", error);
     return defaultState;
   }
 };
 
-/**
- * Utilitário de Sanitização para persistência
- */
 const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
-  // Remover campos que não existem no banco de dados
   if (tableName === 'members') delete (cleanData as any).password;
   if (tableName === 'patients') delete (cleanData as any).hospitalName;
   if (tableName === 'routes') delete (cleanData as any).hospitals;
@@ -115,7 +104,7 @@ export const atomicDelete = async (tableName: string, id: string) => {
   if (error) throw error;
 };
 
-export const saveState = async (state: AppState) => {
-  // A persistência é feita via atomicUpdate durante as ações do usuário
+export const saveState = async (state: AppState): Promise<void> => {
+  // A persistência é atômica via atomicUpdate
   return Promise.resolve();
 };
