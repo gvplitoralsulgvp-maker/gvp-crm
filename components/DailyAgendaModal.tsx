@@ -48,15 +48,21 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
             const count = memberIds.length;
             const hasReport = !!slot?.report;
             
-            // Pacientes nesta rota
-            const routePatients = patients.filter(p => p.active && route.hospitals.includes(p.hospitalName));
+            // Pacientes nesta rota (Verificação de segurança para hospitais e hospitalName)
+            const routePatients = patients.filter(p => 
+              p.active && 
+              p.hospitalName && 
+              route.hospitals?.includes(p.hospitalName)
+            );
 
             return (
               <div key={route.id} className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-xl shadow-sm border overflow-hidden p-5 flex flex-col gap-4`}>
                 <div className="flex flex-col sm:flex-row justify-between gap-4">
                   <div className="flex-grow">
                     <h4 className={`font-bold text-base ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{route.name}</h4>
-                    <p className={`text-[10px] uppercase font-bold tracking-tight mb-3 ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>{route.hospitals.join(' • ')}</p>
+                    <p className={`text-[10px] uppercase font-bold tracking-tight mb-3 ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {route.hospitals?.join(' • ') || 'Sem hospitais vinculados'}
+                    </p>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
                        {/* Dupla */}

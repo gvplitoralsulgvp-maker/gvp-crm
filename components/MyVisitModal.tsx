@@ -61,7 +61,13 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
   if (!isOpen || !route) return null;
 
   const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
-  const routePatients = patients.filter(p => p.active && route.hospitals?.includes(p.hospitalName));
+  
+  // Verificação de segurança: p.hospitalName é opcional, route.hospitals é opcional
+  const routePatients = patients.filter(p => 
+    p.active && 
+    p.hospitalName && 
+    route.hospitals?.includes(p.hospitalName)
+  );
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black bg-opacity-60 p-4 backdrop-blur-sm">

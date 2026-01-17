@@ -21,9 +21,19 @@ const sanitizeForDb = (tableName: string, data: any) => {
   const cleanData = { ...data };
 
   // Remover campos virtuais de UI que não existem no banco
-  if (tableName === 'members') delete cleanData.password;
-  if (tableName === 'patients') delete cleanData.hospitalName;
-  if (tableName === 'routes') delete cleanData.hospitals;
+  if (tableName === 'members') {
+    delete cleanData.password;
+    // Garante que não enviamos campos inexistentes como 'circuit'
+    if ('circuit' in cleanData) delete cleanData.circuit;
+  }
+  
+  if (tableName === 'patients') {
+    delete cleanData.hospitalName;
+  }
+  
+  if (tableName === 'routes') {
+    delete cleanData.hospitals;
+  }
 
   const snakeCaseData: any = {};
   Object.keys(cleanData).forEach(key => {
@@ -53,6 +63,12 @@ const mapFromDb = (data: any[]) => {
 export const atomicUpdate = async (tableName: string, data: any) => {
   if (!supabase) return;
   const sanitized = sanitizeForDb(tableName, data);
+  
+  // Garantia adicional de tipos para rotas antes do upsert
+  if (tableName === 'routes' && !sanitized.hospital_ids) {
+    sanitized.hospital_ids = [];
+  }
+
   const { error } = await supabase.from(tableName).upsert(sanitized);
   if (error) {
     console.error(`[Storage] Erro no upsert em ${tableName}:`, error);
@@ -96,7 +112,7 @@ export const loadState = async (): Promise<AppState> => {
       // Mapeia para a chave correta no AppState (camelCase)
       const stateKey = t.replace(/(_\w)/g, m => m[1].toUpperCase());
       
-      // Special handling for social_worker_visits -> socialWorkerVisits
+      // Correção especial para social_worker_visits que vira socialWorkerVisits
       const actualKey = stateKey === 'socialWorkerVisits' ? 'socialWorkerVisits' : stateKey;
       (finalState as any)[actualKey] = camelData;
     });
