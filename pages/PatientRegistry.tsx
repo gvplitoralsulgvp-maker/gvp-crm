@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AppState, Patient } from '../types';
+import { AppState, Patient, UserRole, AppNotification } from '../types';
 import { Button } from '../components/Button';
 import { PatientDetailModal } from '../components/PatientDetailModal';
+import { atomicUpdate } from '../services/storageService';
 
 interface PatientRegistryProps {
   state: AppState;
@@ -16,40 +17,105 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
   const navigate = useNavigate();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Partial<Patient>>({});
-  const [viewingPatient, setViewingPatient] = useState<Patient | null>(null);
+  
+  // CORREÇÃO: Usar ID para garantir que o Modal sempre leia o dado mais atual da lista 'state.patients'
+  const [viewingPatientId, setViewingPatientId] = useState<string | null>(null);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [filterHospital, setFilterHospital] = useState('');
 
-  const handleSave = (e: React.FormEvent) => {
+  // PERMISSÃO: Apenas Admins e Membros COLIH podem Editar/Adicionar
+  const canEdit = state.currentUser?.role === UserRole.ADMIN || state.currentUser?.isColih;
+  const isColihOrAdmin = state.currentUser?.role === UserRole.ADMIN || state.currentUser?.isColih;
+
+  // Deriva o objeto do paciente em tempo real
+  const viewingPatient = useMemo(() => {
+      return state.patients.find(p => p.id === viewingPatientId) || null;
+  }, [state.patients, viewingPatientId]);
+
+  // Lista de membros COLIH para designação (Exclui Facilitadores)
+  const colihMembers = useMemo(() => {
+      return state.members.filter(m => 
+        m.active && 
+        (m.isColih || m.role === UserRole.ADMIN) && 
+        m.colihClassification !== 'Facilitator'
+      );
+  }, [state.members]);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPatient.name || !editingPatient.hospitalName) return;
     
     let newPatients = [...state.patients];
+    let isNew = false;
+    let savedPatient = null;
+
     if (editingPatient.id) {
       const idx = newPatients.findIndex(p => p.id === editingPatient.id);
-      if (idx >= 0) newPatients[idx] = { ...newPatients[idx], ...editingPatient } as Patient;
+      if (idx >= 0) {
+          newPatients[idx] = { ...newPatients[idx], ...editingPatient } as Patient;
+          savedPatient = newPatients[idx];
+      }
     } else {
-      newPatients.push({ 
+      isNew = true;
+      savedPatient = { 
         id: crypto.randomUUID(), 
         active: true, 
         admissionDate: new Date().toISOString().split('T')[0],
         ...editingPatient 
-      } as Patient);
+      } as Patient;
+      newPatients.push(savedPatient);
     }
     
-    onUpdateState({ ...state, patients: newPatients });
+    // Atualiza BD e Estado Local
+    try {
+        if (savedPatient) {
+            await atomicUpdate('patients', savedPatient);
+            
+            // Se for novo, notifica os admins
+            if (isNew) {
+                const adminIds = state.members.filter(m => m.role === UserRole.ADMIN).map(m => m.id);
+                const notifications: AppNotification[] = adminIds.map(adminId => ({
+                    id: crypto.randomUUID(),
+                    userId: adminId,
+                    message: `🏥 Paciente Internado: ${savedPatient?.name} em ${savedPatient?.hospitalName}.`,
+                    type: 'info',
+                    read: false,
+                    timestamp: new Date().toISOString()
+                }));
+                
+                await Promise.all(notifications.map(n => atomicUpdate('notifications', n)));
+                onUpdateState({ 
+                    ...state, 
+                    patients: newPatients,
+                    notifications: [...notifications, ...state.notifications]
+                });
+            } else {
+                onUpdateState({ ...state, patients: newPatients });
+            }
+        }
+    } catch (error) {
+        console.error("Erro ao salvar paciente:", error);
+        alert("Erro ao salvar dados.");
+    }
+    
     setIsFormOpen(false);
     setEditingPatient({});
   };
 
+  // Esta função agora lida com a "Alta Médica" (física), mas não necessariamente arquiva o caso
   const handleDischarge = (e: React.MouseEvent, id: string, name: string) => {
     e.preventDefault();
     e.stopPropagation(); 
-    if (window.confirm(`Deseja confirmar a ALTA HOSPITALAR de ${name}? O registro será movido imediatamente para o histórico.`)) {
+    
+    if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA (saiu do hospital)?\n\nPara membros GVP, o paciente sairá da lista. Para a COLIH, ficará pendente do HLC-7.`)) {
       const updatedPatients = state.patients.map(p => 
-        p.id === id ? { ...p, active: false } : p
+        p.id === id ? { ...p, isMedicalDischarge: true, estimatedDischargeDate: new Date().toISOString() } : p
       );
       
+      const p = updatedPatients.find(p => p.id === id);
+      if (p) atomicUpdate('patients', p);
+
       onUpdateState({ 
         ...state, 
         patients: updatedPatients
@@ -57,13 +123,94 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
     }
   };
 
+  // Nova função exclusiva para COLIH arquivar o caso após HLC-7
+  const handleHlc7Archive = (id: string, name: string) => {
+      if (window.confirm(`Confirma o envio do HLC-7 para o caso de ${name}?\n\nIsso irá arquivar o paciente definitivamente no histórico.`)) {
+          const updatedPatients = state.patients.map(p => 
+              p.id === id ? { ...p, active: false } : p
+          );
+          const p = updatedPatients.find(p => p.id === id);
+          if (p) atomicUpdate('patients', p);
+
+          onUpdateState({ ...state, patients: updatedPatients });
+          setViewingPatientId(null);
+      }
+  };
+
+  const handleToggleGvpRequest = async (patient: Patient) => {
+      // Confirmação antes de agir
+      const willEnable = !patient.gvpRequestPending;
+      const confirmMessage = willEnable 
+        ? `Deseja marcar a BANDEIRA DE SOLICITAÇÃO para ${patient.name}?\n\nIsso alertará os coordenadores.`
+        : `Deseja remover a solicitação de visita para ${patient.name}?`;
+
+      if (!window.confirm(confirmMessage)) return;
+
+      try {
+          const updatedPatient = { ...patient, gvpRequestPending: willEnable };
+          
+          // ATUALIZAÇÃO IMEDIATA DO ESTADO GLOBAL
+          // Como o Modal usa 'viewingPatientId', ele vai reagir a essa mudança automaticamente
+          const updatedList = state.patients.map(p => p.id === patient.id ? updatedPatient : p);
+          
+          let newNotifications: AppNotification[] = [];
+          if (willEnable) {
+              const adminIds = state.members.filter(m => m.role === UserRole.ADMIN).map(m => m.id);
+              newNotifications = adminIds.map(adminId => ({
+                  id: crypto.randomUUID(),
+                  userId: adminId,
+                  message: `🆘 Solicitação COLIH: Paciente ${patient.name} precisa de visita GVP.`,
+                  type: 'warning',
+                  read: false,
+                  timestamp: new Date().toISOString()
+              }));
+          }
+
+          onUpdateState({ 
+              ...state, 
+              patients: updatedList,
+              notifications: [...newNotifications, ...state.notifications] 
+          });
+
+          // Persistência Assíncrona
+          await atomicUpdate('patients', updatedPatient);
+          if (willEnable) {
+              await Promise.all(newNotifications.map(n => atomicUpdate('notifications', n)));
+          }
+
+      } catch (e) {
+          console.error(e);
+          alert("Erro ao atualizar solicitação. Verifique sua conexão.");
+      }
+  };
+
+  const toggleAssignedColih = (memberId: string) => {
+      const current = editingPatient.assignedColihIds || [];
+      if (current.includes(memberId)) {
+          setEditingPatient({ ...editingPatient, assignedColihIds: current.filter(id => id !== memberId) });
+      } else {
+          setEditingPatient({ ...editingPatient, assignedColihIds: [...current, memberId] });
+      }
+  };
+
   const filteredPatients = useMemo(() => {
     // FILTRAGEM RIGOROSA DE ATIVOS
-    return state.patients.filter(p => p.active && (
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      p.treatment.toLowerCase().includes(searchTerm.toLowerCase())
-    ) && (!filterHospital || p.hospitalName === filterHospital));
-  }, [state.patients, searchTerm, filterHospital]);
+    return state.patients.filter(p => {
+        // 1. Deve estar ativo no sistema (active = true)
+        if (!p.active) return false;
+
+        // 2. Filtro de Alta Médica (GVP vs COLIH)
+        // Se o usuário NÃO for COLIH/Admin, ele não vê pacientes que já tiveram alta médica.
+        if (!isColihOrAdmin && p.isMedicalDischarge) return false;
+
+        // 3. Filtros de Texto
+        const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                              p.treatment.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesHospital = !filterHospital || p.hospitalName === filterHospital;
+
+        return matchesSearch && matchesHospital;
+    });
+  }, [state.patients, searchTerm, filterHospital, isColihOrAdmin]);
 
   const uniqueHospitals = useMemo(() => {
       const fromRoutes = state.routes.flatMap(r => r.hospitals || []);
@@ -81,14 +228,19 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
           </div>
           <div className="flex gap-2">
             <Button variant="secondary" className="rounded-full px-6" onClick={() => navigate('/history')}>Ver Altas</Button>
-            <Button className="rounded-full px-6" onClick={() => { setEditingPatient({
-              hasDirectivesCard: false,
-              agentsNotified: false,
-              formsConsidered: false,
-              hasS55: false,
-              isIsolation: false,
-              needsAccommodation: false
-            }); setIsFormOpen(true); }}>+ Novo Paciente</Button>
+            {canEdit && (
+                <Button className="rounded-full px-6" onClick={() => { setEditingPatient({
+                hasDirectivesCard: false,
+                agentsNotified: false,
+                formsConsidered: false,
+                hasS55: false,
+                isIsolation: false,
+                needsAccommodation: false,
+                nonWitnessFamily: false,
+                spiritualStatus: 'Sim',
+                assignedColihIds: []
+                }); setIsFormOpen(true); }}>+ Novo Paciente</Button>
+            )}
           </div>
         </div>
         <div className={`pt-4 border-t ${isHospitalMode ? 'border-gray-800' : 'border-gray-100'} grid grid-cols-1 sm:grid-cols-2 gap-4`}>
@@ -117,10 +269,17 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
         {filteredPatients.map(patient => (
           <div 
             key={patient.id} 
-            onClick={() => setViewingPatient(patient)}
+            onClick={() => setViewingPatientId(patient.id)}
             className={`${isHospitalMode ? 'bg-[#212327] border-gray-800 shadow-black' : 'bg-white border-gray-200 shadow-sm'} rounded-3xl border overflow-hidden flex flex-col relative transition-all hover:shadow-xl cursor-pointer active:scale-95`}
           >
             {patient.isIsolation && <div className="bg-red-600 text-white text-[10px] font-black text-center py-1.5 uppercase tracking-widest">⚠️ Isolamento: {patient.isolationType}</div>}
+            
+            {patient.isMedicalDischarge ? (
+                <div className="bg-purple-600 text-white text-[10px] font-black text-center py-1.5 uppercase tracking-widest">Alta Médica • Pendente HLC-7</div>
+            ) : (
+                patient.gvpRequestPending && <div className="bg-orange-500 text-white text-[10px] font-black text-center py-1.5 uppercase tracking-widest">Solicitação GVP Ativa</div>
+            )}
+            
             <div className="p-6 flex-grow pointer-events-none">
               <div className="flex justify-between items-start mb-4">
                  <div>
@@ -145,27 +304,42 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
               </div>
             </div>
 
-            <div className={`px-6 py-4 border-t flex justify-between items-center gap-2 ${isHospitalMode ? 'bg-white/5 border-gray-800' : 'bg-gray-50 border-gray-100'}`} onClick={e => e.stopPropagation()}>
-               <button 
-                type="button"
-                onClick={(e) => handleDischarge(e, patient.id, patient.name)} 
-                className="text-[10px] font-black text-red-500 hover:bg-red-50 px-4 py-2 rounded-xl uppercase tracking-widest transition-all"
-               >
-                 Dar Alta
-               </button>
-               <button 
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setEditingPatient(patient); setIsFormOpen(true); }} 
-                className="text-[10px] font-black text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl uppercase tracking-widest transition-all"
-               >
-                 Editar
-               </button>
-            </div>
+            {canEdit && (
+                <div className={`px-6 py-4 border-t flex justify-between items-center gap-2 ${isHospitalMode ? 'bg-white/5 border-gray-800' : 'bg-gray-50 border-gray-100'}`} onClick={e => e.stopPropagation()}>
+                {patient.isMedicalDischarge ? (
+                    // Botão especial para COLIH arquivar (Aparece só se isMedicalDischarge=true)
+                    <button 
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleHlc7Archive(patient.id, patient.name); }} 
+                        className="w-full text-[10px] font-black text-white bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl uppercase tracking-widest transition-all shadow-md"
+                    >
+                        ✓ Confirmar HLC-7 Enviado
+                    </button>
+                ) : (
+                    <>
+                        <button 
+                            type="button"
+                            onClick={(e) => handleDischarge(e, patient.id, patient.name)} 
+                            className="text-[10px] font-black text-red-500 hover:bg-red-50 px-4 py-2 rounded-xl uppercase tracking-widest transition-all"
+                        >
+                            Informar Alta
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setEditingPatient(patient); setIsFormOpen(true); }} 
+                            className="text-[10px] font-black text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl uppercase tracking-widest transition-all"
+                        >
+                            Editar
+                        </button>
+                    </>
+                )}
+                </div>
+            )}
           </div>
         ))}
         {filteredPatients.length === 0 && (
           <div className="col-span-full py-24 text-center">
-            <p className="text-gray-400 italic mb-2">Nenhum paciente internado encontrado.</p>
+            <p className="text-gray-400 italic mb-2">Nenhum paciente encontrado.</p>
             <Button variant="ghost" onClick={() => { setSearchTerm(''); setFilterHospital(''); }} className="text-xs font-bold text-blue-600">Limpar Filtros</Button>
           </div>
         )}
@@ -175,7 +349,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
       {viewingPatient && (
         <PatientDetailModal
             isOpen={true}
-            onClose={() => setViewingPatient(null)}
+            onClose={() => setViewingPatientId(null)}
             patient={viewingPatient}
             lastVisit={
                 state.visits
@@ -187,19 +361,29 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                     }) || null
             }
             members={state.members}
+            // onDischarge aqui trata da alta médica
             onDischarge={(id, name) => {
-                if (window.confirm(`Deseja confirmar a ALTA HOSPITALAR de ${name}?`)) {
+                if (window.confirm(`Deseja confirmar a ALTA MÉDICA de ${name}?`)) {
                     const updatedPatients = state.patients.map(p => 
-                        p.id === id ? { ...p, active: false } : p
+                        p.id === id ? { ...p, isMedicalDischarge: true, estimatedDischargeDate: new Date().toISOString() } : p
                     );
+                    const p = updatedPatients.find(p => p.id === id);
+                    if(p) atomicUpdate('patients', p);
+                    
                     onUpdateState({ ...state, patients: updatedPatients });
-                    setViewingPatient(null);
+                    setViewingPatientId(null);
                 }
             }}
+            // Nova prop para o modal lidar com o HLC-7
+            onHlc7Confirm={(id, name) => handleHlc7Archive(id, name)}
+            onToggleGvp={handleToggleGvpRequest}
             isHospitalMode={isHospitalMode}
+            canEdit={canEdit}
+            isColihUser={isColihOrAdmin}
         />
       )}
 
+      {/* MODAL DE CADASTRO / EDIÇÃO INTERNO */}
       {isFormOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
               <div className={`w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
@@ -227,6 +411,28 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                           <input type="text" className={`w-full border-2 p-3 rounded-2xl text-sm transition-all focus:border-blue-600 outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingPatient.treatment || ''} onChange={e => setEditingPatient({...editingPatient, treatment: e.target.value})} />
                       </div>
 
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-gray-500 uppercase px-1">Email</label>
+                              <input type="email" className={`w-full border-2 p-3 rounded-2xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingPatient.email || ''} onChange={e => setEditingPatient({...editingPatient, email: e.target.value})} />
+                          </div>
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-gray-500 uppercase px-1">Congregação</label>
+                              <input type="text" className={`w-full border-2 p-3 rounded-2xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingPatient.congregation || ''} onChange={e => setEditingPatient({...editingPatient, congregation: e.target.value})} />
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-gray-500 uppercase px-1">Nome Acompanhante / Parentesco</label>
+                              <input type="text" className={`w-full border-2 p-3 rounded-2xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingPatient.companionName || ''} onChange={e => setEditingPatient({...editingPatient, companionName: e.target.value})} placeholder="Ex: Maria (Esposa)" />
+                          </div>
+                          <div className="space-y-1.5">
+                              <label className="text-[10px] font-black text-gray-500 uppercase px-1">Telefone Acompanhante</label>
+                              <input type="tel" className={`w-full border-2 p-3 rounded-2xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingPatient.companionPhone || ''} onChange={e => setEditingPatient({...editingPatient, companionPhone: e.target.value})} />
+                          </div>
+                      </div>
+
                       <div className="grid grid-cols-3 gap-4">
                           <div className="space-y-1.5">
                               <label className="text-[10px] font-black text-gray-500 uppercase px-1">Andar</label>
@@ -242,13 +448,37 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                           </div>
                       </div>
 
+                      <div className={`p-4 rounded-xl border-2 ${isHospitalMode ? 'bg-teal-900/10 border-teal-900/30' : 'bg-teal-50 border-teal-100'}`}>
+                          <h4 className="text-[10px] font-black text-teal-600 uppercase tracking-[0.2em] mb-3">Gestão de Caso COLIH</h4>
+                          <p className="text-xs text-gray-500 mb-3">Selecione os membros COLIH designados para acompanhar este caso especificamente.</p>
+                          <div className="max-h-40 overflow-y-auto custom-scrollbar border rounded-xl p-2 bg-white/50">
+                              {colihMembers.length === 0 ? (
+                                  <p className="text-xs text-gray-400 p-2">Nenhum membro COLIH ativo encontrado.</p>
+                              ) : (
+                                  colihMembers.map(member => (
+                                      <label key={member.id} className="flex items-center gap-3 p-2 hover:bg-gray-100 rounded-lg cursor-pointer">
+                                          <input 
+                                            type="checkbox" 
+                                            className="rounded text-teal-600 focus:ring-teal-500"
+                                            checked={(editingPatient.assignedColihIds || []).includes(member.id)}
+                                            onChange={() => toggleAssignedColih(member.id)}
+                                          />
+                                          <span className="text-xs font-bold text-gray-700">{member.name}</span>
+                                          {member.role === UserRole.ADMIN && <span className="text-[9px] bg-purple-100 text-purple-700 px-1.5 rounded font-bold uppercase">Admin</span>}
+                                      </label>
+                                  ))
+                              )}
+                          </div>
+                      </div>
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6 border-t border-gray-800/20">
                          <div className="space-y-4">
                             <label className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mb-2 block">Protocolo Ético</label>
                             {[
                                 { key: 'hasDirectivesCard', label: 'Cartão de Diretivas' },
                                 { key: 'agentsNotified', label: 'Procuradores Cientes' },
-                                { key: 'hasS55', label: 'Considerou S-55' }
+                                { key: 'hasS55', label: 'Considerou S-55' },
+                                { key: 'nonWitnessFamily', label: 'Família não TJ envolvida?' }
                             ].map(item => (
                                 <label key={item.key} className="flex items-center gap-4 cursor-pointer group">
                                     <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${(editingPatient as any)[item.key] ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}`}>
@@ -267,26 +497,36 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                                     <input type="checkbox" className="hidden" checked={editingPatient.needsAccommodation} onChange={e => setEditingPatient({...editingPatient, needsAccommodation: e.target.checked})} />
                                     {editingPatient.needsAccommodation && <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" /></svg>}
                                 </div>
-                                <span className={`text-xs font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Precisa de Hospedagem?</span>
+                                <span className={`text-xs font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Necessita Hospedagem</span>
                             </label>
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-4 cursor-pointer group">
-                                    <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${editingPatient.isIsolation ? 'bg-red-600 border-red-600' : 'border-gray-300'}`}>
-                                        <input type="checkbox" className="hidden" checked={editingPatient.isIsolation} onChange={e => setEditingPatient({...editingPatient, isIsolation: e.target.checked})} />
-                                        {editingPatient.isIsolation && <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" /></svg>}
-                                    </div>
-                                    <span className={`text-xs font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Isolamento?</span>
-                                </label>
+                            
+                            <div className="pt-2">
+                                <label className={`text-[10px] font-bold uppercase mb-2 block ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>Precaução / Isolamento</label>
+                                <div className="flex gap-2">
+                                    <label className={`flex-1 p-2 rounded-lg border text-center cursor-pointer transition-all ${!editingPatient.isIsolation ? 'bg-green-500 text-white border-green-500' : 'border-gray-300 text-gray-400'}`}>
+                                        <input type="radio" name="isolation" className="hidden" checked={!editingPatient.isIsolation} onChange={() => setEditingPatient({...editingPatient, isIsolation: false, isolationType: ''})} />
+                                        <span className="text-[10px] font-black uppercase">Padrão</span>
+                                    </label>
+                                    <label className={`flex-1 p-2 rounded-lg border text-center cursor-pointer transition-all ${editingPatient.isIsolation ? 'bg-red-500 text-white border-red-500' : 'border-gray-300 text-gray-400'}`}>
+                                        <input type="radio" name="isolation" className="hidden" checked={editingPatient.isIsolation || false} onChange={() => setEditingPatient({...editingPatient, isIsolation: true, isolationType: 'Contato'})} />
+                                        <span className="text-[10px] font-black uppercase">Isolamento</span>
+                                    </label>
+                                </div>
                                 {editingPatient.isIsolation && (
-                                    <input type="text" placeholder="Tipo (Ex: Contato)" className={`w-full border-2 p-2.5 rounded-xl text-[10px] font-black uppercase transition-all focus:border-red-600 outline-none ${isHospitalMode ? 'bg-red-900/10 border-red-900/40 text-red-400' : 'bg-red-50 border-red-100 text-red-700'}`} value={editingPatient.isolationType || ''} onChange={e => setEditingPatient({...editingPatient, isolationType: e.target.value})} />
+                                    <input 
+                                        type="text" 
+                                        className={`w-full mt-2 border-2 p-2 rounded-xl text-xs ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50 border-gray-100'}`} 
+                                        placeholder="Tipo (Ex: Contato, Respiratório...)" 
+                                        value={editingPatient.isolationType || ''} 
+                                        onChange={e => setEditingPatient({...editingPatient, isolationType: e.target.value})} 
+                                    />
                                 )}
                             </div>
                          </div>
                       </div>
 
-                      <div className="flex justify-end gap-3 pt-8 border-t border-gray-800/20 shrink-0">
-                          <Button variant="secondary" className="rounded-full px-8" type="button" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
-                          <Button className="rounded-full px-10 shadow-lg shadow-blue-500/30" type="submit">Salvar Paciente</Button>
+                      <div className="pt-6">
+                          <Button className="w-full rounded-2xl py-4 font-black" type="submit">Salvar Paciente</Button>
                       </div>
                   </form>
               </div>

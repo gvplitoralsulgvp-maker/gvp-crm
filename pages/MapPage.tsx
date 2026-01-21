@@ -16,7 +16,13 @@ declare global {
 export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
-  const [showMembers, setShowMembers] = useState(true);
+  
+  // Estados de Filtros de Camadas
+  const [showHospitals, setShowHospitals] = useState(true);
+  const [showGVP, setShowGVP] = useState(true);
+  const [showCOLIH, setShowCOLIH] = useState(true);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Inicia fechado no mobile por padrão
   const [searchMember, setSearchMember] = useState('');
 
@@ -28,9 +34,13 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
       const hasCoords = !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
       const matchesSearch = m.name.toLowerCase().includes(searchMember.toLowerCase()) ||
                             m.congregation?.toLowerCase().includes(searchMember.toLowerCase());
-      return hasCoords && matchesSearch;
+      
+      // Filtra com base nos toggles
+      const isVisible = (m.isColih && showCOLIH) || (!m.isColih && showGVP);
+
+      return hasCoords && matchesSearch && isVisible;
     });
-  }, [state.members, searchMember]);
+  }, [state.members, searchMember, showGVP, showCOLIH]);
 
   // Filtro de hospitais com localização
   const hospitalsWithLocation = useMemo(() => {
@@ -71,49 +81,53 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
 
     const today = new Date();
 
-    // 1. Renderizar Hospitais
-    hospitalsWithLocation.forEach(h => {
-      const hospitalVisits = state.visits.filter(v => {
-        const route = state.routes.find(r => r.id === v.routeId);
-        return route?.hospitals?.includes(h.name);
-      });
-      
-      const lastVisit = hospitalVisits.sort((a,b) => b.date.localeCompare(a.date))[0];
-      let color = 'blue'; 
-      let statusText = 'Sem registros recentes';
+    // 1. Renderizar Hospitais (Controlado pelo Toggle)
+    if (showHospitals) {
+        hospitalsWithLocation.forEach(h => {
+          const hospitalVisits = state.visits.filter(v => {
+            const route = state.routes.find(r => r.id === v.routeId);
+            return route?.hospitals?.includes(h.name);
+          });
+          
+          const lastVisit = hospitalVisits.sort((a,b) => b.date.localeCompare(a.date))[0];
+          let color = 'blue'; 
+          let statusText = 'Sem registros recentes';
 
-      if (lastVisit) {
-        const lastDate = new Date(lastVisit.date + 'T12:00:00');
-        const diffDays = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
-        if (diffDays > 5) { color = 'red'; statusText = `URGENTE: ${diffDays} dias sem visitas!`; }
-        else if (diffDays > 3) { color = 'orange'; statusText = `${diffDays} dias desde a última visita.`; }
-        else { color = 'green'; statusText = `Visitado há ${diffDays} dias.`; }
-      }
+          if (lastVisit) {
+            const lastDate = new Date(lastVisit.date + 'T12:00:00');
+            const diffDays = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
+            if (diffDays > 5) { color = 'red'; statusText = `URGENTE: ${diffDays} dias sem visitas!`; }
+            else if (diffDays > 3) { color = 'orange'; statusText = `${diffDays} dias desde a última visita.`; }
+            else { color = 'green'; statusText = `Visitado há ${diffDays} dias.`; }
+          }
 
-      const icon = window.L.icon({
-        iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-      });
+          const icon = window.L.icon({
+            iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+          });
 
-      window.L.marker([h.lat, h.lng], { icon })
-        .addTo(map)
-        .bindPopup(`
-          <div class="p-1">
-            <h4 class="font-bold text-sm mb-0 ${color === 'red' ? 'text-red-600' : 'text-gray-800'}">${h.name}</h4>
-            <p class="text-[10px] text-gray-500 leading-tight mb-2">${h.address}</p>
-            <div class="pt-2 border-t flex flex-col gap-1">
-               <p class="text-[10px] font-black uppercase text-gray-700">${statusText}</p>
-               <a href="https://www.google.com/maps/search/?api=1&query=${h.lat},${h.lng}" target="_blank" class="text-[9px] text-blue-600 font-bold underline">Ver no Google Maps</a>
-            </div>
-          </div>
-        `);
-    });
+          window.L.marker([h.lat, h.lng], { icon })
+            .addTo(map)
+            .bindPopup(`
+              <div class="p-1">
+                <h4 class="font-bold text-sm mb-0 ${color === 'red' ? 'text-red-600' : 'text-gray-800'}">${h.name}</h4>
+                <p class="text-[10px] text-gray-500 leading-tight mb-2">${h.address}</p>
+                <div class="pt-2 border-t flex flex-col gap-1">
+                   <p class="text-[10px] font-black uppercase text-gray-700">${statusText}</p>
+                   <a href="https://www.google.com/maps/search/?api=1&query=${h.lat},${h.lng}" target="_blank" class="text-[9px] text-blue-600 font-bold underline">Ver no Google Maps</a>
+                </div>
+              </div>
+            `)
+            .bindTooltip(h.name, { direction: 'top', offset: [0, -40], opacity: 0.9, permanent: false });
+        });
+    }
 
-    // 2. Renderizar Membros
-    if (showMembers) {
-      membersWithLocation.forEach(m => {
-        const markerColor = m.active ? '#2563eb' : '#94a3b8';
+    // 2. Renderizar Membros (GVP e COLIH controlados pelos filtros no useMemo)
+    membersWithLocation.forEach(m => {
+        // Cor diferente para COLIH vs GVP
+        const isColihMember = m.isColih;
+        const markerColor = isColihMember ? '#0d9488' : (m.active ? '#2563eb' : '#94a3b8'); // Teal para COLIH, Blue para GVP
         const lat = parseFloat(String(m.lat));
         const lng = parseFloat(String(m.lng));
         
@@ -138,18 +152,23 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
         .addTo(map)
         .bindPopup(`
           <div class="p-2 min-w-[160px] text-center">
-            <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold mx-auto mb-2 border-2 border-white shadow-sm">
+            <div class="w-10 h-10 ${isColihMember ? 'bg-teal-100 text-teal-600' : 'bg-blue-100 text-blue-600'} rounded-full flex items-center justify-center font-bold mx-auto mb-2 border-2 border-white shadow-sm">
                 ${m.name.substring(0,2).toUpperCase()}
             </div>
             <h4 class="font-bold text-sm text-gray-800">${m.name}</h4>
-            <p class="text-[10px] text-blue-600 font-bold mb-1">${m.congregation || 'Congregação não inf.'}</p>
+            <div class="mb-1">
+                ${isColihMember 
+                    ? `<span class="text-[9px] font-black uppercase bg-teal-50 text-teal-700 px-2 py-0.5 rounded">COLIH ${m.colihClassification === 'Facilitator' ? '(Aj)' : ''}</span>`
+                    : `<span class="text-[9px] font-black uppercase bg-blue-50 text-blue-700 px-2 py-0.5 rounded">GVP</span>`
+                }
+            </div>
+            <p class="text-[10px] text-gray-600 font-bold mb-1">${m.congregation || 'Congregação não inf.'}</p>
             <p class="text-[9px] text-gray-400 italic">${m.address || ''}</p>
           </div>
         `);
-      });
-    }
+    });
 
-  }, [hospitalsWithLocation, membersWithLocation, showMembers, state.visits]);
+  }, [hospitalsWithLocation, membersWithLocation, showHospitals, state.visits]);
 
   const flyToMember = (m: Member) => {
     if (!m.lat || !m.lng || !mapInstanceRef.current) return;
@@ -197,7 +216,7 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
             <div className="flex-grow overflow-y-auto custom-scrollbar space-y-2 pr-1">
                 {membersWithLocation.length === 0 ? (
                     <div className="py-10 text-center">
-                        <p className="text-[10px] text-gray-400 italic">Nenhum voluntário localizado.</p>
+                        <p className="text-[10px] text-gray-400 italic">Nenhum voluntário localizado com os filtros atuais.</p>
                     </div>
                 ) : (
                     membersWithLocation.map(m => (
@@ -210,12 +229,14 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
                                 : 'bg-white border-gray-50 hover:border-blue-100 hover:bg-blue-50/30'
                             }`}
                         >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[9px] font-black shadow-sm ${m.active ? 'bg-blue-600 text-white' : 'bg-gray-400 text-white'}`}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[9px] font-black shadow-sm ${
+                                m.isColih ? 'bg-teal-100 text-teal-600' : 'bg-blue-100 text-blue-600'
+                            }`}>
                                 {m.name.substring(0,2).toUpperCase()}
                             </div>
                             <div className="flex-grow min-w-0">
                                 <p className={`text-xs font-bold truncate ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{m.name}</p>
-                                <p className="text-[9px] text-blue-500 font-bold uppercase tracking-tight truncate">{m.congregation || 'Sem Congr.'}</p>
+                                <p className={`text-[9px] font-bold uppercase tracking-tight truncate ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>{m.congregation || 'Sem Congr.'}</p>
                             </div>
                         </button>
                     ))
@@ -240,16 +261,54 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
                 </div>
             </div>
             
-            <button 
-                onClick={() => setShowMembers(!showMembers)}
-                className={`text-[9px] font-black uppercase tracking-widest px-3 py-2 rounded-lg border ${
-                    showMembers 
-                    ? 'bg-blue-50 text-blue-600 border-blue-100' 
-                    : 'text-gray-400 border-transparent'
-                }`}
-            >
-                {showMembers ? 'Ocultar Equipe' : 'Ver Equipe'}
-            </button>
+            <div className="relative">
+                <button 
+                    onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                    className={`flex items-center gap-2 text-[9px] font-black uppercase tracking-widest px-4 py-2 rounded-xl border transition-all ${
+                        isFilterMenuOpen 
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-md' 
+                        : (isHospitalMode ? 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50')
+                    }`}
+                >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                    Camadas
+                </button>
+
+                {isFilterMenuOpen && (
+                    <>
+                        <div className="fixed inset-0 z-30" onClick={() => setIsFilterMenuOpen(false)}></div>
+                        <div className={`absolute right-0 top-full mt-2 w-56 rounded-2xl shadow-xl z-40 p-2 border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                            <div className="space-y-1">
+                                <p className={`px-3 py-2 text-[9px] font-black uppercase tracking-widest opacity-50 ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Exibir no Mapa</p>
+                                
+                                <label className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${showHospitals ? 'bg-blue-600 border-blue-600' : 'border-gray-400'}`}>
+                                        {showHospitals && <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                                    </div>
+                                    <input type="checkbox" className="hidden" checked={showHospitals} onChange={e => setShowHospitals(e.target.checked)} />
+                                    <span className={`text-xs font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-700'}`}>Hospitais</span>
+                                </label>
+
+                                <label className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${showGVP ? 'bg-blue-600 border-blue-600' : 'border-gray-400'}`}>
+                                        {showGVP && <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                                    </div>
+                                    <input type="checkbox" className="hidden" checked={showGVP} onChange={e => setShowGVP(e.target.checked)} />
+                                    <span className={`text-xs font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-700'}`}>Membros GVP</span>
+                                </label>
+
+                                <label className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${showCOLIH ? 'bg-teal-600 border-teal-600' : 'border-gray-400'}`}>
+                                        {showCOLIH && <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                                    </div>
+                                    <input type="checkbox" className="hidden" checked={showCOLIH} onChange={e => setShowCOLIH(e.target.checked)} />
+                                    <span className={`text-xs font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-700'}`}>Membros COLIH</span>
+                                </label>
+                            </div>
+                        </div>
+                    </>
+                )}
+            </div>
         </div>
         
         <div className="flex-grow rounded-[2.5rem] border border-gray-800/10 overflow-hidden relative shadow-inner">

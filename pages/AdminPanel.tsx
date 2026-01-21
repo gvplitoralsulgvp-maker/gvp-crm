@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { AppState, Member, VisitRoute, UserRole, Hospital, VisitSlot } from '../types';
 import { Button } from '../components/Button';
 import { atomicUpdate, loadState, atomicDelete } from '../services/storageService';
@@ -12,6 +13,9 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
   const [editingMember, setEditingMember] = useState<Partial<Member> | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
+  
+  // Novo estado para filtro de relatório
+  const [reportType, setReportType] = useState<'gvp' | 'colih'>('gvp');
 
   const handleRefreshData = async () => {
     setIsSyncing(true);
@@ -71,7 +75,9 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       hasSeenOnboarding: editingMember.hasSeenOnboarding || false,
       address: editingMember.address,
       lat: editingMember.lat,
-      lng: editingMember.lng
+      lng: editingMember.lng,
+      isColih: editingMember.isColih || false, // Save COLIH permission
+      colihClassification: editingMember.colihClassification // Save specific classification
     };
     try {
       await atomicUpdate('members', newMember);
@@ -81,6 +87,14 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       onUpdateState({ ...state, members: updated });
       setEditingMember(null);
     } catch (err) { alert("Erro ao salvar membro."); }
+  };
+
+  // --- HELPER PARA FUNÇÃO/ROLE UNIFICADA ---
+  const getProfileType = (m: Partial<Member>) => {
+    if (m.role === UserRole.ADMIN) return 'ADMIN';
+    if (m.colihClassification === 'Facilitator') return 'FACILITATOR';
+    if (m.isColih) return 'COLIH';
+    return 'GVP';
   };
 
   // --- LOGICA DE HOSPITAIS ---
@@ -126,14 +140,40 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     } catch (err) { alert("Erro ao salvar rota."); }
   };
 
-  // --- LOGICA DE BALANÇO ---
-  const memberStats = useMemo(() => {
+  const handleDeleteRoute = async (id: string) => {
+      if (!window.confirm("Tem certeza que deseja EXCLUIR esta rota? Isso não pode ser desfeito.")) return;
+      try {
+          await atomicDelete('routes', id);
+          const updated = state.routes.filter(r => r.id !== id);
+          onUpdateState({ ...state, routes: updated });
+          setEditingRoute(null);
+      } catch (err) {
+          alert("Erro ao excluir rota.");
+      }
+  };
+
+  // --- LOGICA DE BALANÇO (Separado por Função) ---
+  const { gvpStats, colihStats } = useMemo(() => {
     const stats = state.members.map(m => {
-      const visitCount = state.visits.filter(v => v.memberIds.includes(m.id) && v.status === 'FINISHED').length;
-      return { ...m, visitCount };
+      // Conta visitas GVP normais
+      const gvpVisits = state.visits.filter(v => v.memberIds.includes(m.id) && v.status === 'FINISHED').length;
+      // Conta visitas COLIH
+      const colihVisits = state.colihVisits.filter(v => v.memberIds.includes(m.id)).length;
+      
+      return { ...m, visitCount: gvpVisits + colihVisits };
     });
-    return stats.sort((a, b) => b.visitCount - a.visitCount);
-  }, [state.members, state.visits]);
+
+    // Filtra apenas membros COLIH efetivos (Exclui Facilitadores)
+    const colihMembers = stats
+        .filter(m => m.isColih && m.colihClassification !== 'Facilitator')
+        .sort((a, b) => b.visitCount - a.visitCount);
+
+    const gvpMembers = stats
+        .filter(m => !m.isColih && m.role !== UserRole.ADMIN) // Filtra admins puros que não visitam
+        .sort((a, b) => b.visitCount - a.visitCount);
+
+    return { gvpStats: gvpMembers, colihStats: colihMembers };
+  }, [state.members, state.visits, state.colihVisits]);
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
@@ -149,7 +189,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
               {isSyncing ? 'Sync...' : 'Sincronizar'}
             </button>
             <Button size="sm" className="rounded-xl px-6" onClick={() => {
-              if (activeTab === 'members') setEditingMember({ active: true, role: UserRole.MEMBER });
+              if (activeTab === 'members') setEditingMember({ active: true, role: UserRole.MEMBER, isColih: false });
               if (activeTab === 'hospitals') setEditingHospital({ city: 'Santos' });
               if (activeTab === 'routes') setEditingRoute({ active: true, hospitals: [] });
             }}>
@@ -199,7 +239,16 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                                 <p className="text-[10px] text-gray-500">{m.email}</p>
                                 </td>
                                 <td className="px-6 py-4">
-                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${m.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>{m.role}</span>
+                                    {m.role === UserRole.ADMIN ? (
+                                        <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-purple-100 text-purple-700">ADMIN</span>
+                                    ) : (
+                                        <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-blue-100 text-blue-700">GVP</span>
+                                    )}
+                                    {m.role !== UserRole.ADMIN && m.isColih && (
+                                        <span className="ml-2 px-2 py-0.5 rounded text-[9px] font-black uppercase bg-teal-100 text-teal-700">
+                                            {m.colihClassification === 'Facilitator' ? 'FACILITADOR' : 'COLIH'}
+                                        </span>
+                                    )}
                                 </td>
                                 <td className="px-6 py-4">
                                 {m.lat && m.lng ? (
@@ -256,10 +305,15 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         </div>
       )}
 
-      {/* CONTEÚDO: ROTAS */}
+      {/* CONTEÚDO: ROTAS (ATUALIZADO) */}
       {activeTab === 'routes' && (
         <div className="space-y-4">
-            {state.routes.map(r => (
+            {[...state.routes]
+              .sort((a, b) => {
+                  if (a.active === b.active) return a.name.localeCompare(b.name);
+                  return a.active ? -1 : 1;
+              })
+              .map(r => (
               <div key={r.id} className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'} p-6 rounded-2xl border flex flex-col md:flex-row justify-between items-center gap-4`}>
                   <div className="flex-grow">
                     <div className="flex items-center gap-3 mb-2">
@@ -278,58 +332,148 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         </div>
       )}
 
-      {/* CONTEÚDO: RELATÓRIOS */}
+      {/* CONTEÚDO: RELATÓRIOS (Separado por Função) */}
       {activeTab === 'reports' && (
         <div className="space-y-6">
-           {state.visits.filter(v => !!v.report).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 20).map(v => (
-             <div key={v.id} className={`${isHospitalMode ? 'bg-[#212327] border-gray-800 text-gray-300' : 'bg-white border-gray-100 shadow-sm text-gray-700'} p-6 rounded-2xl border`}>
-                <div className="flex justify-between items-start mb-4">
-                   <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-xs">{v.report?.doctorName.substring(0,2).toUpperCase()}</div>
-                      <div>
-                        <p className="font-black text-sm">{v.report?.doctorName}</p>
-                        <p className="text-[10px] text-blue-600 font-bold uppercase">{new Date(v.date + 'T12:00:00').toLocaleDateString()}</p>
-                      </div>
-                   </div>
-                   <div className="text-right">
-                      <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Unidade</p>
-                      <p className="text-xs font-bold">{state.routes.find(r => r.id === v.routeId)?.name || 'Rota Geral'}</p>
-                   </div>
-                </div>
-                <div className={`p-4 rounded-xl italic text-sm leading-relaxed ${isHospitalMode ? 'bg-black/20' : 'bg-gray-50 border border-gray-100'}`}>
-                  "{v.report?.notes}"
-                </div>
-                {v.report?.followUpNeeded && <div className="mt-3 px-3 py-1 bg-red-500/10 text-red-500 text-[9px] font-black uppercase tracking-widest inline-block rounded-lg border border-red-500/20">Acompanhamento Crítico Solicitado</div>}
-             </div>
-           ))}
-        </div>
-      )}
-
-      {/* CONTEÚDO: BALANÇO */}
-      {activeTab === 'balance' && (
-        <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl border shadow-sm p-6`}>
-           <h3 className="text-sm font-black uppercase tracking-widest text-gray-400 mb-8 px-2">Engajamento Total da Equipe</h3>
-           <div className="space-y-6">
-              {memberStats.map(m => (
-                <div key={m.id} className="group">
-                  <div className="flex justify-between items-end mb-2 px-2">
-                     <span className={`text-sm font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{m.name}</span>
-                     <span className="text-xs font-black text-blue-600">{m.visitCount} Visitas</span>
-                  </div>
-                  <div className={`w-full h-3 rounded-full overflow-hidden ${isHospitalMode ? 'bg-black/40' : 'bg-gray-100'}`}>
-                     <div 
-                        className="h-full bg-blue-600 transition-all duration-1000 group-hover:bg-blue-400" 
-                        style={{ width: `${Math.min((m.visitCount / 10) * 100, 100)}%` }}
-                     />
-                  </div>
-                </div>
-              ))}
+           {/* Filtro de Tipo de Relatório */}
+           <div className={`p-1 rounded-xl inline-flex ${isHospitalMode ? 'bg-black/30' : 'bg-gray-100'}`}>
+                <button 
+                    onClick={() => setReportType('gvp')}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-all ${reportType === 'gvp' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Visitas Hospitalares (GVP)
+                </button>
+                <button 
+                    onClick={() => setReportType('colih')}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-all ${reportType === 'colih' ? 'bg-teal-600 text-white shadow-md' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Interações Médicas (COLIH)
+                </button>
            </div>
+
+           {reportType === 'gvp' ? (
+               // Lista de Relatórios GVP (Visitas a Pacientes)
+               state.visits.filter(v => !!v.report).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 20).map(v => (
+                 <div key={v.id} className={`${isHospitalMode ? 'bg-[#212327] border-gray-800 text-gray-300' : 'bg-white border-gray-100 shadow-sm text-gray-700'} p-6 rounded-2xl border`}>
+                    <div className="flex justify-between items-start mb-4">
+                       <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-xs">{v.report?.doctorName.substring(0,2).toUpperCase()}</div>
+                          <div>
+                            <p className="font-black text-sm">{v.report?.doctorName}</p>
+                            <p className="text-[10px] text-blue-600 font-bold uppercase">{new Date(v.date + 'T12:00:00').toLocaleDateString()}</p>
+                          </div>
+                       </div>
+                       <div className="text-right">
+                          <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Unidade</p>
+                          <p className="text-xs font-bold">{state.routes.find(r => r.id === v.routeId)?.name || 'Rota Geral'}</p>
+                       </div>
+                    </div>
+                    <div className={`p-4 rounded-xl italic text-sm leading-relaxed ${isHospitalMode ? 'bg-black/20' : 'bg-gray-50 border border-gray-100'}`}>
+                      "{v.report?.notes}"
+                    </div>
+                    {v.report?.followUpNeeded && <div className="mt-3 px-3 py-1 bg-red-500/10 text-red-500 text-[9px] font-black uppercase tracking-widest inline-block rounded-lg border border-red-500/20">Acompanhamento Crítico Solicitado</div>}
+                 </div>
+               ))
+           ) : (
+               // Lista de Relatórios COLIH (Visitas a Médicos)
+               [...state.colihVisits].sort((a,b) => b.date.localeCompare(a.date)).slice(0, 20).map(v => {
+                   const doctor = state.doctors.find(d => d.id === v.doctorId);
+                   return (
+                     <div key={v.id} className={`${isHospitalMode ? 'bg-[#212327] border-gray-800 text-gray-300' : 'bg-white border-gray-100 shadow-sm text-gray-700'} p-6 rounded-2xl border`}>
+                        <div className="flex justify-between items-start mb-4">
+                           <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-teal-600 text-white rounded-full flex items-center justify-center font-bold text-xs">DR</div>
+                              <div>
+                                <p className="font-black text-sm">{doctor?.name || 'Médico'}</p>
+                                <p className="text-[10px] text-teal-600 font-bold uppercase">{doctor?.specialty} • {new Date(v.date + 'T12:00:00').toLocaleDateString()}</p>
+                              </div>
+                           </div>
+                           <div className="text-right">
+                              <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Visitantes</p>
+                              <p className="text-xs font-bold">
+                                  {v.memberIds.map(id => state.members.find(m => m.id === id)?.name.split(' ')[0]).join(', ')}
+                              </p>
+                           </div>
+                        </div>
+                        <div className={`p-4 rounded-xl italic text-sm leading-relaxed ${isHospitalMode ? 'bg-black/20' : 'bg-gray-50 border border-gray-100'}`}>
+                          "{v.notes}"
+                        </div>
+                     </div>
+                   );
+               })
+           )}
+           
+           {((reportType === 'gvp' && state.visits.filter(v => !!v.report).length === 0) || 
+             (reportType === 'colih' && state.colihVisits.length === 0)) && (
+               <div className="text-center py-10 text-gray-400 text-sm font-bold uppercase">Nenhum relatório encontrado nesta categoria.</div>
+           )}
         </div>
       )}
 
-      {/* MODAL: EDITAR MEMBRO */}
-      {editingMember && (
+      {/* CONTEÚDO: BALANÇO (Separado por Função) */}
+      {activeTab === 'balance' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Coluna COLIH */}
+            <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl border shadow-sm p-6`}>
+               <div className="flex items-center gap-3 mb-6">
+                   <div className="w-8 h-8 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center">
+                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                   </div>
+                   <h3 className="text-sm font-black uppercase tracking-widest text-teal-600">Equipe de Ligação (COLIH)</h3>
+               </div>
+               <div className="space-y-6">
+                  {colihStats.map(m => (
+                    <div key={m.id} className="group">
+                      <div className="flex justify-between items-end mb-2 px-2">
+                         <div>
+                             <span className={`text-sm font-bold block ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{m.name}</span>
+                             <span className="text-[9px] text-gray-400 uppercase">{m.colihClassification || 'Membro'}</span>
+                         </div>
+                         <span className="text-xs font-black text-teal-600">{m.visitCount} Ações</span>
+                      </div>
+                      <div className={`w-full h-2 rounded-full overflow-hidden ${isHospitalMode ? 'bg-black/40' : 'bg-gray-100'}`}>
+                         <div 
+                            className="h-full bg-teal-500 transition-all duration-1000 group-hover:bg-teal-400" 
+                            style={{ width: `${Math.min((m.visitCount / 10) * 100, 100)}%` }}
+                         />
+                      </div>
+                    </div>
+                  ))}
+                  {colihStats.length === 0 && <p className="text-xs text-gray-400 italic text-center">Nenhum membro COLIH ativo.</p>}
+               </div>
+            </div>
+
+            {/* Coluna GVP */}
+            <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl border shadow-sm p-6`}>
+               <div className="flex items-center gap-3 mb-6">
+                   <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                   </div>
+                   <h3 className="text-sm font-black uppercase tracking-widest text-blue-600">Voluntários GVP</h3>
+               </div>
+               <div className="space-y-6">
+                  {gvpStats.map(m => (
+                    <div key={m.id} className="group">
+                      <div className="flex justify-between items-end mb-2 px-2">
+                         <span className={`text-sm font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{m.name}</span>
+                         <span className="text-xs font-black text-blue-600">{m.visitCount} Visitas</span>
+                      </div>
+                      <div className={`w-full h-2 rounded-full overflow-hidden ${isHospitalMode ? 'bg-black/40' : 'bg-gray-100'}`}>
+                         <div 
+                            className="h-full bg-blue-600 transition-all duration-1000 group-hover:bg-blue-400" 
+                            style={{ width: `${Math.min((m.visitCount / 10) * 100, 100)}%` }}
+                         />
+                      </div>
+                    </div>
+                  ))}
+                  {gvpStats.length === 0 && <p className="text-xs text-gray-400 italic text-center">Nenhum voluntário GVP ativo.</p>}
+               </div>
+            </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR MEMBRO (Com createPortal) */}
+      {editingMember && createPortal(
           <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
              <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
                 <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center shrink-0">
@@ -347,10 +491,35 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Role</label>
-                        <select className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.role} onChange={e => setEditingMember({...editingMember, role: e.target.value as UserRole})}>
-                          <option value={UserRole.MEMBER}>Voluntário</option>
-                          <option value={UserRole.ADMIN}>Administrador</option>
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Função / Papel</label>
+                        <select 
+                            className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} 
+                            value={getProfileType(editingMember)} 
+                            onChange={(e) => {
+                                const type = e.target.value;
+                                let updates: Partial<Member> = {};
+                                switch (type) {
+                                    case 'ADMIN':
+                                        updates = { role: UserRole.ADMIN, isColih: true, colihClassification: null };
+                                        break;
+                                    case 'FACILITATOR':
+                                        updates = { role: UserRole.MEMBER, isColih: true, colihClassification: 'Facilitator' };
+                                        break;
+                                    case 'COLIH':
+                                        updates = { role: UserRole.MEMBER, isColih: true, colihClassification: 'Member' };
+                                        break;
+                                    case 'GVP':
+                                    default:
+                                        updates = { role: UserRole.MEMBER, isColih: false, colihClassification: null };
+                                        break;
+                                }
+                                setEditingMember(prev => ({ ...prev, ...updates }));
+                            }}
+                        >
+                          <option value="GVP">Voluntário GVP</option>
+                          <option value="COLIH">Membro COLIH</option>
+                          <option value="FACILITATOR">Facilitador</option>
+                          <option value="ADMIN">Administrador</option>
                         </select>
                       </div>
                       <div>
@@ -361,16 +530,25 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                         </select>
                       </div>
                     </div>
+                    
+                    {getProfileType(editingMember) !== 'GVP' && (
+                        <div className={`p-4 rounded-xl border-2 ${isHospitalMode ? 'bg-teal-900/10 border-teal-900/40 text-teal-300' : 'bg-teal-50 border-teal-100 text-teal-800'}`}>
+                            <p className="text-[10px] font-black uppercase tracking-widest mb-1">Permissões Especiais Ativas</p>
+                            <p className="text-xs">Este usuário tem acesso ao painel COLIH, lista de médicos e visitas especiais.</p>
+                        </div>
+                    )}
+
                     <div className="pt-4">
                         <Button className="w-full rounded-xl py-4" type="submit">Salvar Alterações</Button>
                     </div>
                 </form>
              </div>
-          </div>
+          </div>,
+          document.body
       )}
 
-      {/* MODAL: EDITAR HOSPITAL */}
-      {editingHospital && (
+      {/* MODAL: EDITAR HOSPITAL (Com createPortal) */}
+      {editingHospital && createPortal(
           <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
              <div className={`w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
                 <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center shrink-0">
@@ -417,11 +595,12 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                     </div>
                 </form>
              </div>
-          </div>
+          </div>,
+          document.body
       )}
 
-      {/* MODAL: EDITAR ROTA */}
-      {editingRoute && (
+      {/* MODAL: EDITAR ROTA (Com createPortal) */}
+      {editingRoute && createPortal(
           <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
              <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
                 <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center shrink-0">
@@ -436,7 +615,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                     <div className="space-y-2">
                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 block mb-2">Unidades Vinculadas</label>
                        <div className="max-h-40 overflow-y-auto p-2 border-2 rounded-xl border-gray-800/10 custom-scrollbar space-y-2">
-                          {state.hospitals.map(h => (
+                          {[...state.hospitals].sort((a,b) => a.name.localeCompare(b.name)).map(h => (
                             <label key={h.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded-lg cursor-pointer">
                                <input 
                                  type="checkbox" 
@@ -460,12 +639,18 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                           <option value="false">Rota Suspensa</option>
                       </select>
                     </div>
-                    <div className="pt-4">
+                    <div className="pt-4 flex gap-3">
+                        {editingRoute.id && (
+                            <Button variant="danger" type="button" onClick={() => handleDeleteRoute(editingRoute.id!)} className="px-4">
+                                Excluir
+                            </Button>
+                        )}
                         <Button className="w-full rounded-xl py-4" type="submit">Salvar Rota</Button>
                     </div>
                 </form>
              </div>
-          </div>
+          </div>,
+          document.body
       )}
     </div>
   );

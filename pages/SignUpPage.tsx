@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AppState, Member, UserRole } from '../types';
+import { AppState, Member, UserRole, AppNotification } from '../types';
 import { Button } from '../components/Button';
 import { getCoordsFromCep } from '../services/geoService';
 import { supabase } from '../services/supabaseClient';
@@ -56,7 +56,6 @@ export const SignUpPage: React.FC<{ state: AppState, onUpdateState: (s: AppState
         });
 
         if (authErr) {
-          // Detectar erro de instância que não permite novos usuários
           if (authErr.message.includes("Signups not allowed")) {
             setIsInstanceBlocked(true);
             throw new Error("O servidor está configurado para não aceitar novos cadastros no momento.");
@@ -84,6 +83,29 @@ export const SignUpPage: React.FC<{ state: AppState, onUpdateState: (s: AppState
         };
 
         await atomicUpdate('members', newMember);
+
+        // 3. Notificar Administradores (Busca direta no banco para garantir)
+        try {
+            const { data: adminUsers } = await supabase
+                .from('members')
+                .select('id')
+                .eq('role', 'ADMIN');
+
+            if (adminUsers && adminUsers.length > 0) {
+                const notifications: AppNotification[] = adminUsers.map((admin: any) => ({
+                    id: crypto.randomUUID(),
+                    userId: admin.id,
+                    message: `👤 Novo Cadastro Pendente: ${formData.name} (${formData.congregation}).`,
+                    type: 'info',
+                    read: false,
+                    timestamp: new Date().toISOString()
+                }));
+                
+                await Promise.all(notifications.map(n => atomicUpdate('notifications', n)));
+            }
+        } catch (notifErr) {
+            console.error("Erro ao notificar admins:", notifErr);
+        }
         
         if (isAdminEmail) {
             alert('Conta Administrador criada com sucesso! Você já pode acessar o sistema.');
@@ -104,7 +126,7 @@ export const SignUpPage: React.FC<{ state: AppState, onUpdateState: (s: AppState
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4 animate-fade-in">
       <div className="w-full max-w-xl bg-white p-10 rounded-[3rem] shadow-2xl border border-gray-100 space-y-8">
         <div className="text-center">
-            <h2 className="text-3xl font-black text-gray-900 tracking-tight">GVP Litoral Sul</h2>
+            <h2 className="text-3xl font-black text-gray-900 tracking-tight">COLIH/GVP Litoral Sul</h2>
             <p className="text-sm font-bold text-blue-500 uppercase tracking-widest mt-2">Solicitar Cadastro</p>
         </div>
 

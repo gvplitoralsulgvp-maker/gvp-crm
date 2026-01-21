@@ -37,6 +37,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
 
   const todayStr = new Date().toISOString().split('T')[0];
 
+  // Filtra pacientes visíveis na agenda (Regra: GVP só vê se gvpRequestPending estiver ativo)
+  const visiblePatients = useMemo(() => {
+    if (!state.currentUser) return [];
+    
+    // Verifica se é membro GVP básico (não Admin, não COLIH)
+    const isBasicGVP = state.currentUser.role !== UserRole.ADMIN && !state.currentUser.isColih;
+
+    return state.patients.filter(p => {
+      if (!p.active) return false;
+      // Se for GVP básico, só mostra se a solicitação estiver ativa
+      if (isBasicGVP && !p.gvpRequestPending) return false;
+      return true;
+    });
+  }, [state.patients, state.currentUser]);
+
   const pendingReports = useMemo(() => {
     if (!state.currentUser) return [];
     const userId = state.currentUser.id;
@@ -368,7 +383,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
         routes={state.routes} 
         visits={state.visits} 
         members={state.members} 
-        patients={state.patients} 
+        patients={visiblePatients} 
         currentUser={state.currentUser} 
         isPrivacyMode={isPrivacyMode} 
         isHospitalMode={isHospitalMode} 
@@ -403,7 +418,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
               route={myVisitRoute}
               partner={myVisitPartner}
               hospitalDetails={myVisitHospitals}
-              patients={state.patients}
+              patients={visiblePatients}
               recentHistory={myVisitHistory}
               isHospitalMode={isHospitalMode}
               isPrivacyMode={isPrivacyMode}
@@ -452,12 +467,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
           isOpen={true} 
           onClose={() => setFinishVisitSlot(null)} 
           onConfirm={handleFinishVisit} 
-          patients={state.patients.filter(p => {
+          patients={visiblePatients.filter(p => {
               if (!finishVisitSlot) return false;
               const route = state.routes.find(r => r.id === finishVisitSlot.routeId);
               const hospitalIds = route?.hospitalIds || [];
               
-              return p.active && (
+              return (
                   (p.hospitalId && hospitalIds.includes(p.hospitalId)) || 
                   (p.hospitalName && route?.hospitals?.includes(p.hospitalName))
               );

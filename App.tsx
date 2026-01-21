@@ -17,6 +17,7 @@ import { MapPage } from './pages/MapPage';
 import { SocialVisitsPage } from './pages/SocialVisitsPage';
 import { PublicRequestPage } from './pages/PublicRequestPage';
 import { TutorialPage } from './pages/TutorialPage';
+import { ColihPage } from './pages/ColihPage'; // Import COLIH Page
 import { GlobalSearch } from './components/GlobalSearch';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { OnboardingModal } from './components/OnboardingModal';
@@ -64,7 +65,7 @@ const Layout: React.FC<{
 
     if (Notification.permission === 'granted') {
       try {
-        new Notification("GVP Litoral Sul", { 
+        new Notification("COLIH/GVP Litoral Sul", { 
           body: "Notificações ativas! Você será alertado sobre novos pedidos.",
           icon: '/vite.svg' 
         });
@@ -77,7 +78,7 @@ const Layout: React.FC<{
     Notification.requestPermission().then(permission => {
         if (permission === 'granted') {
             setShowNotifPermission(false);
-            new Notification("GVP Litoral Sul", { body: "Notificações ativadas!" });
+            new Notification("COLIH/GVP Litoral Sul", { body: "Notificações ativadas!" });
         } else if (permission === 'denied') {
             alert("Você bloqueou as notificações. Para ativar, acesse as configurações do navegador (ícone cadeado) e permita Notificações.");
         }
@@ -133,7 +134,7 @@ const Layout: React.FC<{
   }, [state.currentUser, state.notifications]); 
 
   // 3. Sync Force (Ao acordar o celular/aba)
-  // Isso resolve o problema de não receber alertas quando o celular "dorme"
+  // Isso resolve o problema da "tela cinza" e não receber alertas quando o celular "dorme"
   useEffect(() => {
     const handleVisibilityChange = async () => {
         if (document.visibilityState === 'visible' && state.currentUser) {
@@ -264,13 +265,19 @@ const Layout: React.FC<{
   };
 
   const menuItems = [
-    { to: "/dashboard", label: "Agenda", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+    { to: "/dashboard", label: "Agenda", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
     { to: "/patients", label: "Pacientes", icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" },
     { to: "/social-visits", label: "AS", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
     { to: "/map", label: "Mapa", icon: "M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" },
     { to: "/stats", label: "KPIs", icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
   ];
 
+  // Permission Logic for COLIH (Moved before Admin to appear above)
+  if (state.currentUser.isColih || state.currentUser.role === UserRole.ADMIN) {
+      menuItems.push({ to: "/colih", label: "COLIH", icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" });
+  }
+
+  // Admin permissions (Added last to appear at bottom)
   if (state.currentUser.role === UserRole.ADMIN) {
     menuItems.push({ to: "/admin", label: "Admin", icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" });
   }
@@ -283,7 +290,7 @@ const Layout: React.FC<{
             <div className="bg-blue-600 p-1.5 rounded-lg text-white">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
             </div>
-            <span className="font-bold text-lg">SOFT-CRM GVP</span>
+            <span className="font-bold text-sm">COLIH/GVP Litoral Sul</span>
           </div>
         </div>
         <nav className="flex-grow p-4 space-y-2 overflow-y-auto custom-scrollbar">
@@ -316,7 +323,7 @@ const Layout: React.FC<{
                <div className="bg-blue-600 p-1 rounded-md text-white">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                </div>
-               <span className={`font-black text-sm tracking-tight ${isHospitalMode ? 'text-white' : 'text-gray-900'}`}>GVP</span>
+               <span className={`font-black text-sm tracking-tight ${isHospitalMode ? 'text-white' : 'text-gray-900'}`}>COLIH/GVP</span>
             </div>
             <div className="hidden sm:block flex-grow">
               <GlobalSearch state={state} isHospitalMode={isHospitalMode} />
@@ -364,6 +371,9 @@ const Layout: React.FC<{
             <Route path="/stats" element={<StatsReport state={state} isHospitalMode={isHospitalMode} />} />
             <Route path="/logs" element={<LogsPage state={state} isHospitalMode={isHospitalMode} />} />
             <Route path="/admin" element={<AdminPanel state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} />} />
+            {(state.currentUser.isColih || state.currentUser.role === UserRole.ADMIN) && (
+                <Route path="/colih" element={<ColihPage state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} />} />
+            )}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </main>
@@ -391,6 +401,13 @@ const Layout: React.FC<{
             <div className={`absolute bottom-0 left-0 right-0 rounded-t-3xl p-6 pb-24 animate-fade-in ${isHospitalMode ? 'bg-[#212327] border-t border-gray-800' : 'bg-white'}`}>
                 <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-6 opacity-30"></div>
                 <div className="space-y-2">
+                    {/* Alterada a ordem: COLIH primeiro, Admin depois */}
+                    {(state.currentUser.isColih || state.currentUser.role === UserRole.ADMIN) && (
+                        <Link to="/colih" onClick={() => setIsSidebarOpen(false)} className={`flex items-center gap-4 p-4 rounded-xl ${isHospitalMode ? 'bg-[#1a1c1e] text-white' : 'bg-gray-50 text-gray-800'}`}>
+                            <div className="bg-teal-100 p-2 rounded-lg text-teal-600"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg></div>
+                            <span className="font-bold">COLIH</span>
+                        </Link>
+                    )}
                     {state.currentUser.role === UserRole.ADMIN && (
                         <Link to="/admin" onClick={() => setIsSidebarOpen(false)} className={`flex items-center gap-4 p-4 rounded-xl ${isHospitalMode ? 'bg-[#1a1c1e] text-white' : 'bg-gray-50 text-gray-800'}`}>
                             <div className="bg-purple-100 p-2 rounded-lg text-purple-600"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /></svg></div>
@@ -422,20 +439,18 @@ const Layout: React.FC<{
   );
 };
 
-// --- APP COMPONENT PRINCIPAL ---
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(createDefaultState());
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
   const [isHospitalMode, setIsHospitalMode] = useState(false);
   const [isNightMode, setIsNightMode] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Inicialização
   useEffect(() => {
-    loadState().then(loaded => {
-      setState(loaded);
-      setIsSyncing(false);
+    loadState().then(s => {
+      setState(s);
+      setIsLoading(false);
     });
   }, []);
 
@@ -443,58 +458,64 @@ const App: React.FC = () => {
     setState(newState);
   };
 
-  const handleLogin = (user: Member) => {
-    handleUpdateState({ ...state, currentUser: user });
+  const handleChangePassword = async (newPass: string) => {
+      try {
+          const { error } = await supabase.auth.updateUser({ password: newPass });
+          if(error) throw error;
+          alert("Senha alterada com sucesso!");
+          setIsChangePasswordOpen(false);
+      } catch (e: any) {
+          alert("Erro ao alterar senha: " + e.message);
+      }
   };
 
-  const handleChangePassword = async (newPassword: string) => {
-    if (!state.currentUser) return;
-    try {
-        if (supabase) {
-            const { error } = await supabase.auth.updateUser({ password: newPassword });
-            if (error) throw error;
-        }
-        alert("Senha alterada com sucesso!");
-        setIsChangePasswordOpen(false);
-    } catch (e: any) {
-        alert("Erro ao alterar senha: " + e.message);
-    }
-  };
+  if (isLoading) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-gray-50">
+              <div className="animate-pulse flex flex-col items-center">
+                  <div className="w-12 h-12 bg-blue-600 rounded-full mb-4"></div>
+                  <div className="text-gray-400 font-bold text-sm">Carregando GVP...</div>
+              </div>
+          </div>
+      );
+  }
 
   return (
     <Router>
       <Routes>
-        <Route path="/login" element={<LoginPage state={state} onLogin={handleLogin} />} />
+        <Route path="/" element={<Welcome />} />
+        <Route path="/login" element={<LoginPage state={state} onLogin={(u) => handleUpdateState({...state, currentUser: u})} />} />
         <Route path="/signup" element={<SignUpPage state={state} onUpdateState={handleUpdateState} />} />
         <Route path="/solicitar-visita" element={<PublicRequestPage state={state} onUpdateState={handleUpdateState} />} />
-        <Route path="/welcome" element={<Welcome />} />
-        <Route path="/tutorial" element={<TutorialPage isHospitalMode={isHospitalMode} />} />
         
+        {/* Rotas Protegidas (Layout) */}
         <Route path="/*" element={
-            <Layout 
-                state={state} 
-                onUpdateState={handleUpdateState}
-                isPrivacyMode={isPrivacyMode}
-                onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}
-                isHospitalMode={isHospitalMode}
-                onToggleHospitalMode={() => setIsHospitalMode(!isHospitalMode)}
-                isNightMode={isNightMode}
-                onToggleNightMode={() => setIsNightMode(!isNightMode)}
-                onChangePasswordClick={() => setIsChangePasswordOpen(true)}
-                isSyncing={isSyncing}
-            />
+            state.currentUser ? (
+                <>
+                    <Layout 
+                        state={state} 
+                        onUpdateState={handleUpdateState}
+                        isPrivacyMode={isPrivacyMode}
+                        onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}
+                        isHospitalMode={isHospitalMode}
+                        onToggleHospitalMode={() => setIsHospitalMode(!isHospitalMode)}
+                        isNightMode={isNightMode}
+                        onToggleNightMode={() => setIsNightMode(!isNightMode)}
+                        onChangePasswordClick={() => setIsChangePasswordOpen(true)}
+                    />
+                    <ChangePasswordModal 
+                        isOpen={isChangePasswordOpen}
+                        onClose={() => setIsChangePasswordOpen(false)}
+                        currentUser={state.currentUser}
+                        onConfirm={handleChangePassword}
+                        isHospitalMode={isHospitalMode}
+                    />
+                </>
+            ) : (
+                <Navigate to="/login" replace />
+            )
         } />
       </Routes>
-
-      {state.currentUser && (
-        <ChangePasswordModal 
-            isOpen={isChangePasswordOpen}
-            onClose={() => setIsChangePasswordOpen(false)}
-            currentUser={state.currentUser}
-            onConfirm={handleChangePassword}
-            isHospitalMode={isHospitalMode}
-        />
-      )}
     </Router>
   );
 };
