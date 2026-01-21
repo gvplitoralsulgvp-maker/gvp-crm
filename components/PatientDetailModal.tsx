@@ -14,11 +14,12 @@ interface PatientDetailModalProps {
   onToggleGvp?: (patient: Patient) => void;
   isHospitalMode?: boolean;
   canEdit?: boolean;
+  canDischarge?: boolean; // Nova prop para permitir alta por membros GVP
   isColihUser?: boolean;
 }
 
 export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({ 
-  isOpen, onClose, patient, lastVisit, members, onDischarge, onHlc7Confirm, onToggleGvp, isHospitalMode, canEdit, isColihUser 
+  isOpen, onClose, patient, lastVisit, members, onDischarge, onHlc7Confirm, onToggleGvp, isHospitalMode, canEdit, canDischarge, isColihUser 
 }) => {
   if (!isOpen) return null;
 
@@ -71,8 +72,8 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                 )}
                 </div>
             </div>
-            {/* Botão de Alta Comum */}
-            {patient.active && !patient.isMedicalDischarge && onDischarge && canEdit && (
+            {/* Botão de Alta Comum - LIBERADO PARA GVP (canDischarge) */}
+            {patient.active && !patient.isMedicalDischarge && onDischarge && (canEdit || canDischarge) && (
                 <button 
                     onClick={() => { onDischarge(patient.id, patient.name); onClose(); }}
                     className="bg-green-600 hover:bg-green-700 text-white text-[9px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg shadow-sm"

@@ -9,6 +9,7 @@ import { MyVisitModal } from '../components/MyVisitModal';
 import { SwapRequestModal } from '../components/SwapRequestModal';
 import { CancelVisitModal } from '../components/CancelVisitModal';
 import { ViewReportModal } from '../components/ViewReportModal';
+import { PatientDetailModal } from '../components/PatientDetailModal';
 import { atomicUpdate } from '../services/storageService';
 
 interface DashboardProps {
@@ -30,12 +31,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const [selectionModalData, setSelectionModalData] = useState<SelectionData | null>(null);
   const [viewReportData, setViewReportData] = useState<{ slot: VisitSlot, route: VisitRoute } | null>(null);
   
+  // Estado para visualização de detalhes do paciente (Prontuário)
+  const [viewingPatientId, setViewingPatientId] = useState<string | null>(null);
+  
   // Novos estados para gestão de visita do próprio usuário
   const [myVisitModalData, setMyVisitModalData] = useState<VisitSlot | null>(null);
   const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
 
   const todayStr = new Date().toISOString().split('T')[0];
+
+  // Deriva o objeto do paciente em tempo real
+  const viewingPatient = useMemo(() => {
+      return state.patients.find(p => p.id === viewingPatientId) || null;
+  }, [state.patients, viewingPatientId]);
 
   // Filtra pacientes visíveis na agenda (Regra: GVP só vê se gvpRequestPending estiver ativo)
   const visiblePatients = useMemo(() => {
@@ -46,8 +55,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
 
     return state.patients.filter(p => {
       if (!p.active) return false;
-      // Se for GVP básico, só mostra se a solicitação estiver ativa
-      if (isBasicGVP && !p.gvpRequestPending) return false;
+      
+      // REGRAS DE VISIBILIDADE GVP BÁSICO
+      if (isBasicGVP) {
+          // Se tiver alta médica, some para o GVP (só COLIH vê)
+          if (p.isMedicalDischarge) return false;
+          
+          // GVP só vê se a solicitação estiver ativa
+          if (!p.gvpRequestPending) return false;
+      }
+      
       return true;
     });
   }, [state.patients, state.currentUser]);
@@ -69,6 +86,87 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       .filter(v => v.memberIds.includes(state.currentUser!.id) && v.date >= todayStr && v.status !== 'FINISHED')
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [state.visits, state.currentUser, todayStr]);
+
+  // --- Handlers de Ação do Paciente (Duplicado de PatientRegistry para consistência) ---
+
+  const handleDischarge = (id: string, name: string) => {
+    if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA (saiu do hospital)?\n\nPara membros GVP, o paciente sairá da lista imediatamente. Para a COLIH, ficará pendente do HLC-7.`)) {
+      const updatedPatients = state.patients.map(p => 
+        p.id === id ? { 
+            ...p, 
+            isMedicalDischarge: true, 
+            gvpRequestPending: false, // IMPORTANTÍSSIMO: Remove a flag de solicitação para sumir da lista GVP
+            estimatedDischargeDate: new Date().toISOString() 
+        } : p
+      );
+      
+      const p = updatedPatients.find(p => p.id === id);
+      if (p) atomicUpdate('patients', p);
+
+      onUpdateState({ 
+        ...state, 
+        patients: updatedPatients
+      });
+      setViewingPatientId(null);
+    }
+  };
+
+  const handleHlc7Archive = (id: string, name: string) => {
+      if (window.confirm(`Confirma o envio do HLC-7 para o caso de ${name}?\n\nIsso irá arquivar o paciente definitivamente no histórico.`)) {
+          const updatedPatients = state.patients.map(p => 
+              p.id === id ? { ...p, active: false } : p
+          );
+          const p = updatedPatients.find(p => p.id === id);
+          if (p) atomicUpdate('patients', p);
+
+          onUpdateState({ ...state, patients: updatedPatients });
+          setViewingPatientId(null);
+      }
+  };
+
+  const handleToggleGvpRequest = async (patient: Patient) => {
+      const willEnable = !patient.gvpRequestPending;
+      const confirmMessage = willEnable 
+        ? `Deseja marcar a BANDEIRA DE SOLICITAÇÃO para ${patient.name}?\n\nIsso alertará os coordenadores.`
+        : `Deseja remover a solicitação de visita para ${patient.name}?`;
+
+      if (!window.confirm(confirmMessage)) return;
+
+      try {
+          const updatedPatient = { ...patient, gvpRequestPending: willEnable };
+          const updatedList = state.patients.map(p => p.id === patient.id ? updatedPatient : p);
+          
+          let newNotifications: AppNotification[] = [];
+          if (willEnable) {
+              const adminIds = state.members.filter(m => m.role === UserRole.ADMIN).map(m => m.id);
+              newNotifications = adminIds.map(adminId => ({
+                  id: crypto.randomUUID(),
+                  userId: adminId,
+                  message: `🆘 Solicitação COLIH: Paciente ${patient.name} precisa de visita GVP.`,
+                  type: 'warning',
+                  read: false,
+                  timestamp: new Date().toISOString()
+              }));
+          }
+
+          onUpdateState({ 
+              ...state, 
+              patients: updatedList,
+              notifications: [...newNotifications, ...state.notifications] 
+          });
+
+          await atomicUpdate('patients', updatedPatient);
+          if (willEnable) {
+              await Promise.all(newNotifications.map(n => atomicUpdate('notifications', n)));
+          }
+
+      } catch (e) {
+          console.error(e);
+          alert("Erro ao atualizar solicitação.");
+      }
+  };
+
+  // --- Handlers de Visita e Agenda ---
 
   const handleFinishVisit = async (generalNote: string, patientOutcomes: Record<string, any>) => {
     if (!finishVisitSlot || !state.currentUser) return;
@@ -392,7 +490,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             const route = state.routes.find(r => r.id === slot.routeId);
             if (route) setViewReportData({ slot, route });
         }}
-        onPatientClick={() => {}} 
+        onPatientClick={(p) => setViewingPatientId(p.id)} 
       />
 
       {/* Modal de Seleção de Dupla */}
@@ -429,8 +527,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
               onSwapRequest={() => setIsSwapModalOpen(true)}
               onCancelVisit={() => setIsCancelModalOpen(true)}
               onOnTheWay={handleOnTheWay}
-              onPatientClick={(p) => {}} // Pode abrir o prontuário se necessário
+              onPatientClick={(p) => setViewingPatientId(p.id)} 
           />
+      )}
+
+      {/* Modal de Detalhes do Paciente (Prontuário/Alta) */}
+      {viewingPatient && (
+        <PatientDetailModal
+            isOpen={true}
+            onClose={() => setViewingPatientId(null)}
+            patient={viewingPatient}
+            lastVisit={
+                state.visits
+                    .filter(v => v.status === 'FINISHED' && v.report)
+                    .sort((a, b) => b.date.localeCompare(a.date))
+                    .find(v => {
+                        const r = state.routes.find(route => route.id === v.routeId);
+                        return r && r.hospitals && viewingPatient.hospitalName && r.hospitals.includes(viewingPatient.hospitalName);
+                    }) || null
+            }
+            members={state.members}
+            onDischarge={handleDischarge}
+            onHlc7Confirm={handleHlc7Archive}
+            onToggleGvp={handleToggleGvpRequest}
+            isHospitalMode={isHospitalMode}
+            canEdit={state.currentUser?.role === UserRole.ADMIN || state.currentUser?.isColih}
+            canDischarge={true} // GVP também pode dar alta (se encontrar cama vazia)
+            isColihUser={state.currentUser?.role === UserRole.ADMIN || state.currentUser?.isColih}
+        />
       )}
 
       {/* Modais de Ação (Troca/Cancelamento) */}

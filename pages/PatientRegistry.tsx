@@ -104,13 +104,21 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
   };
 
   // Esta função agora lida com a "Alta Médica" (física), mas não necessariamente arquiva o caso
-  const handleDischarge = (e: React.MouseEvent, id: string, name: string) => {
-    e.preventDefault();
-    e.stopPropagation(); 
+  // ATUALIZAÇÃO: Agora também remove a flag gvpRequestPending
+  const handleDischarge = (e: React.MouseEvent | null, id: string, name: string) => {
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation(); 
+    }
     
     if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA (saiu do hospital)?\n\nPara membros GVP, o paciente sairá da lista. Para a COLIH, ficará pendente do HLC-7.`)) {
       const updatedPatients = state.patients.map(p => 
-        p.id === id ? { ...p, isMedicalDischarge: true, estimatedDischargeDate: new Date().toISOString() } : p
+        p.id === id ? { 
+            ...p, 
+            isMedicalDischarge: true, 
+            gvpRequestPending: false, // Remove a flag de solicitação para GVP
+            estimatedDischargeDate: new Date().toISOString() 
+        } : p
       );
       
       const p = updatedPatients.find(p => p.id === id);
@@ -120,6 +128,9 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
         ...state, 
         patients: updatedPatients
       });
+      
+      // Se estiver vendo no modal, fecha o modal
+      setViewingPatientId(null);
     }
   };
 
@@ -304,37 +315,42 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
               </div>
             </div>
 
-            {canEdit && (
-                <div className={`px-6 py-4 border-t flex justify-between items-center gap-2 ${isHospitalMode ? 'bg-white/5 border-gray-800' : 'bg-gray-50 border-gray-100'}`} onClick={e => e.stopPropagation()}>
+            {/* BOTÕES DE AÇÃO NA LISTA */}
+            <div className={`px-6 py-4 border-t flex justify-between items-center gap-2 ${isHospitalMode ? 'bg-white/5 border-gray-800' : 'bg-gray-50 border-gray-100'}`} onClick={e => e.stopPropagation()}>
                 {patient.isMedicalDischarge ? (
-                    // Botão especial para COLIH arquivar (Aparece só se isMedicalDischarge=true)
-                    <button 
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); handleHlc7Archive(patient.id, patient.name); }} 
-                        className="w-full text-[10px] font-black text-white bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl uppercase tracking-widest transition-all shadow-md"
-                    >
-                        ✓ Confirmar HLC-7 Enviado
-                    </button>
+                    canEdit && (
+                        <button 
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleHlc7Archive(patient.id, patient.name); }} 
+                            className="w-full text-[10px] font-black text-white bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl uppercase tracking-widest transition-all shadow-md"
+                        >
+                            ✓ Confirmar HLC-7 Enviado
+                        </button>
+                    )
                 ) : (
                     <>
+                        {/* Botão Alta - Liberado para todos (simulando canDischarge) */}
                         <button 
                             type="button"
                             onClick={(e) => handleDischarge(e, patient.id, patient.name)} 
-                            className="text-[10px] font-black text-red-500 hover:bg-red-50 px-4 py-2 rounded-xl uppercase tracking-widest transition-all"
+                            className="text-[10px] font-black text-red-500 hover:bg-red-50 px-4 py-2 rounded-xl uppercase tracking-widest transition-all flex-1 border border-transparent hover:border-red-200"
                         >
                             Informar Alta
                         </button>
-                        <button 
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setEditingPatient(patient); setIsFormOpen(true); }} 
-                            className="text-[10px] font-black text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl uppercase tracking-widest transition-all"
-                        >
-                            Editar
-                        </button>
+                        
+                        {/* Botão Editar - Restrito a Admins/COLIH */}
+                        {canEdit && (
+                            <button 
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setEditingPatient(patient); setIsFormOpen(true); }} 
+                                className="text-[10px] font-black text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl uppercase tracking-widest transition-all flex-1 border border-transparent hover:border-blue-200"
+                            >
+                                Editar
+                            </button>
+                        )}
                     </>
                 )}
-                </div>
-            )}
+            </div>
           </div>
         ))}
         {filteredPatients.length === 0 && (
@@ -362,28 +378,18 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
             }
             members={state.members}
             // onDischarge aqui trata da alta médica
-            onDischarge={(id, name) => {
-                if (window.confirm(`Deseja confirmar a ALTA MÉDICA de ${name}?`)) {
-                    const updatedPatients = state.patients.map(p => 
-                        p.id === id ? { ...p, isMedicalDischarge: true, estimatedDischargeDate: new Date().toISOString() } : p
-                    );
-                    const p = updatedPatients.find(p => p.id === id);
-                    if(p) atomicUpdate('patients', p);
-                    
-                    onUpdateState({ ...state, patients: updatedPatients });
-                    setViewingPatientId(null);
-                }
-            }}
+            onDischarge={(id, name) => handleDischarge(null, id, name)}
             // Nova prop para o modal lidar com o HLC-7
             onHlc7Confirm={(id, name) => handleHlc7Archive(id, name)}
             onToggleGvp={handleToggleGvpRequest}
             isHospitalMode={isHospitalMode}
             canEdit={canEdit}
+            canDischarge={true} // Permite alta para todos que acessam esta tela
             isColihUser={isColihOrAdmin}
         />
       )}
 
-      {/* MODAL DE CADASTRO / EDIÇÃO INTERNO */}
+      {/* MODAL DE CADASTRO / EDIÇÃO INTERNO (Mantido igual) */}
       {isFormOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
               <div className={`w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
