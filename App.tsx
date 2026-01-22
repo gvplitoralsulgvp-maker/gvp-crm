@@ -105,9 +105,10 @@ const Layout: React.FC<{
 
   // 2. Listener Realtime (Websocket)
   useEffect(() => {
-    if (!state.currentUser || !supabase) return;
+    const client = supabase;
+    if (!state.currentUser || !client) return;
 
-    const channel = supabase
+    const channel = client
       .channel('realtime:notifications')
       .on(
         'postgres_changes',
@@ -137,7 +138,7 @@ const Layout: React.FC<{
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { client.removeChannel(channel); };
   }, [state.currentUser, state.notifications]); 
 
   // 3. Sync Force (Ao acordar o celular/aba)
@@ -146,9 +147,10 @@ const Layout: React.FC<{
         if (document.visibilityState === 'visible' && state.currentUser) {
             console.log("App acordou (foreground). Buscando atualizações...");
             try {
-                if (!supabase) return;
+                const client = supabase;
+                if (!client) return;
                 // Recarrega notificações do servidor
-                const { data: serverNotifs } = await supabase
+                const { data: serverNotifs } = await client
                     .from('notifications')
                     .select('*')
                     .order('timestamp', { ascending: false });
@@ -248,7 +250,8 @@ const Layout: React.FC<{
   }
 
   const handleLogout = async () => {
-      if (supabase) await supabase.auth.signOut();
+      const client = supabase;
+      if (client) await client.auth.signOut();
       onUpdateState({ ...state, currentUser: null });
   };
 
@@ -487,8 +490,9 @@ const App: React.FC = () => {
   }, []);
 
   const handleChangePassword = async (newPass: string) => {
-    if (!supabase) return;
-    const { error } = await supabase.auth.updateUser({ password: newPass });
+    const client = supabase;
+    if (!client) return;
+    const { error } = await client.auth.updateUser({ password: newPass });
     if (error) {
       alert("Erro ao alterar senha: " + error.message);
     } else {
