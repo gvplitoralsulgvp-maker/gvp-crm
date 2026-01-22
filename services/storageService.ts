@@ -18,7 +18,8 @@ export const createDefaultState = (): AppState => ({
   logs: [] as LogEntry[],
   notifications: [] as AppNotification[],
   doctors: [] as Doctor[],
-  colihVisits: [] as ColihVisit[]
+  colihVisits: [] as ColihVisit[],
+  presentationGoal: 12 // Meta padrão inicial
 });
 
 /**
@@ -42,6 +43,12 @@ export function mapFromDb<T>(data: any[] | null): T[] {
               val = isNaN(parsed) ? undefined : parsed;
           }
       }
+      
+      // Tratamento para status de visita COLIH legado (se vier nulo, assume COMPLETED)
+      if (camelKey === 'status' && !val && item.created_at) {
+          val = 'COMPLETED'; 
+      }
+
       camelItem[camelKey] = val;
     });
     return camelItem as T;
@@ -79,7 +86,8 @@ export const loadState = async (): Promise<AppState> => {
       logs: mapFromDb<LogEntry>(fetchAll[6].data),
       notifications: mapFromDb<AppNotification>(fetchAll[7].data),
       doctors: mapFromDb<Doctor>(fetchAll[8].data),
-      colihVisits: mapFromDb<ColihVisit>(fetchAll[9].data)
+      colihVisits: mapFromDb<ColihVisit>(fetchAll[9].data),
+      presentationGoal: 12 // Hardcoded for now unless we add a settings table
     };
 
     if (session?.user) {

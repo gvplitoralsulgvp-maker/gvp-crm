@@ -1,9 +1,8 @@
 
-// @ts-nocheck
 import React, { useEffect, useState, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { loadState, saveState, createDefaultState, atomicUpdate } from './services/storageService';
-import { AppState, UserRole, Member, AppNotification } from './types';
+import { loadState, createDefaultState, atomicUpdate } from './services/storageService';
+import { AppState, UserRole, AppNotification } from './types';
 import { Dashboard } from './pages/Dashboard';
 import { AdminPanel } from './pages/AdminPanel';
 import { PatientRegistry } from './pages/PatientRegistry';
@@ -16,8 +15,7 @@ import { SignUpPage } from './pages/SignUpPage';
 import { MapPage } from './pages/MapPage';
 import { SocialVisitsPage } from './pages/SocialVisitsPage';
 import { PublicRequestPage } from './pages/PublicRequestPage';
-import { TutorialPage } from './pages/TutorialPage';
-import { ColihPage } from './pages/ColihPage'; // Import COLIH Page
+import { ColihPage } from './pages/ColihPage';
 import { GlobalSearch } from './components/GlobalSearch';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { OnboardingModal } from './components/OnboardingModal';
@@ -95,7 +93,7 @@ const Layout: React.FC<{
       if ('Notification' in window && Notification.permission === 'granted') {
           if (navigator.serviceWorker && navigator.serviceWorker.controller) {
               navigator.serviceWorker.ready.then(reg => {
-                  reg.showNotification(title, { body, icon: '/vite.svg', vibrate: [200, 100, 200] });
+                  reg.showNotification(title, { body, icon: '/vite.svg', vibrate: [200, 100, 200] } as any);
               });
           } else {
               new Notification(title, { body, icon: '/vite.svg' });
@@ -116,15 +114,25 @@ const Layout: React.FC<{
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notifications' },
         (payload) => {
-          const newNotif = payload.new as AppNotification;
+          const newNotif = payload.new as any; // Raw DB record
+          // Mapeia para o tipo do app
+          const appNotif: AppNotification = {
+              id: newNotif.id,
+              userId: newNotif.user_id,
+              message: newNotif.message,
+              type: newNotif.type,
+              read: newNotif.read,
+              timestamp: newNotif.timestamp
+          };
+
           // Se for para mim
-          if (newNotif.userId === state.currentUser?.id) {
+          if (appNotif.userId === state.currentUser?.id) {
             onUpdateState({
                 ...state,
-                notifications: [newNotif, ...state.notifications]
+                notifications: [appNotif, ...state.notifications]
             });
-            const title = newNotif.type === 'warning' ? '⚠️ Atenção Admin' : 'Nova Mensagem';
-            sendSystemNotification(title, newNotif.message);
+            const title = appNotif.type === 'warning' ? '⚠️ Atenção Admin' : 'Nova Mensagem';
+            sendSystemNotification(title, appNotif.message);
           }
         }
       )
@@ -134,31 +142,30 @@ const Layout: React.FC<{
   }, [state.currentUser, state.notifications]); 
 
   // 3. Sync Force (Ao acordar o celular/aba)
-  // Isso resolve o problema da "tela cinza" e não receber alertas quando o celular "dorme"
   useEffect(() => {
     const handleVisibilityChange = async () => {
         if (document.visibilityState === 'visible' && state.currentUser) {
             console.log("App acordou (foreground). Buscando atualizações...");
             try {
-                // Recarrega notificações do servidor para garantir que nada foi perdido
+                // Recarrega notificações do servidor
                 const { data: serverNotifs } = await supabase!
                     .from('notifications')
                     .select('*')
-                    .order('timestamp', { ascending: false }); // Do mais recente
+                    .order('timestamp', { ascending: false });
                 
                 if (serverNotifs) {
-                    const mapped = serverNotifs.map(n => ({
+                    const mapped: AppNotification[] = serverNotifs.map((n: any) => ({
                         id: n.id,
-                        userId: n.user_id, // mapFromDb logic manual here just in case
+                        userId: n.user_id,
                         message: n.message,
                         type: n.type,
                         read: n.read,
                         timestamp: n.timestamp
-                    })).filter((n: any) => n.userId === state.currentUser?.id);
+                    })).filter((n) => n.userId === state.currentUser?.id);
 
                     // Verifica se tem algo novo comparado ao estado local
                     const localIds = new Set(state.notifications.map(n => n.id));
-                    const hasNew = mapped.some((n: any) => !localIds.has(n.id) && !n.read);
+                    const hasNew = mapped.some((n) => !localIds.has(n.id) && !n.read);
 
                     if (hasNew) {
                         sendSystemNotification("Atualização", "Novos itens recebidos enquanto você estava ausente.");
@@ -228,7 +235,17 @@ const Layout: React.FC<{
     }
   }, [state.currentUser]);
 
-  if (!state.currentUser) return <Navigate to="/login" replace />;
+  if (!state.currentUser) {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage state={state} onLogin={(user) => onUpdateState({ ...state, currentUser: user })} />} />
+        <Route path="/signup" element={<SignUpPage state={state} onUpdateState={onUpdateState} />} />
+        <Route path="/solicitar-visita" element={<PublicRequestPage state={state} onUpdateState={onUpdateState} />} />
+        <Route path="/" element={<Welcome />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    );
+  }
 
   const handleLogout = async () => {
       if (supabase) await supabase.auth.signOut();
@@ -264,23 +281,33 @@ const Layout: React.FC<{
     onUpdateState({ ...state, notifications: [] });
   };
 
+  // --- CONSTRUÇÃO DO MENU (IMUTÁVEL E SEGURA) ---
+  const hasColihAccess = state.currentUser.isColih || state.currentUser.role === UserRole.ADMIN;
+  const isAdmin = state.currentUser.role === UserRole.ADMIN;
+
   const menuItems = [
     { to: "/dashboard", label: "Agenda", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+    
+    // Inserção Condicional dos Itens COLIH Separados
+    ...(hasColihAccess ? [
+        { to: "/colih/doctors", label: "Médicos", icon: "M20 7h-4v-3c0-1.105-.895-2-2-2h-4c-1.105 0-2 .895-2 2v3h-4c-1.105 0-2 .895-2 2v11c0 1.105.895 2 2 2h16c1.105 0 2-.895 2-2v-11c0-1.105-.895-2-2-2zm-10-3h4v3h-4v-3zm0 0" },
+        { to: "/colih/facilitators", label: "Facilitadores", icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" },
+        { to: "/colih/hospitals", label: "Hospitais", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
+        { to: "/colih/presentations", label: "Apresentações", icon: "M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11" }
+    ] : []),
+
     { to: "/patients", label: "Pacientes", icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" },
     { to: "/social-visits", label: "AS", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
     { to: "/map", label: "Mapa", icon: "M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" },
     { to: "/stats", label: "KPIs", icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
+    
+    // Inserção Condicional da Aba Admin (Última Posição)
+    ...(isAdmin ? [{ 
+        to: "/admin", 
+        label: "Admin", 
+        icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" 
+    }] : [])
   ];
-
-  // Permission Logic for COLIH (Moved before Admin to appear above)
-  if (state.currentUser.isColih || state.currentUser.role === UserRole.ADMIN) {
-      menuItems.push({ to: "/colih", label: "COLIH", icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" });
-  }
-
-  // Admin permissions (Added last to appear at bottom)
-  if (state.currentUser.role === UserRole.ADMIN) {
-    menuItems.push({ to: "/admin", label: "Admin", icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" });
-  }
 
   return (
     <div className={`h-[100dvh] flex overflow-hidden ${isHospitalMode ? 'bg-[#1a1c1e] text-gray-200' : 'bg-gray-50 text-gray-900'} ${isNightMode ? 'night-shift' : ''}`}>
@@ -371,8 +398,14 @@ const Layout: React.FC<{
             <Route path="/stats" element={<StatsReport state={state} isHospitalMode={isHospitalMode} />} />
             <Route path="/logs" element={<LogsPage state={state} isHospitalMode={isHospitalMode} />} />
             <Route path="/admin" element={<AdminPanel state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} />} />
+            {/* Novas Rotas COLIH */}
             {(state.currentUser.isColih || state.currentUser.role === UserRole.ADMIN) && (
-                <Route path="/colih" element={<ColihPage state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} />} />
+                <>
+                    <Route path="/colih/doctors" element={<ColihPage state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} view="doctors" />} />
+                    <Route path="/colih/facilitators" element={<ColihPage state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} view="facilitators" />} />
+                    <Route path="/colih/hospitals" element={<ColihPage state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} view="hospitals" />} />
+                    <Route path="/colih/presentations" element={<ColihPage state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} view="presentations" />} />
+                </>
             )}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
@@ -386,7 +419,7 @@ const Layout: React.FC<{
             className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${location.pathname === item.to ? 'text-blue-600' : isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
-            <span className="text-[9px] font-bold uppercase tracking-wide">{item.label}</span>
+            <span className="text-[9px] font-bold uppercase tracking-wide truncate max-w-[70px]">{item.label}</span>
           </Link>
         ))}
         <button onClick={() => setIsSidebarOpen(true)} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${isSidebarOpen ? 'text-blue-600' : isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -398,26 +431,17 @@ const Layout: React.FC<{
       {isSidebarOpen && (
         <div className="fixed inset-0 z-[60] md:hidden">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)}></div>
-            <div className={`absolute bottom-0 left-0 right-0 rounded-t-3xl p-6 pb-24 animate-fade-in ${isHospitalMode ? 'bg-[#212327] border-t border-gray-800' : 'bg-white'}`}>
-                <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-6 opacity-30"></div>
-                <div className="space-y-2">
-                    {/* Alterada a ordem: COLIH primeiro, Admin depois */}
-                    {(state.currentUser.isColih || state.currentUser.role === UserRole.ADMIN) && (
-                        <Link to="/colih" onClick={() => setIsSidebarOpen(false)} className={`flex items-center gap-4 p-4 rounded-xl ${isHospitalMode ? 'bg-[#1a1c1e] text-white' : 'bg-gray-50 text-gray-800'}`}>
-                            <div className="bg-teal-100 p-2 rounded-lg text-teal-600"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg></div>
-                            <span className="font-bold">COLIH</span>
+            <div className={`absolute bottom-0 left-0 right-0 rounded-t-3xl p-6 pb-24 animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border-t border-gray-800' : 'bg-white'}`}>
+                <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-6 opacity-30 shrink-0"></div>
+                <div className="space-y-2 overflow-y-auto custom-scrollbar flex-grow">
+                    {/* Renderiza o Menu Completo no Overlay */}
+                    {menuItems.map(item => (
+                        <Link key={item.to} to={item.to} onClick={() => setIsSidebarOpen(false)} className={`flex items-center gap-4 p-4 rounded-xl ${isHospitalMode ? 'bg-[#1a1c1e] text-white' : 'bg-gray-50 text-gray-800'}`}>
+                            <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg></div>
+                            <span className="font-bold">{item.label}</span>
                         </Link>
-                    )}
-                    {state.currentUser.role === UserRole.ADMIN && (
-                        <Link to="/admin" onClick={() => setIsSidebarOpen(false)} className={`flex items-center gap-4 p-4 rounded-xl ${isHospitalMode ? 'bg-[#1a1c1e] text-white' : 'bg-gray-50 text-gray-800'}`}>
-                            <div className="bg-purple-100 p-2 rounded-lg text-purple-600"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /></svg></div>
-                            <span className="font-bold">Painel Admin</span>
-                        </Link>
-                    )}
-                    <Link to="/stats" onClick={() => setIsSidebarOpen(false)} className={`flex items-center gap-4 p-4 rounded-xl ${isHospitalMode ? 'bg-[#1a1c1e] text-white' : 'bg-gray-50 text-gray-800'}`}>
-                        <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg></div>
-                        <span className="font-bold">Relatórios KPI</span>
-                    </Link>
+                    ))}
+                    
                     <button onClick={handleRequestPermission} className={`w-full flex items-center gap-4 p-4 rounded-xl text-left ${isHospitalMode ? 'bg-[#1a1c1e] text-white' : 'bg-gray-50 text-gray-800'}`}>
                         <div className="bg-green-100 p-2 rounded-lg text-green-600"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg></div>
                         <span className="font-bold">Ativar Alertas</span>
@@ -444,13 +468,13 @@ const App: React.FC = () => {
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
   const [isHospitalMode, setIsHospitalMode] = useState(false);
   const [isNightMode, setIsNightMode] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(true);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     loadState().then(s => {
       setState(s);
-      setIsLoading(false);
+      setIsSyncing(false);
     });
   }, []);
 
@@ -459,63 +483,43 @@ const App: React.FC = () => {
   };
 
   const handleChangePassword = async (newPass: string) => {
-      try {
-          const { error } = await supabase.auth.updateUser({ password: newPass });
-          if(error) throw error;
-          alert("Senha alterada com sucesso!");
-          setIsChangePasswordOpen(false);
-      } catch (e: any) {
-          alert("Erro ao alterar senha: " + e.message);
-      }
+    if (state.currentUser) {
+        try {
+            if (supabase) {
+                const { error } = await supabase.auth.updateUser({ password: newPass });
+                if (error) throw error;
+            }
+            alert("Senha alterada com sucesso!");
+            setIsChangePasswordOpen(false);
+        } catch (e: any) {
+            alert("Erro ao alterar senha: " + e.message);
+        }
+    }
   };
-
-  if (isLoading) {
-      return (
-          <div className="min-h-screen flex items-center justify-center bg-gray-50">
-              <div className="animate-pulse flex flex-col items-center">
-                  <div className="w-12 h-12 bg-blue-600 rounded-full mb-4"></div>
-                  <div className="text-gray-400 font-bold text-sm">Carregando GVP...</div>
-              </div>
-          </div>
-      );
-  }
 
   return (
     <Router>
-      <Routes>
-        <Route path="/" element={<Welcome />} />
-        <Route path="/login" element={<LoginPage state={state} onLogin={(u) => handleUpdateState({...state, currentUser: u})} />} />
-        <Route path="/signup" element={<SignUpPage state={state} onUpdateState={handleUpdateState} />} />
-        <Route path="/solicitar-visita" element={<PublicRequestPage state={state} onUpdateState={handleUpdateState} />} />
-        
-        {/* Rotas Protegidas (Layout) */}
-        <Route path="/*" element={
-            state.currentUser ? (
-                <>
-                    <Layout 
-                        state={state} 
-                        onUpdateState={handleUpdateState}
-                        isPrivacyMode={isPrivacyMode}
-                        onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}
-                        isHospitalMode={isHospitalMode}
-                        onToggleHospitalMode={() => setIsHospitalMode(!isHospitalMode)}
-                        isNightMode={isNightMode}
-                        onToggleNightMode={() => setIsNightMode(!isNightMode)}
-                        onChangePasswordClick={() => setIsChangePasswordOpen(true)}
-                    />
-                    <ChangePasswordModal 
-                        isOpen={isChangePasswordOpen}
-                        onClose={() => setIsChangePasswordOpen(false)}
-                        currentUser={state.currentUser}
-                        onConfirm={handleChangePassword}
-                        isHospitalMode={isHospitalMode}
-                    />
-                </>
-            ) : (
-                <Navigate to="/login" replace />
-            )
-        } />
-      </Routes>
+      <Layout 
+        state={state} 
+        onUpdateState={handleUpdateState} 
+        isPrivacyMode={isPrivacyMode} 
+        onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}
+        isHospitalMode={isHospitalMode}
+        onToggleHospitalMode={() => setIsHospitalMode(!isHospitalMode)}
+        isNightMode={isNightMode}
+        onToggleNightMode={() => setIsNightMode(!isNightMode)}
+        onChangePasswordClick={() => setIsChangePasswordOpen(true)}
+        isSyncing={isSyncing}
+      />
+      {state.currentUser && (
+        <ChangePasswordModal 
+            isOpen={isChangePasswordOpen}
+            onClose={() => setIsChangePasswordOpen(false)}
+            currentUser={state.currentUser}
+            onConfirm={handleChangePassword}
+            isHospitalMode={isHospitalMode}
+        />
+      )}
     </Router>
   );
 };

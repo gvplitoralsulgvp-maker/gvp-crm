@@ -19,7 +19,17 @@ export interface AppState {
   // COLIH Data
   doctors: Doctor[];
   colihVisits: ColihVisit[];
+  presentationGoal: number; // Meta anual de apresentações
 }
+
+// --- CONFIGURAÇÃO DE REGIONAIS ---
+export const REGIONAL_CONFIG: Record<string, string[]> = {
+  "Litoral Sul 1": ["Santos", "São Vicente", "Cubatão"],
+  "Litoral Sul 2": ["Guarujá", "Bertioga", "Praia Grande"],
+  "Litoral Sul 3": ["Mongaguá", "Itanhaém", "Peruíbe", "Itariri", "Pedro de Toledo", "Juquitiba"]
+};
+
+export const ALL_REGIONALS = Object.keys(REGIONAL_CONFIG);
 
 export type ColihClassification = 'Member' | 'Facilitator' | 'Secretary' | 'Coordinator' | null;
 
@@ -33,6 +43,7 @@ export interface Member {
   congregation?: string;
   active: boolean;
   address?: string;
+  city?: string; // Novo campo para determinar regional do membro
   lat?: number;
   lng?: number;
   hasSeenOnboarding?: boolean;
@@ -88,11 +99,15 @@ export interface SocialWorkerVisit {
   report?: VisitReport;
 }
 
+// Helper type para flags booleanas do paciente
+export type PatientFlagKey = 'hasDirectivesCard' | 'agentsNotified' | 'hasS55' | 'formsConsidered' | 'nonWitnessFamily' | 'needsAccommodation' | 'isSurgical' | 'isIsolation';
+
 export interface Patient {
   id: string;
   name: string;
   hospitalId: string;
   hospitalName?: string;
+  regional?: string; // Novo campo: Regional designada para o caso
   treatment: string; // Usado como "Problema de saúde (modo simples)"
   admissionDate: string;
   estimatedDischargeDate?: string; 
@@ -166,6 +181,7 @@ export interface Doctor {
   phone: string;
   email: string;
   address: string;
+  city?: string; // Novo campo para designação de regional
   secretaryName?: string;
   notes?: string;
   lastVisitDate?: string;
@@ -176,13 +192,20 @@ export interface Doctor {
 
 export interface ColihVisit {
   id: string;
-  doctorId: string;
+  doctorId?: string; // Agora opcional, pois pode ser uma visita puramente institucional
+  hospitalId?: string; // Novo campo para visitas institucionais/apresentações
   date: string;
   memberIds: string[];
   notes: string; // "O que foi tratado"
   interactionType: ColihInteractionType;
+  status: 'SCHEDULED' | 'COMPLETED'; // Novo Status
   topicsDiscussed?: string;
   materialDelivered?: string; // Novo campo
   nextSteps?: string; // Novo campo (Sugestões de próximas conversas)
+  
+  // Campos específicos para Apresentações
+  hlc38Presented?: boolean; // "Apresentou HLC-38?"
+  collaboratorInterest?: boolean; // "Mostrou interesse em ser colaborador?"
+  
   createdAt: string;
 }

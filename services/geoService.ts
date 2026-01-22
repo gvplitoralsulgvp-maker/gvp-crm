@@ -1,10 +1,28 @@
 
+import { REGIONAL_CONFIG } from '../types';
+
 export interface GeoLocation {
   lat: number;
   lng: number;
   address: string;
   city: string;
 }
+
+/**
+ * Retorna a Regional com base no nome da cidade.
+ * Procura nas chaves de REGIONAL_CONFIG.
+ */
+export const getRegionalByCity = (city: string): string => {
+  if (!city) return '';
+  const normalizedCity = city.trim().toLowerCase();
+  
+  for (const [regional, cities] of Object.entries(REGIONAL_CONFIG)) {
+    if (cities.some(c => c.toLowerCase() === normalizedCity)) {
+      return regional;
+    }
+  }
+  return ''; // Não encontrou ou cidade não mapeada
+};
 
 /**
  * Obtém coordenadas geográficas a partir de um CEP brasileiro.

@@ -51,17 +51,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ state, onLogin }) => {
         });
 
         if (authError) {
-            console.error("Login Auth Error:", authError);
+            // Log apenas se não for erro de credencial (para debug limpo)
+            if (!authError.message.includes("Invalid login credentials")) {
+                console.warn("Login Auth Warning:", authError.message);
+            }
             
             if (authError.message.includes("Email not confirmed")) {
-                throw new Error("Sua conta foi criada mas o e-mail não foi confirmado.");
+                throw new Error("Sua conta foi criada mas o e-mail não foi confirmado. Verifique sua caixa de entrada.");
             }
             
             if (authError.message.includes("Invalid login credentials")) {
-                 throw new Error("E-mail ou senha incorretos. Se você faz parte do grupo mas nunca criou uma senha, clique em 'Solicitar Novo Cadastro' abaixo.");
+                 throw new Error("E-mail ou senha incorretos.");
             }
             
-            throw new Error("Erro de autenticação. Verifique seus dados.");
+            throw new Error(authError.message || "Erro de autenticação. Tente novamente.");
+        }
+
+        if (!authData.user) {
+            throw new Error("Erro inesperado: Usuário não retornado.");
         }
 
         // 2. Busca o perfil na tabela members usando o UUID do Auth
