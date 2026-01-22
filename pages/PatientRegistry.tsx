@@ -50,17 +50,17 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
       }
 
       let shouldArchive = true;
-      let isMedicalDischarge = true;
 
       // Fluxo 2: Verificação Específica COLIH (HLC-7)
       if (isColih) {
+          // Pergunta explícita sobre o formulário
           if (window.confirm(`[PROTOCOLO COLIH]\n\nO formulário HLC-7 já foi enviado/concluído para o caso de ${name}?`)) {
               // Sim, HLC-7 enviado -> Arquivar completamente
               shouldArchive = true;
           } else {
               // Não, HLC-7 pendente -> Manter na lista mas marcar como Alta Médica
               shouldArchive = false;
-              alert(`O paciente ${name} permanecerá na lista ativa com a marcação de 'Alta Médica'.\n\nPor favor, finalize o HLC-7 e clique no botão roxo no prontuário para arquivar.`);
+              alert(`O paciente ${name} permanecerá na lista ativa com a marcação de 'Alta Médica'.\n\nIsso permite que você finalize o HLC-7 posteriormente clicando no botão roxo.`);
           }
       }
 
@@ -235,7 +235,14 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                             Editar
                         </button>
                         <button 
-                            onClick={(e) => { e.stopPropagation(); handleDischarge(patient.id, patient.name); }}
+                            onClick={(e) => { 
+                                e.stopPropagation(); 
+                                if (patient.isMedicalDischarge) {
+                                    handleHlc7Archive(patient.id, patient.name);
+                                } else {
+                                    handleDischarge(patient.id, patient.name);
+                                }
+                            }}
                             className={`py-2 rounded-lg text-xs font-bold uppercase text-white hover:opacity-90 ${patient.isMedicalDischarge ? 'bg-purple-600' : 'bg-green-600'}`}
                         >
                             {patient.isMedicalDischarge ? 'Finalizar HLC-7' : 'Alta'}
