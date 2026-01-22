@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { loadState, createDefaultState, atomicUpdate } from './services/storageService';
@@ -147,8 +146,9 @@ const Layout: React.FC<{
         if (document.visibilityState === 'visible' && state.currentUser) {
             console.log("App acordou (foreground). Buscando atualizações...");
             try {
+                if (!supabase) return;
                 // Recarrega notificações do servidor
-                const { data: serverNotifs } = await supabase!
+                const { data: serverNotifs } = await supabase
                     .from('notifications')
                     .select('*')
                     .order('timestamp', { ascending: false });
@@ -468,56 +468,56 @@ const App: React.FC = () => {
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
   const [isHospitalMode, setIsHospitalMode] = useState(false);
   const [isNightMode, setIsNightMode] = useState(false);
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(true);
-  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   useEffect(() => {
-    loadState().then(s => {
-      setState(s);
-      setIsSyncing(false);
-    });
+    const init = async () => {
+      setIsSyncing(true);
+      try {
+        const s = await loadState();
+        setState(s);
+      } catch (e) {
+        console.error("Failed to load state", e);
+      } finally {
+        setIsSyncing(false);
+      }
+    };
+    init();
   }, []);
 
-  const handleUpdateState = (newState: AppState) => {
-    setState(newState);
-  };
-
   const handleChangePassword = async (newPass: string) => {
-    if (state.currentUser) {
-        try {
-            if (supabase) {
-                const { error } = await supabase.auth.updateUser({ password: newPass });
-                if (error) throw error;
-            }
-            alert("Senha alterada com sucesso!");
-            setIsChangePasswordOpen(false);
-        } catch (e: any) {
-            alert("Erro ao alterar senha: " + e.message);
-        }
+    if (!supabase) return;
+    const { error } = await supabase.auth.updateUser({ password: newPass });
+    if (error) {
+      alert("Erro ao alterar senha: " + error.message);
+    } else {
+      alert("Senha alterada com sucesso.");
+      setIsChangePasswordModalOpen(false);
     }
   };
 
   return (
     <Router>
       <Layout 
-        state={state} 
-        onUpdateState={handleUpdateState} 
-        isPrivacyMode={isPrivacyMode} 
-        onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}
+        state={state}
+        onUpdateState={setState}
+        isPrivacyMode={isPrivacyMode}
+        onTogglePrivacy={() => setIsPrivacyMode(prev => !prev)}
         isHospitalMode={isHospitalMode}
-        onToggleHospitalMode={() => setIsHospitalMode(!isHospitalMode)}
+        onToggleHospitalMode={() => setIsHospitalMode(prev => !prev)}
         isNightMode={isNightMode}
-        onToggleNightMode={() => setIsNightMode(!isNightMode)}
-        onChangePasswordClick={() => setIsChangePasswordOpen(true)}
+        onToggleNightMode={() => setIsNightMode(prev => !prev)}
+        onChangePasswordClick={() => setIsChangePasswordModalOpen(true)}
         isSyncing={isSyncing}
       />
       {state.currentUser && (
         <ChangePasswordModal 
-            isOpen={isChangePasswordOpen}
-            onClose={() => setIsChangePasswordOpen(false)}
-            currentUser={state.currentUser}
-            onConfirm={handleChangePassword}
-            isHospitalMode={isHospitalMode}
+          isOpen={isChangePasswordModalOpen}
+          onClose={() => setIsChangePasswordModalOpen(false)}
+          currentUser={state.currentUser}
+          onConfirm={handleChangePassword}
+          isHospitalMode={isHospitalMode}
         />
       )}
     </Router>
