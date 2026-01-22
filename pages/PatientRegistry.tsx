@@ -21,8 +21,10 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
   const [editingPatient, setEditingPatient] = useState<Partial<Patient> | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   
-  // Lista local para remover pacientes da tela INSTANTANEAMENTE (Optimistic UI)
+  // Lista local para remover pacientes da tela (Optimistic UI)
   const [optimisticArchived, setOptimisticArchived] = useState<Set<string>>(new Set());
+  // Lista para animação de saída
+  const [closingIds, setClosingIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
       if (location.state && location.state.searchQuery) {
@@ -47,6 +49,17 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
       );
   }, [activePatients, searchQuery]);
 
+  const animateAndArchive = (id: string, updatedPatients: Patient[]) => {
+      // 1. Inicia animação de saída
+      setClosingIds(prev => new Set(prev).add(id));
+
+      // 2. Aguarda animação e remove da lista visual
+      setTimeout(() => {
+          setOptimisticArchived(prev => new Set(prev).add(id));
+          onUpdateState({ ...state, patients: updatedPatients });
+      }, 500);
+  };
+
   const handleDischarge = async (id: string, name: string) => { 
       const isColih = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
       
@@ -59,33 +72,30 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
 
       // Fluxo 2: Verificação Específica COLIH (HLC-7)
       if (isColih) {
-          // Pergunta explícita sobre o formulário
           if (window.confirm(`[PROTOCOLO COLIH]\n\nO formulário HLC-7 já foi enviado/concluído para o caso de ${name}?`)) {
-              // Sim, HLC-7 enviado -> Arquivar completamente
               shouldArchive = true;
           } else {
-              // Não, HLC-7 pendente -> Manter na lista mas marcar como Alta Médica
               shouldArchive = false;
-              alert(`O paciente ${name} permanecerá na lista ativa com a marcação de 'Alta Médica'.\n\nIsso permite que você finalize o HLC-7 posteriormente clicando no botão roxo.`);
+              // Feedback visual imediato via alert, card será atualizado via state
+              alert(`O status de ${name} foi atualizado para "Alta Médica".\n\nO card permanecerá visível (borda roxa) até que você confirme o envio do HLC-7.`);
           }
       }
 
-      // Se for arquivar, adiciona ao Set otimista IMEDIATAMENTE para sumir da tela
-      if (shouldArchive) {
-          setOptimisticArchived(prev => new Set(prev).add(id));
-      }
-
-      // Atualização do Estado Global
       const updatedPatients = state.patients.map(p => p.id === id ? { 
           ...p, 
           active: !shouldArchive, 
-          isMedicalDischarge: true, // Sempre true pois teve alta médica
+          isMedicalDischarge: true,
           gvpRequestPending: false, 
           estimatedDischargeDate: new Date().toISOString() 
       } : p); 
       
-      // Atualiza estado global (mesmo com delay do servidor, o optimismo segura a UI)
-      onUpdateState({ ...state, patients: updatedPatients }); 
+      if (shouldArchive) {
+          animateAndArchive(id, updatedPatients);
+      } else {
+          // Apenas atualiza estado (card muda de cor)
+          onUpdateState({ ...state, patients: updatedPatients });
+      }
+      
       setViewingPatientId(null); 
 
       // Persistência em background
@@ -95,11 +105,9 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
 
   const handleHlc7Archive = async (id: string, name: string) => { 
       if (window.confirm(`Confirma o envio do HLC-7 para o caso de ${name}?\n\nIsso irá arquivar o paciente definitivamente no histórico.`)) { 
-          // Otimismo: Remove da tela agora
-          setOptimisticArchived(prev => new Set(prev).add(id));
-
           const updatedPatients = state.patients.map(p => p.id === id ? { ...p, active: false } : p); 
-          onUpdateState({ ...state, patients: updatedPatients }); 
+          animateAndArchive(id, updatedPatients);
+          
           setViewingPatientId(null); 
 
           const p = updatedPatients.find(p => p.id === id); 
@@ -200,72 +208,101 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredPatients.map(patient => (
-                <div 
-                    key={patient.id} 
-                    onClick={() => setViewingPatientId(patient.id)}
-                    className={`relative p-5 rounded-2xl border shadow-sm transition-all hover:shadow-md flex flex-col cursor-pointer ${isHospitalMode ? 'bg-[#212327] border-gray-800 hover:border-gray-700' : 'bg-white border-gray-100 hover:border-blue-200'}`}
-                >
-                    {patient.gvpRequestPending && !patient.isMedicalDischarge && (
-                        <div className="absolute top-4 right-4 animate-pulse">
-                            <span className="text-[9px] font-black uppercase bg-orange-100 text-orange-600 px-2 py-1 rounded border border-orange-200">Solicitação</span>
-                        </div>
-                    )}
-                    {patient.isMedicalDischarge && (
-                        <div className="absolute top-4 right-4">
-                            <span className="text-[9px] font-black uppercase bg-purple-100 text-purple-600 px-2 py-1 rounded border border-purple-200">Alta / HLC-7 Pendente</span>
-                        </div>
-                    )}
-                    
-                    <div className="mb-4 pr-16">
-                        <h3 className={`font-bold text-lg leading-tight ${isHospitalMode ? 'text-gray-100' : 'text-gray-800'} ${isPrivacyMode ? 'blur-sm select-none' : ''}`}>
-                            {patient.name}
-                        </h3>
-                        <p className="text-blue-500 font-bold text-xs uppercase tracking-widest mt-1">
-                            {patient.hospitalName}
-                        </p>
-                    </div>
+            {filteredPatients.map(patient => {
+                const isClosing = closingIds.has(patient.id);
+                // Determina estilo baseado no estado
+                const cardBorder = patient.isMedicalDischarge 
+                    ? 'border-purple-300 ring-2 ring-purple-100' 
+                    : (isHospitalMode ? 'border-gray-800 hover:border-gray-700' : 'border-gray-100 hover:border-blue-200');
+                
+                const cardBg = patient.isMedicalDischarge 
+                    ? (isHospitalMode ? 'bg-purple-900/10' : 'bg-purple-50') 
+                    : (isHospitalMode ? 'bg-[#212327]' : 'bg-white');
 
-                    <div className={`p-3 rounded-xl mb-4 space-y-2 ${isHospitalMode ? 'bg-black/20' : 'bg-gray-50'}`}>
-                        <div className="flex justify-between text-xs">
-                            <span className="text-gray-500 font-bold uppercase">Internação</span>
-                            <span className={`font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                {new Date(patient.admissionDate).toLocaleDateString()}
-                            </span>
-                        </div>
-                        {patient.treatment && (
-                            <div className="flex justify-between text-xs">
-                                <span className="text-gray-500 font-bold uppercase">Tratamento</span>
-                                <span className={`font-bold truncate max-w-[120px] ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                    {patient.treatment}
+                return (
+                    <div 
+                        key={patient.id} 
+                        onClick={() => setViewingPatientId(patient.id)}
+                        className={`relative p-5 rounded-2xl border shadow-sm transition-all duration-500 cursor-pointer flex flex-col
+                            ${cardBorder} ${cardBg}
+                            ${isClosing ? 'scale-75 opacity-0' : 'scale-100 opacity-100'}
+                        `}
+                    >
+                        {patient.gvpRequestPending && !patient.isMedicalDischarge && (
+                            <div className="absolute top-4 right-4 animate-pulse">
+                                <span className="text-[9px] font-black uppercase bg-orange-100 text-orange-600 px-2 py-1 rounded border border-orange-200">Solicitação</span>
+                            </div>
+                        )}
+                        {patient.isMedicalDischarge && (
+                            <div className="absolute top-0 right-0 bg-purple-600 text-white px-3 py-1 rounded-bl-xl rounded-tr-xl">
+                                <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                    Alta Médica
                                 </span>
                             </div>
                         )}
-                    </div>
+                        
+                        <div className="mb-4 pr-16 pt-2">
+                            <h3 className={`font-bold text-lg leading-tight ${isHospitalMode ? 'text-gray-100' : 'text-gray-800'} ${isPrivacyMode ? 'blur-sm select-none' : ''}`}>
+                                {patient.name}
+                            </h3>
+                            <p className="text-blue-500 font-bold text-xs uppercase tracking-widest mt-1">
+                                {patient.hospitalName}
+                            </p>
+                        </div>
 
-                    <div className="mt-auto grid grid-cols-2 gap-2">
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); setEditingPatient(patient); setIsEditModalOpen(true); }}
-                            className={`py-2 rounded-lg text-xs font-bold uppercase border ${isHospitalMode ? 'border-gray-700 text-gray-400 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-                        >
-                            Editar
-                        </button>
-                        <button 
-                            onClick={(e) => { 
-                                e.stopPropagation(); 
-                                if (patient.isMedicalDischarge) {
-                                    handleHlc7Archive(patient.id, patient.name);
-                                } else {
-                                    handleDischarge(patient.id, patient.name);
-                                }
-                            }}
-                            className={`py-2 rounded-lg text-xs font-bold uppercase text-white hover:opacity-90 ${patient.isMedicalDischarge ? 'bg-purple-600' : 'bg-green-600'}`}
-                        >
-                            {patient.isMedicalDischarge ? 'Finalizar HLC-7' : 'Alta'}
-                        </button>
+                        {patient.isMedicalDischarge ? (
+                            <div className={`p-3 rounded-xl mb-4 border border-dashed border-purple-300 ${isHospitalMode ? 'bg-purple-900/20' : 'bg-white'}`}>
+                                <p className={`text-[10px] font-black uppercase text-center ${isHospitalMode ? 'text-purple-300' : 'text-purple-600'}`}>
+                                    ⚠️ Pendente HLC-7
+                                </p>
+                                <p className={`text-[9px] text-center mt-1 leading-tight ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    Paciente teve alta médica. Arquive após enviar o formulário.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className={`p-3 rounded-xl mb-4 space-y-2 ${isHospitalMode ? 'bg-black/20' : 'bg-gray-50'}`}>
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-gray-500 font-bold uppercase">Internação</span>
+                                    <span className={`font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        {new Date(patient.admissionDate).toLocaleDateString()}
+                                    </span>
+                                </div>
+                                {patient.treatment && (
+                                    <div className="flex justify-between text-xs">
+                                        <span className="text-gray-500 font-bold uppercase">Tratamento</span>
+                                        <span className={`font-bold truncate max-w-[120px] ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                            {patient.treatment}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="mt-auto grid grid-cols-2 gap-2">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); setEditingPatient(patient); setIsEditModalOpen(true); }}
+                                className={`py-2 rounded-lg text-xs font-bold uppercase border ${isHospitalMode ? 'border-gray-700 text-gray-400 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                            >
+                                Editar
+                            </button>
+                            <button 
+                                onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    if (patient.isMedicalDischarge) {
+                                        handleHlc7Archive(patient.id, patient.name);
+                                    } else {
+                                        handleDischarge(patient.id, patient.name);
+                                    }
+                                }}
+                                className={`py-2 rounded-lg text-xs font-bold uppercase text-white hover:opacity-90 shadow-md ${patient.isMedicalDischarge ? 'bg-purple-600 hover:bg-purple-700' : 'bg-green-600 hover:bg-green-700'}`}
+                            >
+                                {patient.isMedicalDischarge ? 'Finalizar' : 'Alta'}
+                            </button>
+                        </div>
                     </div>
-                </div>
-            ))}
+                );
+            })}
             {filteredPatients.length === 0 && (
                 <div className="col-span-full py-12 text-center text-gray-400">
                     <p className="text-sm font-bold uppercase tracking-widest">Nenhum paciente encontrado</p>
