@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { AppState, Doctor, ColihVisit, ColihInteractionType, Member, Hospital, ALL_REGIONALS } from '../types';
+import { AppState, Doctor, ColihVisit, ColihInteractionType, Member, Hospital, ALL_REGIONALS, CityMapping } from '../types';
 import { Button } from '../components/Button';
 import { atomicUpdate, atomicDelete } from '../services/storageService';
 import { getRegionalByCity } from '../services/geoService';
@@ -13,15 +13,17 @@ const INTERACTION_TYPES: { id: ColihInteractionType, label: string }[] = [
     { id: 'email_phone', label: 'Contato Tel/Email' }
 ];
 
-// --- MODAIS AUXILIARES (Mantidos) ---
+// --- MODAIS AUXILIARES (Atualizados com Autocomplete de Regional) ---
 
-const DoctorModal: React.FC<{ isOpen: boolean; onClose: () => void; doctor?: Doctor; hospitals: Hospital[]; onSave: (d: Doctor) => void; isHospitalMode?: boolean }> = ({ isOpen, onClose, doctor, onSave, isHospitalMode }) => {
+const DoctorModal: React.FC<{ isOpen: boolean; onClose: () => void; doctor?: Doctor; hospitals: Hospital[]; cityMappings: CityMapping[]; onSave: (d: Doctor) => void; isHospitalMode?: boolean }> = ({ isOpen, onClose, doctor, cityMappings, onSave, isHospitalMode }) => {
     const [formData, setFormData] = useState<Partial<Doctor>>({});
     useEffect(() => { if (doctor) setFormData(doctor); else setFormData({ cooperationLevel: 'Unknown', isConsultant: false, treatsPediatric: false }); }, [doctor]);
+    
     const handleCityChange = (city: string) => {
-        const detected = getRegionalByCity(city);
+        const detected = getRegionalByCity(city, cityMappings);
         setFormData(prev => ({ ...prev, city, regional: detected || prev.regional }));
     };
+
     if (!isOpen) return null;
     return createPortal(
         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
@@ -48,13 +50,15 @@ const DoctorModal: React.FC<{ isOpen: boolean; onClose: () => void; doctor?: Doc
     );
 };
 
-const FacilitatorModal: React.FC<{ isOpen: boolean; onClose: () => void; member?: Member; onSave: (m: Member) => void; isHospitalMode?: boolean }> = ({ isOpen, onClose, member, onSave, isHospitalMode }) => {
+const FacilitatorModal: React.FC<{ isOpen: boolean; onClose: () => void; member?: Member; cityMappings: CityMapping[]; onSave: (m: Member) => void; isHospitalMode?: boolean }> = ({ isOpen, onClose, member, cityMappings, onSave, isHospitalMode }) => {
     const [formData, setFormData] = useState<Partial<Member>>({});
     useEffect(() => { if (member) setFormData(member); }, [member]);
+    
     const handleCityChange = (city: string) => {
-        const detected = getRegionalByCity(city);
+        const detected = getRegionalByCity(city, cityMappings);
         setFormData(prev => ({ ...prev, city, regional: detected || prev.regional }));
     };
+
     if (!isOpen) return null;
     return createPortal(
         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
@@ -72,13 +76,15 @@ const FacilitatorModal: React.FC<{ isOpen: boolean; onClose: () => void; member?
     );
 };
 
-const HospitalRegionalModal: React.FC<{ isOpen: boolean; onClose: () => void; hospital?: Hospital; members: Member[]; onSave: (h: Hospital) => void; isHospitalMode?: boolean }> = ({ isOpen, onClose, hospital, members, onSave, isHospitalMode }) => {
+const HospitalRegionalModal: React.FC<{ isOpen: boolean; onClose: () => void; hospital?: Hospital; members: Member[]; cityMappings: CityMapping[]; onSave: (h: Hospital) => void; isHospitalMode?: boolean }> = ({ isOpen, onClose, hospital, members, cityMappings, onSave, isHospitalMode }) => {
     const [formData, setFormData] = useState<Partial<Hospital>>({});
     useEffect(() => { if (hospital) setFormData(hospital); }, [hospital]);
+    
     const handleCityChange = (city: string) => {
-        const detected = getRegionalByCity(city);
+        const detected = getRegionalByCity(city, cityMappings);
         setFormData(prev => ({ ...prev, city, regional: detected || prev.regional }));
     };
+
     if (!isOpen) return null;
     return createPortal(
         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
@@ -421,9 +427,9 @@ export const ColihPage: React.FC<{
             </div>
 
             {/* MODALS RENDERIZADOS */}
-            <DoctorModal isOpen={isDoctorModalOpen} onClose={() => setIsDoctorModalOpen(false)} doctor={editingDoctor} hospitals={state.hospitals} onSave={handleSaveDoctor} isHospitalMode={isHospitalMode} />
-            <FacilitatorModal isOpen={isFacilitatorModalOpen} onClose={() => setIsFacilitatorModalOpen(false)} member={editingMember} onSave={handleSaveMember} isHospitalMode={isHospitalMode} />
-            <HospitalRegionalModal isOpen={isHospitalModalOpen} onClose={() => setIsHospitalModalOpen(false)} hospital={editingHospital} members={state.members} onSave={handleSaveHospital} isHospitalMode={isHospitalMode} />
+            <DoctorModal isOpen={isDoctorModalOpen} onClose={() => setIsDoctorModalOpen(false)} doctor={editingDoctor} hospitals={state.hospitals} cityMappings={state.cityMappings} onSave={handleSaveDoctor} isHospitalMode={isHospitalMode} />
+            <FacilitatorModal isOpen={isFacilitatorModalOpen} onClose={() => setIsFacilitatorModalOpen(false)} member={editingMember} cityMappings={state.cityMappings} onSave={handleSaveMember} isHospitalMode={isHospitalMode} />
+            <HospitalRegionalModal isOpen={isHospitalModalOpen} onClose={() => setIsHospitalModalOpen(false)} hospital={editingHospital} members={state.members} cityMappings={state.cityMappings} onSave={handleSaveHospital} isHospitalMode={isHospitalMode} />
             {visitingDoctor && <VisitModal isOpen={true} onClose={() => setVisitingDoctor(undefined)} doctor={visitingDoctor} currentUserId={state.currentUser?.id} onSave={handleSaveVisit} isHospitalMode={isHospitalMode} />}
             
             <PresentationModal 

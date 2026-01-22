@@ -1,5 +1,5 @@
 
-import { REGIONAL_CONFIG } from '../types';
+import { REGIONAL_CONFIG, CityMapping } from '../types';
 
 export interface GeoLocation {
   lat: number;
@@ -10,12 +10,19 @@ export interface GeoLocation {
 
 /**
  * Retorna a Regional com base no nome da cidade.
- * Procura nas chaves de REGIONAL_CONFIG.
+ * Procura nos mapeamentos dinâmicos (se fornecidos) ou no fallback estático.
  */
-export const getRegionalByCity = (city: string): string => {
+export const getRegionalByCity = (city: string, mappings?: CityMapping[]): string => {
   if (!city) return '';
   const normalizedCity = city.trim().toLowerCase();
   
+  // 1. Tenta usar o mapeamento dinâmico do banco de dados
+  if (mappings && mappings.length > 0) {
+      const match = mappings.find(m => m.city.toLowerCase() === normalizedCity);
+      if (match) return match.regional;
+  }
+
+  // 2. Fallback para configuração estática (legacy)
   for (const [regional, cities] of Object.entries(REGIONAL_CONFIG)) {
     if (cities.some(c => c.toLowerCase() === normalizedCity)) {
       return regional;

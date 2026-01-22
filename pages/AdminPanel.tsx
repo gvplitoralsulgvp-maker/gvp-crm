@@ -1,10 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { AppState, Member, VisitRoute, UserRole, Hospital, VisitSlot, ALL_REGIONALS, REGIONAL_CONFIG, ColihVisit, Doctor, ColihInteractionType } from '../types';
+import { AppState, Member, VisitRoute, UserRole, Hospital, VisitSlot, CityMapping, ColihVisit, Doctor, ColihInteractionType } from '../types';
 import { Button } from '../components/Button';
 import { atomicUpdate, loadState, atomicDelete } from '../services/storageService';
 import { getCoordsFromCep, getRegionalByCity } from '../services/geoService';
+import { supabase } from '../services/supabaseClient';
 
 const INTERACTION_TYPES: { id: ColihInteractionType, label: string }[] = [
     { id: 'visit', label: 'Visita de Rotina' },
@@ -14,18 +15,26 @@ const INTERACTION_TYPES: { id: ColihInteractionType, label: string }[] = [
 ];
 
 export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
-  const [activeTab, setActiveTab] = useState<'members' | 'hospitals' | 'routes' | 'reports' | 'balance'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'hospitals' | 'cities' | 'routes' | 'reports' | 'balance'>('members');
   const [editingHospital, setEditingHospital] = useState<Partial<Hospital> | null>(null);
   const [editingRoute, setEditingRoute] = useState<Partial<VisitRoute> | null>(null);
   const [editingMember, setEditingMember] = useState<Partial<Member> | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
   
-  // Novo estado para filtro de membros
-  const [memberFilter, setMemberFilter] = useState<'ALL' | 'GVP' | 'COLIH' | 'FACILITATOR' | 'ADMIN'>('ALL');
+  // Estados para Cidades e Regionais
+  const [newCityRegional, setNewCityRegional] = useState('');
+  const [newCityName, setNewCityName] = useState('');
+  const [newRegionalName, setNewRegionalName] = useState('');
+  const [editingRegional, setEditingRegional] = useState<string | null>(null);
   
-  // Novo estado para filtro de relatório
+  const [memberFilter, setMemberFilter] = useState<'ALL' | 'GVP' | 'COLIH' | 'FACILITATOR' | 'ADMIN'>('ALL');
   const [reportType, setReportType] = useState<'gvp' | 'colih'>('gvp');
+
+  const availableRegionals = useMemo(() => {
+      const set = new Set(state.cityMappings.map(c => c.regional));
+      return Array.from(set).sort();
+  }, [state.cityMappings]);
 
   const handleRefreshData = async () => {
     setIsSyncing(true);
@@ -46,11 +55,8 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     }
     setIsGeocoding(true);
     try {
-      // Tenta usar o serviço de geocodificação
       const result = await getCoordsFromCep(editingHospital.address);
-      
-      // Auto-detecta regional pela cidade retornada
-      const detectedRegional = getRegionalByCity(result.city);
+      const detectedRegional = getRegionalByCity(result.city, state.cityMappings);
 
       setEditingHospital({
         ...editingHospital,
@@ -58,7 +64,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         lng: result.lng,
         city: result.city,
         address: result.address,
-        regional: detectedRegional || editingHospital.regional // Preserva se não achar, ou atualiza
+        regional: detectedRegional || editingHospital.regional
       });
       alert(`Localização encontrada! Cidade: ${result.city} -> Regional: ${detectedRegional || 'Manual'}`);
     } catch (err) {
@@ -71,21 +77,15 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
   // --- LOGICA DE MEMBROS ---
   const filteredMembers = useMemo(() => {
     let result = [...state.members];
-
-    // Aplicar Filtros
     if (memberFilter === 'GVP') {
-        // Apenas GVP puro (quem não é admin nem colih)
         result = result.filter(m => !m.isColih && m.role !== UserRole.ADMIN);
     } else if (memberFilter === 'COLIH') {
-        // Membros COLIH (excluindo facilitadores para não duplicar, ou mantendo lógica de grupo)
         result = result.filter(m => m.isColih && m.colihClassification !== 'Facilitator' && m.role !== UserRole.ADMIN);
     } else if (memberFilter === 'FACILITATOR') {
         result = result.filter(m => m.colihClassification === 'Facilitator');
     } else if (memberFilter === 'ADMIN') {
         result = result.filter(m => m.role === UserRole.ADMIN);
     }
-
-    // Ordenação
     return result.sort((a, b) => {
       if (a.active === b.active) return a.name.localeCompare(b.name);
       return a.active ? 1 : -1;
@@ -105,12 +105,12 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       congregation: editingMember.congregation || '',
       hasSeenOnboarding: editingMember.hasSeenOnboarding || false,
       address: editingMember.address,
-      city: editingMember.city, // Salva cidade
+      city: editingMember.city,
       lat: editingMember.lat,
       lng: editingMember.lng,
       isColih: editingMember.isColih || false, 
       colihClassification: editingMember.colihClassification,
-      regional: editingMember.regional // Salva regional
+      regional: editingMember.regional
     };
     try {
       await atomicUpdate('members', newMember);
@@ -129,7 +129,98 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     return 'GVP';
   };
 
-  // --- LOGICA DE HOSPITAIS ---
+  // --- LOGICA DE CIDADES E REGIONAIS ---
+  const handleAddCity = async (regional: string, city: string) => {
+      if (!city || !regional) return;
+      const normalizedCity = city.trim();
+      
+      if (state.cityMappings.some(c => c.city.toLowerCase() === normalizedCity.toLowerCase())) {
+          alert(`A cidade "${normalizedCity}" já está cadastrada em uma regional.`);
+          return;
+      }
+
+      const newMapping: CityMapping = {
+          id: crypto.randomUUID(),
+          city: normalizedCity,
+          regional: regional
+      };
+
+      try {
+          await atomicUpdate('city_mappings', newMapping);
+          onUpdateState({
+              ...state,
+              cityMappings: [...state.cityMappings, newMapping]
+          });
+      } catch (e) {
+          alert("Erro ao adicionar cidade.");
+      }
+  };
+
+  const handleDeleteCity = async (id: string) => {
+      if(!window.confirm("Remover esta cidade da regional?")) return;
+      try {
+          await atomicDelete('city_mappings', id);
+          onUpdateState({
+              ...state,
+              cityMappings: state.cityMappings.filter(c => c.id !== id)
+          });
+      } catch (e) {
+          alert("Erro ao remover.");
+      }
+  };
+
+  const handleAddRegional = () => {
+      if (!newRegionalName) return;
+      setNewCityRegional(newRegionalName);
+      setNewRegionalName('');
+      setNewCityName(''); // Reset city input for the new regional
+  };
+
+  const handleRenameRegional = async (oldName: string, newName: string) => {
+      if (!newName || !oldName || newName === oldName) return;
+      if (!supabase) return alert("Erro de conexão.");
+
+      try {
+          const { error } = await supabase
+              .from('city_mappings')
+              .update({ regional: newName })
+              .eq('regional', oldName);
+
+          if (error) throw error;
+
+          const updatedMappings = state.cityMappings.map(c => 
+              c.regional === oldName ? { ...c, regional: newName } : c
+          );
+
+          onUpdateState({ ...state, cityMappings: updatedMappings });
+          setEditingRegional(null);
+      } catch (e) {
+          console.error(e);
+          alert("Erro ao renomear regional.");
+      }
+  };
+
+  const handleDeleteRegionalWhole = async (regionalName: string) => {
+      if (!window.confirm(`ATENÇÃO: Deseja excluir a regional "${regionalName}" e TODAS as suas cidades vinculadas?\n\nEsta ação não pode ser desfeita.`)) return;
+      if (!supabase) return;
+
+      try {
+          const { error } = await supabase
+              .from('city_mappings')
+              .delete()
+              .eq('regional', regionalName);
+
+          if (error) throw error;
+
+          const updatedMappings = state.cityMappings.filter(c => c.regional !== regionalName);
+          onUpdateState({ ...state, cityMappings: updatedMappings });
+          setEditingRegional(null);
+      } catch (e) {
+          console.error(e);
+          alert("Erro ao excluir regional.");
+      }
+  };
+
   const handleSaveHospital = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingHospital?.name) return;
@@ -153,7 +244,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     } catch (err) { alert("Erro ao salvar hospital."); }
   };
 
-  // --- LOGICA DE ROTAS ---
   const handleSaveRoute = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingRoute?.name) return;
@@ -185,12 +275,10 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       }
   };
 
-  // --- LOGICA DE RELATÓRIOS (COLIH) ---
   const sortedColihVisits = useMemo(() => {
       return [...state.colihVisits].sort((a,b) => b.date.localeCompare(a.date));
   }, [state.colihVisits]);
 
-  // --- LOGICA DE BALANÇO ---
   const { gvpStats, colihStats } = useMemo(() => {
     const stats = state.members.map(m => {
       const gvpVisits = state.visits.filter(v => v.memberIds.includes(m.id) && v.status === 'FINISHED').length;
@@ -209,15 +297,13 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     return { gvpStats: gvpMembers, colihStats: colihMembers };
   }, [state.members, state.visits, state.colihVisits]);
 
-  // Handler auxiliar para cidade do membro
   const handleMemberCityChange = (city: string) => {
-      const regional = getRegionalByCity(city);
+      const regional = getRegionalByCity(city, state.cityMappings);
       setEditingMember(prev => ({ ...prev, city, regional: regional || prev?.regional }));
   };
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
-      {/* Header Admin - MANTIDO */}
       <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'} p-6 rounded-3xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4`}>
          <div>
             <h2 className={`text-xl font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Gestão Enterprise</h2>
@@ -238,11 +324,11 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
          </div>
       </div>
 
-      {/* Navegação de Abas - RENOMEADA EQUIPE PARA MEMBROS */}
       <div className={`flex border-b overflow-x-auto custom-scrollbar no-scrollbar ${isHospitalMode ? 'border-gray-800' : 'border-gray-200'}`}>
         {[
           { id: 'members', label: 'Membros' },
           { id: 'hospitals', label: 'Unidades' },
+          { id: 'cities', label: 'Cidades' },
           { id: 'routes', label: 'Logística' },
           { id: 'reports', label: 'Relatórios' },
           { id: 'balance', label: 'Balanço' }
@@ -257,10 +343,8 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         ))}
       </div>
 
-      {/* CONTEÚDO: MEMBROS (ANTIGO EQUIPE) */}
       {activeTab === 'members' && (
         <div className="space-y-4">
-            {/* Filtros de Membros */}
             <div className={`p-1 rounded-xl inline-flex overflow-x-auto ${isHospitalMode ? 'bg-black/30' : 'bg-gray-100'}`}>
                 {[
                     { id: 'ALL', label: 'Todos' },
@@ -303,7 +387,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                                     <p className="text-[10px] text-gray-500">{m.email}</p>
                                     </td>
                                     <td className="px-6 py-4">
-                                        {/* Lógica de Badge Exclusiva: Mostra apenas a função principal */}
                                         {m.role === UserRole.ADMIN ? (
                                             <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-purple-100 text-purple-700">ADMIN</span>
                                         ) : m.colihClassification === 'Facilitator' ? (
@@ -336,7 +419,105 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         </div>
       )}
 
-      {/* CONTEÚDO: HOSPITAIS E REGIONAIS */}
+      {activeTab === 'cities' && (
+          <div className="space-y-6">
+              <div className="flex gap-4 items-end">
+                  <div className="flex-grow">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1 block">Criar Nova Regional</label>
+                      <div className="flex gap-2">
+                          <input 
+                              type="text" 
+                              placeholder="Nome da Regional (ex: Litoral Sul 4)" 
+                              className={`flex-grow p-3 rounded-xl border-2 text-sm outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-white border-gray-100'}`}
+                              value={newRegionalName}
+                              onChange={e => setNewRegionalName(e.target.value)}
+                          />
+                          <button onClick={handleAddRegional} className="px-6 bg-blue-600 text-white font-bold rounded-xl text-sm hover:bg-blue-700 transition-colors">Criar</button>
+                      </div>
+                  </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {availableRegionals.map(regional => {
+                      const cities = state.cityMappings.filter(c => c.regional === regional);
+                      return (
+                          <div key={regional} className={`p-5 rounded-2xl border flex flex-col gap-4 ${isHospitalMode ? 'bg-[#212327] border-gray-700' : 'bg-white border-gray-200 shadow-sm'}`}>
+                              <div className="flex justify-between items-center">
+                                  <h4 className={`font-black text-lg ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{regional}</h4>
+                                  <button 
+                                    onClick={() => setEditingRegional(regional)}
+                                    className={`p-2 rounded-lg transition-colors ${isHospitalMode ? 'hover:bg-white/10 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+                                    title="Configurar Regional"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                  </button>
+                              </div>
+                              
+                              <div className="flex flex-wrap gap-2">
+                                  {cities.map(c => (
+                                      <div key={c.id} className={`flex items-center gap-2 px-2 py-1 rounded-lg border text-[11px] font-bold ${isHospitalMode ? 'bg-black/20 border-gray-700 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                                          {c.city}
+                                          <button 
+                                            onClick={() => handleDeleteCity(c.id)} 
+                                            className="ml-1 text-red-500 hover:text-red-700 hover:bg-red-500/10 rounded-full p-0.5 transition-colors"
+                                            title="Remover cidade"
+                                          >
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                                          </button>
+                                      </div>
+                                  ))}
+                                  {cities.length === 0 && <p className="text-[10px] text-gray-400 italic">Nenhuma cidade vinculada.</p>}
+                              </div>
+
+                              <form 
+                                  onSubmit={(e) => {
+                                      e.preventDefault();
+                                      const input = (e.target as any).elements.namedItem('cityInput');
+                                      if(input && input.value) {
+                                          handleAddCity(regional, input.value);
+                                          input.value = '';
+                                      }
+                                  }}
+                                  className="mt-auto pt-4 border-t border-dashed border-gray-200/20"
+                              >
+                                  <p className="text-[9px] font-bold uppercase text-gray-500 mb-1">Adicionar Cidade</p>
+                                  <div className="flex gap-2">
+                                      <input 
+                                          type="text" 
+                                          name="cityInput"
+                                          className={`flex-grow p-2 rounded-lg border text-xs outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50 border-gray-200'}`}
+                                          placeholder="Nome da Cidade"
+                                      />
+                                      <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-3 rounded-lg text-xs font-bold transition-colors">
+                                          +
+                                      </button>
+                                  </div>
+                              </form>
+                          </div>
+                      );
+                  })}
+                  
+                  {/* Card para adicionar em regional nova (rascunho) */}
+                  {newCityRegional && !availableRegionals.includes(newCityRegional) && (
+                      <div className={`p-5 rounded-2xl border-2 border-dashed flex flex-col gap-4 ${isHospitalMode ? 'border-gray-700 bg-white/5' : 'border-blue-200 bg-blue-50'}`}>
+                          <h4 className={`font-black text-lg ${isHospitalMode ? 'text-blue-400' : 'text-blue-600'}`}>{newCityRegional} (Nova)</h4>
+                          <p className="text-xs text-gray-500">Adicione a primeira cidade para confirmar a criação desta regional.</p>
+                          <div className="flex gap-2 mt-auto">
+                              <input 
+                                  type="text" 
+                                  className={`flex-grow p-2 rounded-lg border text-xs outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-white border-gray-200'}`}
+                                  placeholder="Nome da Cidade"
+                                  value={newCityName}
+                                  onChange={e => setNewCityName(e.target.value)}
+                              />
+                              <button onClick={() => { handleAddCity(newCityRegional, newCityName); setNewCityRegional(''); setNewCityName(''); }} className="bg-blue-600 text-white px-3 rounded-lg text-xs font-bold">Add</button>
+                          </div>
+                      </div>
+                  )}
+              </div>
+          </div>
+      )}
+
       {activeTab === 'hospitals' && (
         <div className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -363,36 +544,9 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                 </div>
                 ))}
             </div>
-
-            {/* PAINEL DE REFERÊNCIA DE REGIONAIS */}
-            <div className={`p-6 rounded-3xl border-2 border-dashed ${isHospitalMode ? 'border-gray-800 bg-white/5' : 'border-gray-200 bg-gray-50'}`}>
-                <h3 className={`text-xs font-black uppercase tracking-widest mb-6 flex items-center gap-2 ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    Mapa de Território (Regionais x Cidades)
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {Object.entries(REGIONAL_CONFIG).map(([regional, cities]) => (
-                        <div key={regional} className={`p-5 rounded-2xl border flex flex-col ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700' : 'bg-white border-gray-200 shadow-sm'}`}>
-                            <h4 className={`font-black text-sm mb-3 flex items-center gap-2 ${isHospitalMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                                <span className={`w-2 h-2 rounded-full ${isHospitalMode ? 'bg-blue-500' : 'bg-blue-600'}`}></span>
-                                {regional}
-                            </h4>
-                            <div className="flex flex-wrap gap-2">
-                                {cities.map(city => (
-                                    <span key={city} className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${isHospitalMode ? 'bg-gray-800 text-gray-300 border-gray-700' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                                        {city}
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-                <p className={`text-[10px] mt-4 italic text-center ${isHospitalMode ? 'text-gray-600' : 'text-gray-400'}`}>* Esta configuração determina a atribuição automática de membros e hospitais.</p>
-            </div>
         </div>
       )}
 
-      {/* CONTEÚDO: ROTAS - MANTIDO */}
       {activeTab === 'routes' && (
         <div className="space-y-4">
             {[...state.routes]
@@ -419,7 +573,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         </div>
       )}
 
-      {/* CONTEÚDO: RELATÓRIOS - ATUALIZADO */}
       {activeTab === 'reports' && (
         <div className="space-y-6">
            <div className={`p-1 rounded-xl inline-flex ${isHospitalMode ? 'bg-black/30' : 'bg-gray-100'}`}>
@@ -427,7 +580,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                 <button onClick={() => setReportType('colih')} className={`px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all ${reportType === 'colih' ? 'bg-teal-600 text-white' : 'text-gray-500'}`}>Interações Médicas</button>
            </div>
            
-           {/* RELATÓRIOS GVP */}
            {reportType === 'gvp' && state.visits.filter(v => !!v.report).length === 0 && (
                <div className="text-center py-10 text-gray-400 text-sm font-bold uppercase">Nenhum relatório GVP encontrado.</div>
            )}
@@ -439,7 +591,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                </div>
            ))}
 
-           {/* RELATÓRIOS COLIH */}
            {reportType === 'colih' && sortedColihVisits.length === 0 && (
                <div className="text-center py-10 text-gray-400 text-sm font-bold uppercase">Nenhum relatório COLIH encontrado.</div>
            )}
@@ -476,7 +627,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         </div>
       )}
 
-      {/* CONTEÚDO: BALANÇO - MANTIDO */}
       {activeTab === 'balance' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl border shadow-sm p-6`}>
@@ -488,6 +638,50 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                <div className="space-y-4">{gvpStats.map(m => (<div key={m.id} className="flex justify-between text-xs border-b border-gray-100 pb-2"><span>{m.name}</span><span className="font-bold">{m.visitCount}</span></div>))}</div>
             </div>
         </div>
+      )}
+
+      {/* MODAL: EDITAR REGIONAL (NOVO) */}
+      {editingRegional && createPortal(
+          <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
+             <div className={`w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+                <div className="bg-blue-600 px-6 py-5 flex justify-between items-center shrink-0">
+                    <h3 className="text-white font-bold text-lg">Configurar Regional</h3>
+                    <button onClick={() => setEditingRegional(null)} className="text-white hover:text-blue-200 text-2xl leading-none">&times;</button>
+                </div>
+                <div className="p-6 space-y-6">
+                    <div className="space-y-2">
+                        <label className={`text-[10px] font-black uppercase tracking-widest ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>Renomear Grupo</label>
+                        <input 
+                            type="text" 
+                            className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50 border-gray-100'}`}
+                            defaultValue={editingRegional}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleRenameRegional(editingRegional, e.currentTarget.value);
+                            }}
+                            onBlur={(e) => handleRenameRegional(editingRegional, e.target.value)}
+                        />
+                        <p className="text-[9px] text-gray-400">Pressione Enter para salvar o novo nome.</p>
+                    </div>
+
+                    <div className={`p-4 rounded-xl border border-red-500/20 bg-red-500/5 space-y-3`}>
+                        <div className="flex items-center gap-2 text-red-500">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            <span className="text-xs font-bold uppercase">Zona de Perigo</span>
+                        </div>
+                        <p className={`text-[10px] ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            Excluir esta regional removerá todas as cidades vinculadas e desfará grupos logísticos.
+                        </p>
+                        <button 
+                            onClick={() => handleDeleteRegionalWhole(editingRegional)}
+                            className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold uppercase shadow-lg"
+                        >
+                            Excluir Regional Inteira
+                        </button>
+                    </div>
+                </div>
+             </div>
+          </div>,
+          document.body
       )}
 
       {/* MODAL: EDITAR MEMBRO (Com createPortal) - ATUALIZADO */}
@@ -522,7 +716,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                                 onChange={e => setEditingMember({...editingMember, regional: e.target.value})}
                             >
                                 <option value="">Automática</option>
-                                {ALL_REGIONALS.map(r => <option key={r} value={r}>{r}</option>)}
+                                {availableRegionals.map(r => <option key={r} value={r}>{r}</option>)}
                             </select>
                         </div>
                     </div>
@@ -602,7 +796,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                             value={editingHospital.city || ''} 
                             onChange={e => {
                                 const city = e.target.value;
-                                const detected = getRegionalByCity(city);
+                                const detected = getRegionalByCity(city, state.cityMappings);
                                 setEditingHospital({...editingHospital, city, regional: detected || editingHospital.regional});
                             }} 
                         />
@@ -615,7 +809,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                             onChange={e => setEditingHospital({...editingHospital, regional: e.target.value})}
                         >
                             <option value="">Selecione...</option>
-                            {ALL_REGIONALS.map(r => <option key={r} value={r}>{r}</option>)}
+                            {availableRegionals.map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
                       </div>
                     </div>

@@ -20,9 +20,11 @@ export interface AppState {
   doctors: Doctor[];
   colihVisits: ColihVisit[];
   presentationGoal: number; // Meta anual de apresentações
+  // Config Data
+  cityMappings: CityMapping[]; // Mapeamento dinâmico
 }
 
-// --- CONFIGURAÇÃO DE REGIONAIS ---
+// --- CONFIGURAÇÃO DE REGIONAIS (LEGADO/FALLBACK) ---
 export const REGIONAL_CONFIG: Record<string, string[]> = {
   "Litoral Sul 1": ["Santos", "São Vicente", "Cubatão"],
   "Litoral Sul 2": ["Guarujá", "Bertioga", "Praia Grande"],
@@ -30,6 +32,12 @@ export const REGIONAL_CONFIG: Record<string, string[]> = {
 };
 
 export const ALL_REGIONALS = Object.keys(REGIONAL_CONFIG);
+
+export interface CityMapping {
+  id: string;
+  city: string;
+  regional: string;
+}
 
 export type ColihClassification = 'Member' | 'Facilitator' | 'Secretary' | 'Coordinator' | null;
 

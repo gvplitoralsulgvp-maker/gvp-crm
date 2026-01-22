@@ -1,9 +1,9 @@
 
-import { AppState, Member, VisitSlot, Patient, LogEntry, AppNotification, Hospital, VisitRoute, SocialWorkerVisit, UserRole, Doctor, ColihVisit } from '../types';
+import { AppState, Member, VisitSlot, Patient, LogEntry, AppNotification, Hospital, VisitRoute, SocialWorkerVisit, UserRole, Doctor, ColihVisit, CityMapping, REGIONAL_CONFIG } from '../types';
 import { supabase } from './supabaseClient';
 
 /** 
- * GVP STORAGE SERVICE - V14 (Updated Classification)
+ * GVP STORAGE SERVICE - V15 (Dynamic City Mappings)
  * Responsável pela persistência e carregamento do estado global via Supabase.
  */
 
@@ -19,12 +19,12 @@ export const createDefaultState = (): AppState => ({
   notifications: [] as AppNotification[],
   doctors: [] as Doctor[],
   colihVisits: [] as ColihVisit[],
-  presentationGoal: 12 // Meta padrão inicial
+  presentationGoal: 12,
+  cityMappings: [] as CityMapping[]
 });
 
 /**
  * Converte dados do banco (snake_case) para o app (camelCase)
- * Garante que lat/lng sejam números reais.
  */
 export function mapFromDb<T>(data: any[] | null): T[] {
   if (!data || !Array.isArray(data)) return [] as T[];
@@ -44,7 +44,7 @@ export function mapFromDb<T>(data: any[] | null): T[] {
           }
       }
       
-      // Tratamento para status de visita COLIH legado (se vier nulo, assume COMPLETED)
+      // Tratamento para status de visita COLIH legado
       if (camelKey === 'status' && !val && item.created_at) {
           val = 'COMPLETED'; 
       }
@@ -72,7 +72,8 @@ export const loadState = async (): Promise<AppState> => {
       supabase.from('logs').select('*'),
       supabase.from('notifications').select('*'),
       supabase.from('doctors').select('*'),
-      supabase.from('colih_visits').select('*')
+      supabase.from('colih_visits').select('*'),
+      supabase.from('city_mappings').select('*')
     ]);
 
     const finalState: AppState = {
@@ -87,8 +88,27 @@ export const loadState = async (): Promise<AppState> => {
       notifications: mapFromDb<AppNotification>(fetchAll[7].data),
       doctors: mapFromDb<Doctor>(fetchAll[8].data),
       colihVisits: mapFromDb<ColihVisit>(fetchAll[9].data),
-      presentationGoal: 12 // Hardcoded for now unless we add a settings table
+      presentationGoal: 12,
+      cityMappings: mapFromDb<CityMapping>(fetchAll[10].data)
     };
+
+    // Seed City Mappings if empty (Migration strategy)
+    if (finalState.cityMappings.length === 0) {
+        const seedData: CityMapping[] = [];
+        Object.entries(REGIONAL_CONFIG).forEach(([regional, cities]) => {
+            cities.forEach(city => {
+                seedData.push({ id: crypto.randomUUID(), city, regional });
+            });
+        });
+        
+        // Optimistic update local state
+        finalState.cityMappings = seedData;
+        
+        // Background insert to DB
+        Promise.all(seedData.map(m => atomicUpdate('city_mappings', m))).catch(err => 
+            console.error("Erro ao popular tabela de cidades inicial:", err)
+        );
+    }
 
     if (session?.user) {
       finalState.currentUser = finalState.members.find(m => m.id === session.user.id) || null;
@@ -110,7 +130,7 @@ const sanitizeForDb = (tableName: string, data: any) => {
     const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
     let val = (cleanData as any)[key];
     
-    // Converte strings vazias para null em campos que exigem tipos estritos (UUID, Date, Numeric)
+    // Converte strings vazias para null em campos que exigem tipos estritos
     if (val === "") {
         if (
             key.endsWith('Id') || 

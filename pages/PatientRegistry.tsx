@@ -33,7 +33,6 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
   }, [location.state]);
 
   const activePatients = useMemo(() => {
-      // Filtra pacientes ativos que NÃO foram arquivados localmente nesta sessão
       return state.patients
         .filter(p => p.active && !optimisticArchived.has(p.id))
         .sort((a,b) => a.name.localeCompare(b.name));
@@ -50,69 +49,53 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
   }, [activePatients, searchQuery]);
 
   const animateAndArchive = (id: string, updatedPatients: Patient[]) => {
-      // 1. Inicia animação de saída
       setClosingIds(prev => new Set(prev).add(id));
-
-      // 2. Aguarda animação e remove da lista visual
       setTimeout(() => {
           setOptimisticArchived(prev => new Set(prev).add(id));
           onUpdateState({ ...state, patients: updatedPatients });
       }, 500);
   };
 
+  // Lógica refatorada: Separação Alta Médica vs Arquivamento HLC-7
   const handleDischarge = async (id: string, name: string) => { 
-      const isColih = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
-      
-      // Fluxo 1: Confirmação Básica de Alta Médica
-      if (!window.confirm(`Confirmar que ${name} teve ALTA MÉDICA do hospital?`)) {
+      const patient = state.patients.find(p => p.id === id);
+      if (!patient) return;
+
+      const isColihUser = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
+
+      // FASE 2: Paciente já teve alta médica, agora é o fechamento COLIH (HLC-7)
+      if (patient.isMedicalDischarge) {
+          if (!isColihUser) {
+              alert("Apenas membros da COLIH podem realizar o arquivamento definitivo (HLC-7).");
+              return;
+          }
+          if (window.confirm(`[PROTOCOLO COLIH]\n\nConfirma o envio do formulário HLC-7 para o caso de ${name}?\n\nIsso arquivará o paciente definitivamente.`)) {
+              const updatedPatients = state.patients.map(p => p.id === id ? { ...p, active: false } : p);
+              animateAndArchive(id, updatedPatients);
+              setViewingPatientId(null);
+              const p = updatedPatients.find(p => p.id === id);
+              if (p) await atomicUpdate('patients', p);
+          }
           return;
       }
 
-      let shouldArchive = true;
+      // FASE 1: Informar Alta Médica (Disponível para GVP e COLIH)
+      if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA do hospital?\n\nIsso removerá a solicitação de visita GVP, mas manterá o caso aberto para a COLIH (HLC-7).`)) {
+          const updatedPatients = state.patients.map(p => p.id === id ? { 
+              ...p, 
+              isMedicalDischarge: true,
+              gvpRequestPending: false, // GVP sai de cena aqui
+              active: true, // Continua ativo aguardando COLIH
+              estimatedDischargeDate: new Date().toISOString() 
+          } : p); 
 
-      // Fluxo 2: Verificação Específica COLIH (HLC-7)
-      if (isColih) {
-          if (window.confirm(`[PROTOCOLO COLIH]\n\nO formulário HLC-7 já foi enviado/concluído para o caso de ${name}?`)) {
-              shouldArchive = true;
-          } else {
-              shouldArchive = false;
-              // Feedback visual imediato via alert, card será atualizado via state
-              alert(`O status de ${name} foi atualizado para "Alta Médica".\n\nO card permanecerá visível (borda roxa) até que você confirme o envio do HLC-7.`);
-          }
-      }
-
-      const updatedPatients = state.patients.map(p => p.id === id ? { 
-          ...p, 
-          active: !shouldArchive, 
-          isMedicalDischarge: true,
-          gvpRequestPending: false, 
-          estimatedDischargeDate: new Date().toISOString() 
-      } : p); 
-      
-      if (shouldArchive) {
-          animateAndArchive(id, updatedPatients);
-      } else {
-          // Apenas atualiza estado (card muda de cor)
+          // Atualiza estado visualmente (Card fica Roxo)
           onUpdateState({ ...state, patients: updatedPatients });
+          setViewingPatientId(null);
+
+          const p = updatedPatients.find(p => p.id === id);
+          if (p) await atomicUpdate('patients', p);
       }
-      
-      setViewingPatientId(null); 
-
-      // Persistência em background
-      const p = updatedPatients.find(p => p.id === id); 
-      if (p) await atomicUpdate('patients', p); 
-  };
-
-  const handleHlc7Archive = async (id: string, name: string) => { 
-      if (window.confirm(`Confirma o envio do HLC-7 para o caso de ${name}?\n\nIsso irá arquivar o paciente definitivamente no histórico.`)) { 
-          const updatedPatients = state.patients.map(p => p.id === id ? { ...p, active: false } : p); 
-          animateAndArchive(id, updatedPatients);
-          
-          setViewingPatientId(null); 
-
-          const p = updatedPatients.find(p => p.id === id); 
-          if (p) await atomicUpdate('patients', p); 
-      } 
   };
 
   const handleToggleGvpRequest = async (patient: Patient) => { 
@@ -254,10 +237,10 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                         {patient.isMedicalDischarge ? (
                             <div className={`p-3 rounded-xl mb-4 border border-dashed border-purple-300 ${isHospitalMode ? 'bg-purple-900/20' : 'bg-white'}`}>
                                 <p className={`text-[10px] font-black uppercase text-center ${isHospitalMode ? 'text-purple-300' : 'text-purple-600'}`}>
-                                    ⚠️ Pendente HLC-7
+                                    ⚠️ Pendente HLC-7 (COLIH)
                                 </p>
                                 <p className={`text-[9px] text-center mt-1 leading-tight ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                    Paciente teve alta médica. Arquive após enviar o formulário.
+                                    GVP encerrado. Aguardando fechamento administrativo.
                                 </p>
                             </div>
                         ) : (
@@ -289,15 +272,11 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                             <button 
                                 onClick={(e) => { 
                                     e.stopPropagation(); 
-                                    if (patient.isMedicalDischarge) {
-                                        handleHlc7Archive(patient.id, patient.name);
-                                    } else {
-                                        handleDischarge(patient.id, patient.name);
-                                    }
+                                    handleDischarge(patient.id, patient.name);
                                 }}
                                 className={`py-2 rounded-lg text-xs font-bold uppercase text-white hover:opacity-90 shadow-md ${patient.isMedicalDischarge ? 'bg-purple-600 hover:bg-purple-700' : 'bg-green-600 hover:bg-green-700'}`}
                             >
-                                {patient.isMedicalDischarge ? 'Finalizar' : 'Alta'}
+                                {patient.isMedicalDischarge ? 'HLC-7' : 'Alta'}
                             </button>
                         </div>
                     </div>
@@ -316,10 +295,9 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                 isOpen={true}
                 onClose={() => setViewingPatientId(null)}
                 patient={viewingPatient}
-                lastVisit={null} // Could populate from visits array if needed
+                lastVisit={null}
                 members={state.members}
                 onDischarge={handleDischarge}
-                onHlc7Confirm={handleHlc7Archive}
                 onToggleGvp={handleToggleGvpRequest}
                 isHospitalMode={isHospitalMode}
                 canEdit={true}
@@ -328,7 +306,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
             />
         )}
 
-        {/* EDIT MODAL */}
+        {/* EDIT MODAL - ATUALIZADO COM AUTO-REGIONAL */}
         {isEditModalOpen && editingPatient && createPortal(
             <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
                 <div className={`w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
@@ -345,7 +323,21 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
                                 <label className="text-[10px] font-bold uppercase text-gray-500">Hospital</label>
-                                <select required className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.hospitalId || ''} onChange={e => setEditingPatient({...editingPatient, hospitalId: e.target.value})}>
+                                <select 
+                                    required 
+                                    className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} 
+                                    value={editingPatient.hospitalId || ''} 
+                                    onChange={e => {
+                                        const hId = e.target.value;
+                                        const hospital = state.hospitals.find(h => h.id === hId);
+                                        // AUTO-FILL REGIONAL based on Hospital
+                                        setEditingPatient({
+                                            ...editingPatient, 
+                                            hospitalId: hId,
+                                            regional: hospital?.regional || editingPatient.regional
+                                        });
+                                    }}
+                                >
                                     <option value="">Selecione...</option>
                                     {state.hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
                                 </select>

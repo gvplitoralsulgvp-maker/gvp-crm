@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Patient, VisitSlot, Member } from '../types';
 import { Button } from './Button';
 
@@ -50,10 +50,11 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
         <div className={`p-6 overflow-y-auto custom-scrollbar space-y-6 ${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'}`}>
           
           {/* Banner de Alta Médica (Para COLIH) */}
-          {patient.isMedicalDischarge && isColihUser && (
+          {patient.isMedicalDischarge && (
               <div className="bg-purple-100 border border-purple-200 p-4 rounded-xl text-purple-800 flex flex-col gap-2">
                   <p className="font-bold text-sm">🏥 Paciente com Alta Médica Informada</p>
-                  <p className="text-xs">O paciente já saiu do hospital, mas o caso permanece aberto para controle do HLC-7.</p>
+                  <p className="text-xs">O paciente já saiu do hospital. A solicitação GVP foi encerrada automaticamente.</p>
+                  <p className="text-xs font-bold mt-1">{isColihUser ? 'Ação Pendente: Confirmar HLC-7' : 'Aguardando fechamento administrativo pela COLIH.'}</p>
               </div>
           )}
 
@@ -72,7 +73,8 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                 )}
                 </div>
             </div>
-            {/* Botão de Alta Comum - LIBERADO PARA GVP (canDischarge) */}
+            
+            {/* BOTÃO DE ALTA MÉDICA (FASE 1) - Disponível se ainda não teve alta */}
             {patient.active && !patient.isMedicalDischarge && onDischarge && (canEdit || canDischarge) && (
                 <button 
                     onClick={() => { onDischarge(patient.id, patient.name); onClose(); }}
@@ -83,22 +85,22 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
             )}
           </div>
 
-          {/* Botão Especial HLC-7 (Só aparece para COLIH se tiver alta médica) */}
-          {patient.active && patient.isMedicalDischarge && isColihUser && onHlc7Confirm && (
+          {/* BOTÃO DE ARQUIVAMENTO HLC-7 (FASE 2) - Exclusivo COLIH se já teve alta */}
+          {patient.active && patient.isMedicalDischarge && isColihUser && onDischarge && (
               <div className="p-4 bg-white rounded-xl border border-purple-200 shadow-sm">
-                  <p className="text-xs font-bold text-gray-700 mb-2">Ação Pendente COLIH</p>
+                  <p className="text-xs font-bold text-gray-700 mb-2">Encerrar Caso (Protocolo COLIH)</p>
                   <button 
-                      onClick={() => { onHlc7Confirm(patient.id, patient.name); onClose(); }}
+                      onClick={() => { onDischarge(patient.id, patient.name); onClose(); }}
                       className="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold uppercase tracking-widest py-3 rounded-lg shadow-md transition-all flex items-center justify-center gap-2"
                   >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                      Você já enviou o HLC-7 deste caso?
+                      Finalizar e Arquivar (HLC-7)
                   </button>
-                  <p className="text-[10px] text-gray-400 mt-2 text-center">Ao clicar, o caso será arquivado definitivamente.</p>
+                  <p className="text-[10px] text-gray-400 mt-2 text-center">Isso confirmará que o formulário foi enviado e o caso está concluído.</p>
               </div>
           )}
 
-          {/* NOVA LÓGICA DO BOTÃO DE BANDEIRA (GVP REQUEST) */}
+          {/* BOTÃO DE BANDEIRA (GVP REQUEST) - Só aparece se NÃO teve alta médica */}
           {patient.active && canEdit && onToggleGvp && !patient.isMedicalDischarge && (
              <div className="pt-2">
                 <button 

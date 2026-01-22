@@ -32,58 +32,48 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
 
-  // Optimistic tracking for Dashboard context (optional, but good practice if patients are listed here)
+  // Optimistic tracking
   const [optimisticArchived, setOptimisticArchived] = useState<Set<string>>(new Set());
 
-  // Derived data with optimistic filter
+  // Derived data
   const activePatients = state.patients.filter(p => p.active && !optimisticArchived.has(p.id));
 
-  const handleDischarge = async (id: string, name: string) => {
-    const isColih = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
-    
-    if (!window.confirm(`Confirmar que ${name} teve ALTA MÉDICA?`)) {
-      return;
-    }
+  // Lógica refatorada: Separação Alta Médica vs Arquivamento HLC-7
+  const handleDischarge = async (id: string, name: string) => { 
+      const patient = state.patients.find(p => p.id === id);
+      if (!patient) return;
 
-    let shouldArchive = true;
+      const isColihUser = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
 
-    if (isColih) {
-        if (window.confirm(`[PROTOCOLO COLIH]\n\nO formulário HLC-7 já foi enviado/concluído para o caso de ${name}?`)) {
-            shouldArchive = true;
-        } else {
-            shouldArchive = false;
-            alert("O paciente permanecerá na lista ativa com status 'Alta Médica' até que o HLC-7 seja enviado.");
-        }
-    }
+      // FASE 2: Paciente já teve alta médica, agora é o fechamento COLIH (HLC-7)
+      if (patient.isMedicalDischarge) {
+          if (!isColihUser) {
+              alert("Apenas membros da COLIH podem realizar o arquivamento definitivo (HLC-7).");
+              return;
+          }
+          if (window.confirm(`[PROTOCOLO COLIH]\n\nConfirma o envio do formulário HLC-7 para o caso de ${name}?\n\nIsso arquivará o paciente definitivamente.`)) {
+              setOptimisticArchived(prev => new Set(prev).add(id));
+              
+              const updatedPatients = state.patients.map(p => p.id === id ? { ...p, active: false } : p);
+              onUpdateState({ ...state, patients: updatedPatients });
+              setViewingPatientId(null);
 
-    if (shouldArchive) {
-        setOptimisticArchived(prev => new Set(prev).add(id));
-    }
+              const p = updatedPatients.find(p => p.id === id);
+              if (p) await atomicUpdate('patients', p);
+          }
+          return;
+      }
 
-    const updatedPatients = state.patients.map(p => 
-      p.id === id ? { 
-          ...p, 
-          active: !shouldArchive, 
-          isMedicalDischarge: true, 
-          gvpRequestPending: false, 
-          estimatedDischargeDate: new Date().toISOString() 
-      } : p
-    );
-    
-    onUpdateState({ ...state, patients: updatedPatients });
-    setViewingPatientId(null);
+      // FASE 1: Informar Alta Médica (Disponível para GVP e COLIH)
+      if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA do hospital?\n\nIsso removerá a solicitação de visita GVP, mas manterá o caso aberto para a COLIH (HLC-7).`)) {
+          const updatedPatients = state.patients.map(p => p.id === id ? { 
+              ...p, 
+              isMedicalDischarge: true,
+              gvpRequestPending: false, // GVP sai de cena aqui
+              active: true, // Continua ativo aguardando COLIH
+              estimatedDischargeDate: new Date().toISOString() 
+          } : p); 
 
-    const p = updatedPatients.find(p => p.id === id);
-    if (p) await atomicUpdate('patients', p);
-  };
-
-  const handleHlc7Archive = async (id: string, name: string) => {
-      if (window.confirm(`Confirma o envio do HLC-7 para o caso de ${name}?\n\nIsso irá arquivar o paciente definitivamente no histórico.`)) {
-          setOptimisticArchived(prev => new Set(prev).add(id));
-          
-          const updatedPatients = state.patients.map(p => 
-              p.id === id ? { ...p, active: false } : p
-          );
           onUpdateState({ ...state, patients: updatedPatients });
           setViewingPatientId(null);
 
@@ -311,7 +301,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 members={state.members}
                 isHospitalMode={isHospitalMode}
                 onDischarge={handleDischarge}
-                onHlc7Confirm={handleHlc7Archive}
                 onToggleGvp={handleToggleGvp}
                 canEdit={state.currentUser?.role === 'ADMIN' || state.currentUser?.isColih}
                 canDischarge={true}

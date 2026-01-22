@@ -44,6 +44,14 @@ CREATE TABLE IF NOT EXISTS public.patients (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- TABELA DE MAPEAMENTO CIDADES X REGIONAIS (NOVO)
+CREATE TABLE IF NOT EXISTS public.city_mappings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    city TEXT NOT NULL,
+    regional TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- MIGRAÇÃO: Adicionar colunas novas se não existirem
 DO $$ 
 BEGIN 
