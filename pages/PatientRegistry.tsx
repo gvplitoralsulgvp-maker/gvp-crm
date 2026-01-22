@@ -20,6 +20,9 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
   const [viewingPatientId, setViewingPatientId] = useState<string | null>(null);
   const [editingPatient, setEditingPatient] = useState<Partial<Patient> | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  
+  // Lista local para remover pacientes da tela INSTANTANEAMENTE (Optimistic UI)
+  const [optimisticArchived, setOptimisticArchived] = useState<Set<string>>(new Set());
 
   useEffect(() => {
       if (location.state && location.state.searchQuery) {
@@ -28,8 +31,11 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
   }, [location.state]);
 
   const activePatients = useMemo(() => {
-      return state.patients.filter(p => p.active).sort((a,b) => a.name.localeCompare(b.name));
-  }, [state.patients]);
+      // Filtra pacientes ativos que NÃO foram arquivados localmente nesta sessão
+      return state.patients
+        .filter(p => p.active && !optimisticArchived.has(p.id))
+        .sort((a,b) => a.name.localeCompare(b.name));
+  }, [state.patients, optimisticArchived]);
 
   const filteredPatients = useMemo(() => {
       if (!searchQuery) return activePatients;
@@ -64,30 +70,40 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
           }
       }
 
-      // Atualização do Estado
+      // Se for arquivar, adiciona ao Set otimista IMEDIATAMENTE para sumir da tela
+      if (shouldArchive) {
+          setOptimisticArchived(prev => new Set(prev).add(id));
+      }
+
+      // Atualização do Estado Global
       const updatedPatients = state.patients.map(p => p.id === id ? { 
           ...p, 
-          active: !shouldArchive, // Se deve arquivar, active=false. Se não (pendente HLC), active=true
+          active: !shouldArchive, 
           isMedicalDischarge: true, // Sempre true pois teve alta médica
           gvpRequestPending: false, 
           estimatedDischargeDate: new Date().toISOString() 
       } : p); 
       
-      // Persistência
-      const p = updatedPatients.find(p => p.id === id); 
-      if (p) await atomicUpdate('patients', p); 
-      
+      // Atualiza estado global (mesmo com delay do servidor, o optimismo segura a UI)
       onUpdateState({ ...state, patients: updatedPatients }); 
       setViewingPatientId(null); 
+
+      // Persistência em background
+      const p = updatedPatients.find(p => p.id === id); 
+      if (p) await atomicUpdate('patients', p); 
   };
 
   const handleHlc7Archive = async (id: string, name: string) => { 
       if (window.confirm(`Confirma o envio do HLC-7 para o caso de ${name}?\n\nIsso irá arquivar o paciente definitivamente no histórico.`)) { 
+          // Otimismo: Remove da tela agora
+          setOptimisticArchived(prev => new Set(prev).add(id));
+
           const updatedPatients = state.patients.map(p => p.id === id ? { ...p, active: false } : p); 
-          const p = updatedPatients.find(p => p.id === id); 
-          if (p) await atomicUpdate('patients', p); 
           onUpdateState({ ...state, patients: updatedPatients }); 
           setViewingPatientId(null); 
+
+          const p = updatedPatients.find(p => p.id === id); 
+          if (p) await atomicUpdate('patients', p); 
       } 
   };
 

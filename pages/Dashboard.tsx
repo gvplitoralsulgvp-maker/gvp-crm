@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppState, VisitRoute, VisitSlot, Patient, Member, AppNotification, UserRole } from '../types';
 import { FullCalendar } from '../components/FullCalendar';
 import { DailyAgendaModal } from '../components/DailyAgendaModal';
@@ -32,26 +32,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
 
+  // Optimistic tracking for Dashboard context (optional, but good practice if patients are listed here)
+  const [optimisticArchived, setOptimisticArchived] = useState<Set<string>>(new Set());
+
+  // Derived data with optimistic filter
+  const activePatients = state.patients.filter(p => p.active && !optimisticArchived.has(p.id));
+
   const handleDischarge = async (id: string, name: string) => {
     const isColih = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
     
-    // Confirmação Básica
     if (!window.confirm(`Confirmar que ${name} teve ALTA MÉDICA?`)) {
       return;
     }
 
     let shouldArchive = true;
 
-    // Fluxo COLIH: Verificar HLC-7
     if (isColih) {
         if (window.confirm(`[PROTOCOLO COLIH]\n\nO formulário HLC-7 já foi enviado/concluído para o caso de ${name}?`)) {
-            // HLC-7 Enviado -> Arquivar
             shouldArchive = true;
         } else {
-            // HLC-7 Pendente -> Manter ativo com flag de alta
             shouldArchive = false;
             alert("O paciente permanecerá na lista ativa com status 'Alta Médica' até que o HLC-7 seja enviado.");
         }
+    }
+
+    if (shouldArchive) {
+        setOptimisticArchived(prev => new Set(prev).add(id));
     }
 
     const updatedPatients = state.patients.map(p => 
@@ -64,23 +70,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       } : p
     );
     
-    const p = updatedPatients.find(p => p.id === id);
-    if (p) await atomicUpdate('patients', p);
-
     onUpdateState({ ...state, patients: updatedPatients });
     setViewingPatientId(null);
+
+    const p = updatedPatients.find(p => p.id === id);
+    if (p) await atomicUpdate('patients', p);
   };
 
   const handleHlc7Archive = async (id: string, name: string) => {
       if (window.confirm(`Confirma o envio do HLC-7 para o caso de ${name}?\n\nIsso irá arquivar o paciente definitivamente no histórico.`)) {
+          setOptimisticArchived(prev => new Set(prev).add(id));
+          
           const updatedPatients = state.patients.map(p => 
               p.id === id ? { ...p, active: false } : p
           );
-          const p = updatedPatients.find(p => p.id === id);
-          if (p) await atomicUpdate('patients', p);
-
           onUpdateState({ ...state, patients: updatedPatients });
           setViewingPatientId(null);
+
+          const p = updatedPatients.find(p => p.id === id);
+          if (p) await atomicUpdate('patients', p);
       }
   };
 
@@ -206,12 +214,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   };
 
   // Derived data
-  const viewingPatient = viewingPatientId ? state.patients.find(p => p.id === viewingPatientId) : null;
+  const viewingPatient = viewingPatientId ? activePatients.find(p => p.id === viewingPatientId) : null;
   const myVisitSlot = myVisitModalData?.slot;
   const myVisitRoute = myVisitModalData?.route;
   
   const myVisitPatients = myVisitRoute && myVisitRoute.hospitals 
-    ? state.patients.filter(p => p.active && myVisitRoute.hospitals?.includes(p.hospitalName || ''))
+    ? activePatients.filter(p => myVisitRoute.hospitals?.includes(p.hospitalName || ''))
     : [];
 
   const partnerId = myVisitSlot?.memberIds.find(id => id !== state.currentUser?.id);
@@ -239,7 +247,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             routes={state.routes}
             visits={state.visits}
             members={state.members}
-            patients={state.patients}
+            patients={activePatients}
             currentUser={state.currentUser}
             isPrivacyMode={isPrivacyMode}
             isHospitalMode={isHospitalMode}
@@ -283,7 +291,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 route={myVisitRoute}
                 partner={partner || null}
                 hospitalDetails={hospitalDetails}
-                patients={state.patients}
+                patients={activePatients}
                 recentHistory={[]} 
                 isHospitalMode={isHospitalMode}
                 isPrivacyMode={isPrivacyMode}
