@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { AppState, VisitRoute, VisitSlot, Patient, Member, AppNotification } from '../types';
+import { AppState, VisitRoute, VisitSlot, Patient, Member, AppNotification, UserRole } from '../types';
 import { FullCalendar } from '../components/FullCalendar';
 import { DailyAgendaModal } from '../components/DailyAgendaModal';
 import { MyVisitModal } from '../components/MyVisitModal';
@@ -32,36 +32,52 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
 
-  const handleDischarge = (id: string, name: string) => {
-    if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA?\n\nO paciente será removido da lista atual e enviado para o Histórico de Altas.`)) {
-      const updatedPatients = state.patients.map(p => 
-        p.id === id ? { 
-            ...p, 
-            active: false, 
-            isMedicalDischarge: true, 
-            gvpRequestPending: false, 
-            estimatedDischargeDate: new Date().toISOString() 
-        } : p
-      );
-      
-      const p = updatedPatients.find(p => p.id === id);
-      if (p) atomicUpdate('patients', p);
-
-      onUpdateState({ 
-        ...state, 
-        patients: updatedPatients
-      });
-      setViewingPatientId(null);
+  const handleDischarge = async (id: string, name: string) => {
+    const isColih = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
+    
+    // Confirmação Básica
+    if (!window.confirm(`Confirmar que ${name} teve ALTA MÉDICA?`)) {
+      return;
     }
+
+    let shouldArchive = true;
+
+    // Fluxo COLIH: Verificar HLC-7
+    if (isColih) {
+        if (window.confirm(`[PROTOCOLO COLIH]\n\nO formulário HLC-7 já foi enviado/concluído para o caso de ${name}?`)) {
+            // HLC-7 Enviado -> Arquivar
+            shouldArchive = true;
+        } else {
+            // HLC-7 Pendente -> Manter ativo com flag de alta
+            shouldArchive = false;
+            alert("O paciente permanecerá na lista ativa com status 'Alta Médica' até que o HLC-7 seja enviado.");
+        }
+    }
+
+    const updatedPatients = state.patients.map(p => 
+      p.id === id ? { 
+          ...p, 
+          active: !shouldArchive, 
+          isMedicalDischarge: true, 
+          gvpRequestPending: false, 
+          estimatedDischargeDate: new Date().toISOString() 
+      } : p
+    );
+    
+    const p = updatedPatients.find(p => p.id === id);
+    if (p) await atomicUpdate('patients', p);
+
+    onUpdateState({ ...state, patients: updatedPatients });
+    setViewingPatientId(null);
   };
 
-  const handleHlc7Archive = (id: string, name: string) => {
+  const handleHlc7Archive = async (id: string, name: string) => {
       if (window.confirm(`Confirma o envio do HLC-7 para o caso de ${name}?\n\nIsso irá arquivar o paciente definitivamente no histórico.`)) {
           const updatedPatients = state.patients.map(p => 
               p.id === id ? { ...p, active: false } : p
           );
           const p = updatedPatients.find(p => p.id === id);
-          if (p) atomicUpdate('patients', p);
+          if (p) await atomicUpdate('patients', p);
 
           onUpdateState({ ...state, patients: updatedPatients });
           setViewingPatientId(null);
@@ -69,7 +85,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   };
 
   const handleToggleGvp = async (patient: Patient) => {
-      // Basic toggle logic if needed in Dashboard context
       const willEnable = !patient.gvpRequestPending;
       if (!window.confirm(willEnable ? "Marcar solicitação?" : "Remover solicitação?")) return;
       const updated = { ...patient, gvpRequestPending: willEnable };
@@ -269,7 +284,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 partner={partner || null}
                 hospitalDetails={hospitalDetails}
                 patients={state.patients}
-                recentHistory={[]} // Can implement history fetch logic here
+                recentHistory={[]} 
                 isHospitalMode={isHospitalMode}
                 isPrivacyMode={isPrivacyMode}
                 onSwapRequest={() => setIsSwapModalOpen(true)}
@@ -284,14 +299,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 isOpen={true}
                 onClose={() => setViewingPatientId(null)}
                 patient={viewingPatient}
-                lastVisit={null} // Can implement last visit fetch logic here
+                lastVisit={null} 
                 members={state.members}
                 isHospitalMode={isHospitalMode}
                 onDischarge={handleDischarge}
                 onHlc7Confirm={handleHlc7Archive}
                 onToggleGvp={handleToggleGvp}
                 canEdit={state.currentUser?.role === 'ADMIN' || state.currentUser?.isColih}
-                canDischarge={true} // Allow discharge for GVP members
+                canDischarge={true}
                 isColihUser={state.currentUser?.isColih}
             />
         )}
@@ -316,7 +331,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             onClose={() => setIsSwapModalOpen(false)}
             currentDate={selectedDate}
             onConfirm={(newDate, note) => {
-                // Logic for swap request (could be a notification to admin)
                 alert("Solicitação enviada ao coordenador.");
                 setIsSwapModalOpen(false);
             }}

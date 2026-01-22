@@ -41,27 +41,51 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
       );
   }, [activePatients, searchQuery]);
 
-  const handleDischarge = (id: string, name: string) => { 
-      if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA?\n\nO paciente será removido da lista atual e enviado para o Histórico de Altas.`)) { 
-          const updatedPatients = state.patients.map(p => p.id === id ? { 
-              ...p, 
-              active: false, 
-              isMedicalDischarge: true, 
-              gvpRequestPending: false, 
-              estimatedDischargeDate: new Date().toISOString() 
-          } : p); 
-          const p = updatedPatients.find(p => p.id === id); 
-          if (p) atomicUpdate('patients', p); 
-          onUpdateState({ ...state, patients: updatedPatients }); 
-          setViewingPatientId(null); 
-      } 
+  const handleDischarge = async (id: string, name: string) => { 
+      const isColih = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
+      
+      // Fluxo 1: Confirmação Básica de Alta Médica
+      if (!window.confirm(`Confirmar que ${name} teve ALTA MÉDICA do hospital?`)) {
+          return;
+      }
+
+      let shouldArchive = true;
+      let isMedicalDischarge = true;
+
+      // Fluxo 2: Verificação Específica COLIH (HLC-7)
+      if (isColih) {
+          if (window.confirm(`[PROTOCOLO COLIH]\n\nO formulário HLC-7 já foi enviado/concluído para o caso de ${name}?`)) {
+              // Sim, HLC-7 enviado -> Arquivar completamente
+              shouldArchive = true;
+          } else {
+              // Não, HLC-7 pendente -> Manter na lista mas marcar como Alta Médica
+              shouldArchive = false;
+              alert(`O paciente ${name} permanecerá na lista ativa com a marcação de 'Alta Médica'.\n\nPor favor, finalize o HLC-7 e clique no botão roxo no prontuário para arquivar.`);
+          }
+      }
+
+      // Atualização do Estado
+      const updatedPatients = state.patients.map(p => p.id === id ? { 
+          ...p, 
+          active: !shouldArchive, // Se deve arquivar, active=false. Se não (pendente HLC), active=true
+          isMedicalDischarge: true, // Sempre true pois teve alta médica
+          gvpRequestPending: false, 
+          estimatedDischargeDate: new Date().toISOString() 
+      } : p); 
+      
+      // Persistência
+      const p = updatedPatients.find(p => p.id === id); 
+      if (p) await atomicUpdate('patients', p); 
+      
+      onUpdateState({ ...state, patients: updatedPatients }); 
+      setViewingPatientId(null); 
   };
 
-  const handleHlc7Archive = (id: string, name: string) => { 
+  const handleHlc7Archive = async (id: string, name: string) => { 
       if (window.confirm(`Confirma o envio do HLC-7 para o caso de ${name}?\n\nIsso irá arquivar o paciente definitivamente no histórico.`)) { 
           const updatedPatients = state.patients.map(p => p.id === id ? { ...p, active: false } : p); 
           const p = updatedPatients.find(p => p.id === id); 
-          if (p) atomicUpdate('patients', p); 
+          if (p) await atomicUpdate('patients', p); 
           onUpdateState({ ...state, patients: updatedPatients }); 
           setViewingPatientId(null); 
       } 
@@ -166,9 +190,14 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                     onClick={() => setViewingPatientId(patient.id)}
                     className={`relative p-5 rounded-2xl border shadow-sm transition-all hover:shadow-md flex flex-col cursor-pointer ${isHospitalMode ? 'bg-[#212327] border-gray-800 hover:border-gray-700' : 'bg-white border-gray-100 hover:border-blue-200'}`}
                 >
-                    {patient.gvpRequestPending && (
+                    {patient.gvpRequestPending && !patient.isMedicalDischarge && (
                         <div className="absolute top-4 right-4 animate-pulse">
                             <span className="text-[9px] font-black uppercase bg-orange-100 text-orange-600 px-2 py-1 rounded border border-orange-200">Solicitação</span>
+                        </div>
+                    )}
+                    {patient.isMedicalDischarge && (
+                        <div className="absolute top-4 right-4">
+                            <span className="text-[9px] font-black uppercase bg-purple-100 text-purple-600 px-2 py-1 rounded border border-purple-200">Alta / HLC-7 Pendente</span>
                         </div>
                     )}
                     
@@ -207,9 +236,9 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                         </button>
                         <button 
                             onClick={(e) => { e.stopPropagation(); handleDischarge(patient.id, patient.name); }}
-                            className="py-2 rounded-lg text-xs font-bold uppercase bg-green-600 text-white hover:bg-green-700"
+                            className={`py-2 rounded-lg text-xs font-bold uppercase text-white hover:opacity-90 ${patient.isMedicalDischarge ? 'bg-purple-600' : 'bg-green-600'}`}
                         >
-                            Alta
+                            {patient.isMedicalDischarge ? 'Finalizar HLC-7' : 'Alta'}
                         </button>
                     </div>
                 </div>
@@ -234,6 +263,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                 onToggleGvp={handleToggleGvpRequest}
                 isHospitalMode={isHospitalMode}
                 canEdit={true}
+                canDischarge={true}
                 isColihUser={state.currentUser?.isColih}
             />
         )}
