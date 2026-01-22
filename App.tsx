@@ -24,7 +24,7 @@ import { supabase } from './services/supabaseClient';
 // --- LAYOUT PRINCIPAL ---
 const Layout: React.FC<{ 
   state: AppState; 
-  onUpdateState: (s: AppState) => void; 
+  onUpdateState: React.Dispatch<React.SetStateAction<AppState>>; 
   isPrivacyMode: boolean;
   onTogglePrivacy: () => void;
   isHospitalMode: boolean;
@@ -127,10 +127,10 @@ const Layout: React.FC<{
 
           // Se for para mim
           if (appNotif.userId === state.currentUser?.id) {
-            onUpdateState({
-                ...state,
-                notifications: [appNotif, ...state.notifications]
-            });
+            onUpdateState((current) => ({
+                ...current,
+                notifications: [appNotif, ...current.notifications]
+            }));
             const title = appNotif.type === 'warning' ? '⚠️ Atenção Admin' : 'Nova Mensagem';
             sendSystemNotification(title, appNotif.message);
           }
@@ -139,7 +139,7 @@ const Layout: React.FC<{
       .subscribe();
 
     return () => { client.removeChannel(channel); };
-  }, [state.currentUser, state.notifications]); 
+  }, [state.currentUser]); // Removido state.notifications da dependência para evitar recriação, usando functional update
 
   // 3. Sync Force (Ao acordar o celular/aba)
   useEffect(() => {
@@ -165,7 +165,9 @@ const Layout: React.FC<{
                         timestamp: n.timestamp
                     })).filter((n) => n.userId === state.currentUser?.id);
 
-                    // Verifica se tem algo novo comparado ao estado local
+                    // Verifica se tem algo novo comparado ao estado local (apenas para alerta visual)
+                    // Nota: state dentro deste callback pode ser stale (velho), mas serve para a lógica de notificação.
+                    // O importante é o onUpdateState usar functional update.
                     const localIds = new Set(state.notifications.map(n => n.id));
                     const hasNew = mapped.some((n) => !localIds.has(n.id) && !n.read);
 
@@ -173,7 +175,8 @@ const Layout: React.FC<{
                         sendSystemNotification("Atualização", "Novos itens recebidos enquanto você estava ausente.");
                     }
 
-                    onUpdateState({ ...state, notifications: mapped });
+                    // IMPORTANTE: Usar functional update para não sobrescrever state stale (ex: pacientes descarregados)
+                    onUpdateState((current) => ({ ...current, notifications: mapped }));
                 }
             } catch (err) {
                 console.error("Erro sync ao acordar:", err);
@@ -183,7 +186,7 @@ const Layout: React.FC<{
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [state.currentUser, state.notifications]);
+  }, [state.currentUser, state.notifications]); 
 
   // 4. Lembrete Diário (Agenda)
   useEffect(() => {
@@ -195,6 +198,7 @@ const Layout: React.FC<{
         tomorrow.setDate(now.getDate() + 1);
         const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
+        // Usar uma referência atualizada ou o state da closure (aqui state é atualizado via props, então o efeito roda de novo quando muda)
         const upcoming = state.visits.filter(v => {
           const isTomorrow = v.date === tomorrowStr;
           const isMine = v.memberIds.includes(state.currentUser!.id);
@@ -218,10 +222,10 @@ const Layout: React.FC<{
 
           Promise.all(newNotifications.map(n => atomicUpdate('notifications', n)));
           
-          onUpdateState({
-            ...state,
-            notifications: [...newNotifications, ...state.notifications]
-          });
+          onUpdateState((current) => ({
+            ...current,
+            notifications: [...newNotifications, ...current.notifications]
+          }));
           sendSystemNotification("Lembrete de Visita", "Você tem visita amanhã!");
         }
       } catch (err) { console.error(err); }
@@ -261,27 +265,31 @@ const Layout: React.FC<{
         m.id === state.currentUser?.id ? { ...m, hasSeenOnboarding: true } : m
       );
       atomicUpdate('members', { ...state.currentUser, hasSeenOnboarding: true });
-      onUpdateState({
-        ...state,
+      onUpdateState((current) => ({
+        ...current,
         members: updatedMembers,
-        currentUser: { ...state.currentUser, hasSeenOnboarding: true }
-      });
+        currentUser: { ...current.currentUser!, hasSeenOnboarding: true }
+      }));
     }
     setIsOnboardingOpen(false);
   };
 
   const handleMarkAsRead = (id: string) => {
-    const updated = state.notifications.map(n => n.id === id ? { ...n, read: true } : n);
-    const notif = updated.find(n => n.id === id);
-    if(notif) atomicUpdate('notifications', notif);
-    onUpdateState({ ...state, notifications: updated });
+    // Optimistic update
+    onUpdateState((current) => {
+        const updated = current.notifications.map(n => n.id === id ? { ...n, read: true } : n);
+        return { ...current, notifications: updated };
+    });
+    // Async DB update
+    const notif = state.notifications.find(n => n.id === id);
+    if(notif) atomicUpdate('notifications', { ...notif, read: true });
   };
 
   const handleClearNotifications = () => {
     state.notifications.forEach(n => {
         if(!n.read) atomicUpdate('notifications', { ...n, read: true });
     });
-    onUpdateState({ ...state, notifications: [] });
+    onUpdateState((current) => ({ ...current, notifications: [] }));
   };
 
   // --- CONSTRUÇÃO DO MENU (IMUTÁVEL E SEGURA) ---
