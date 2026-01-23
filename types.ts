@@ -1,82 +1,67 @@
 
 export enum UserRole {
   ADMIN = 'ADMIN',
+  COORDINATOR = 'COORDINATOR',
   MEMBER = 'MEMBER'
 }
 
 export type VisitStatus = 'PENDING' | 'ON_THE_WAY' | 'FINISHED';
 
-export interface AppState {
-  currentUser: Member | null;
-  members: Member[];
-  hospitals: Hospital[];
-  routes: VisitRoute[];
-  visits: VisitSlot[];
-  socialWorkerVisits: SocialWorkerVisit[];
-  patients: Patient[];
-  logs: LogEntry[];
-  notifications: AppNotification[];
-  // COLIH Data
-  doctors: Doctor[];
-  colihVisits: ColihVisit[];
-  presentationGoal: number; // Meta anual de apresentações
-  // Config Data
-  cityMappings: CityMapping[]; // Mapeamento dinâmico
-}
-
-// --- CONFIGURAÇÃO DE REGIONAIS (LEGADO/FALLBACK) ---
-export const REGIONAL_CONFIG: Record<string, string[]> = {
-  "Litoral Sul 1": ["Santos", "São Vicente", "Cubatão"],
-  "Litoral Sul 2": ["Guarujá", "Bertioga", "Praia Grande"],
-  "Litoral Sul 3": ["Mongaguá", "Itanhaém", "Peruíbe", "Itariri", "Pedro de Toledo", "Juquitiba"]
-};
-
-export const ALL_REGIONALS = Object.keys(REGIONAL_CONFIG);
-
-export interface CityMapping {
+export interface AppDocument {
   id: string;
-  city: string;
-  regional: string;
+  title: string;
+  category: 'protocol' | 'training' | 'pauta';
+  url: string;
+  filePath: string;
+  contentType?: string;
+  createdAt?: string;
 }
 
-export type ColihClassification = 'Member' | 'Facilitator' | 'Secretary' | 'Coordinator' | null;
+export interface AppEvent {
+  id: string;
+  title: string;
+  description?: string;
+  date: string;
+  time?: string;
+  location?: string;
+  targetGroup: 'GVP' | 'COLIH' | 'ALL';
+  createdAt?: string;
+}
 
 export interface Member {
   id: string;
   name: string;
   email: string;
   role: UserRole;
-  password?: string;
+  active: boolean;
   phone?: string;
   congregation?: string;
-  active: boolean;
+  hasSeenOnboarding?: boolean;
+  password?: string;
   address?: string;
-  city?: string; // Novo campo para determinar regional do membro
+  city?: string;
   lat?: number;
   lng?: number;
-  hasSeenOnboarding?: boolean;
-  circuit?: string;
-  isColih?: boolean; // Permissão geral de acesso
-  colihClassification?: ColihClassification; // Papel específico dentro da COLIH
+  isColih?: boolean;
+  colihClassification?: 'President' | 'Coordinator' | 'Secretary' | 'Assistant' | 'Facilitator' | 'Member' | null;
   regional?: string;
 }
 
 export interface Hospital {
   id: string;
   name: string;
-  address: string;
   city: string;
+  address: string;
   lat: number;
   lng: number;
   importantInfo?: string;
   regional?: string;
-  responsibleMemberIds?: string[]; // IDs dos membros responsáveis (Min 2, Max 4)
+  responsibleMemberIds?: string[];
 }
 
 export interface VisitRoute {
   id: string;
   name: string;
-  hospitalIds?: string[];
   hospitals?: string[];
   active: boolean;
 }
@@ -95,7 +80,6 @@ export interface VisitSlot {
   memberIds: string[];
   status: VisitStatus;
   report?: VisitReport;
-  patientId?: string; // Optional link to specific patient case
 }
 
 export interface SocialWorkerVisit {
@@ -107,51 +91,53 @@ export interface SocialWorkerVisit {
   report?: VisitReport;
 }
 
-// Helper type para flags booleanas do paciente
-export type PatientFlagKey = 'hasDirectivesCard' | 'agentsNotified' | 'hasS55' | 'formsConsidered' | 'nonWitnessFamily' | 'needsAccommodation' | 'isSurgical' | 'isIsolation';
-
 export interface Patient {
   id: string;
   name: string;
-  hospitalId: string;
+  hospitalId?: string;
   hospitalName?: string;
-  regional?: string; // Novo campo: Regional designada para o caso
-  treatment: string; // Usado como "Problema de saúde (modo simples)"
-  admissionDate: string;
-  estimatedDischargeDate?: string; 
-  active: boolean;
+  room?: string;
+  bed?: string;
   floor?: string;
   wing?: string;
-  bed?: string;
-  room?: string;
+  admissionDate: string;
+  active: boolean;
+  treatment?: string;
+  notes?: string;
+  
   phone?: string;
   email?: string;
   age?: string;
   gender?: string;
   companionName?: string;
   companionPhone?: string;
+  localElder?: string;
+  elderPhone?: string;
   congregation?: string;
-  spiritualStatus?: string; // "Boa condição espiritual?"
-  localElder?: string; // "Nome do Ancião"
-  elderPhone?: string; // Novo "Contato do Ancião"
-  nonWitnessFamily?: boolean; // Novo "Família que não serve a Jeová envolvida?"
+
+  spiritualStatus?: string;
+  nonWitnessFamily?: boolean;
+  hasDirectivesCard?: boolean;
+  hasS55?: boolean;
+  formsConsidered?: boolean;
+  agentsNotified?: boolean;
+  
   visitTime?: string;
   isSurgical?: boolean;
   surgeryDate?: string;
   clinicalStatus?: string;
+  
+  gvpRequestPending?: boolean;
+  isMedicalDischarge?: boolean;
+  estimatedDischargeDate?: string;
+  needsAccommodation?: boolean;
+  isExternalRequest?: boolean;
+  
   isIsolation?: boolean;
   isolationType?: string;
-  notes?: string;
-  isExternalRequest?: boolean;
-  needsAccommodation?: boolean;
-  hasDirectivesCard?: boolean; // "Tem cartão diretivas (DPA) preenchido?"
-  agentsNotified?: boolean;
-  formsConsidered?: boolean;
-  hasS55?: boolean;
-  gvpRequestPending?: boolean;
-  gvpRequestNote?: string;
-  assignedColihIds?: string[]; // IDs dos membros COLIH designados para o caso
-  isMedicalDischarge?: boolean; // Indica que o paciente teve alta médica, mas o caso ainda pode estar aberto para COLIH (HLC-7)
+
+  assignedColihIds?: string[];
+  regional?: string;
 }
 
 export interface LogEntry {
@@ -167,53 +153,70 @@ export interface AppNotification {
   id: string;
   userId: string;
   message: string;
-  type: 'info' | 'success' | 'warning';
+  type: 'info' | 'warning' | 'success';
   read: boolean;
   timestamp: string;
 }
 
-// --- COLIH TYPES ---
-
-export type CooperationLevel = 'High' | 'Medium' | 'Low' | 'Unknown';
-export type ColihInteractionType = 'visit' | 'presentation' | 'material_delivery' | 'email_phone';
-
 export interface Doctor {
   id: string;
   name: string;
-  specialty: string;
-  cooperationLevel: CooperationLevel;
-  isConsultant: boolean;
-  treatsPediatric: boolean;
-  insurancePlans: string; // Comma separated
-  hospitals: string; // Comma separated names
-  phone: string;
-  email: string;
-  address: string;
-  city?: string; // Novo campo para designação de regional
-  secretaryName?: string;
-  notes?: string;
+  specialty?: string;
+  hospitalIds?: string[];
+  city?: string;
+  address?: string;
+  regional?: string;
+  phone?: string;
+  email?: string;
+  cooperationLevel?: 'Unknown' | 'Low' | 'Medium' | 'High';
+  isConsultant?: boolean;
+  treatsPediatric?: boolean;
+  responsibleMemberName?: string;
   lastVisitDate?: string;
-  responsibleMemberName?: string; // Novo campo da planilha
-  regional?: string; // Nova regional
-  gvpSupportRequested?: boolean; // Flag to request GVP visit
 }
+
+export type ColihInteractionType = 'visit' | 'presentation' | 'material_delivery' | 'email_phone';
 
 export interface ColihVisit {
   id: string;
-  doctorId?: string; // Agora opcional, pois pode ser uma visita puramente institucional
-  hospitalId?: string; // Novo campo para visitas institucionais/apresentações
+  doctorId?: string;
+  hospitalId?: string;
   date: string;
   memberIds: string[];
-  notes: string; // "O que foi tratado"
+  notes: string;
   interactionType: ColihInteractionType;
-  status: 'SCHEDULED' | 'COMPLETED'; // Novo Status
-  topicsDiscussed?: string;
-  materialDelivered?: string; // Novo campo
-  nextSteps?: string; // Novo campo (Sugestões de próximas conversas)
-  
-  // Campos específicos para Apresentações
-  hlc38Presented?: boolean; // "Apresentou HLC-38?"
-  collaboratorInterest?: boolean; // "Mostrou interesse em ser colaborador?"
-  
+  status: 'SCHEDULED' | 'COMPLETED';
   createdAt: string;
+  hlc38Presented?: boolean;
+  collaboratorInterest?: boolean;
 }
+
+export interface CityMapping {
+  id: string;
+  city: string;
+  regional: string;
+}
+
+export interface AppState {
+  currentUser: Member | null;
+  members: Member[];
+  hospitals: Hospital[];
+  routes: VisitRoute[];
+  visits: VisitSlot[];
+  socialWorkerVisits: SocialWorkerVisit[];
+  patients: Patient[];
+  logs: LogEntry[];
+  notifications: AppNotification[];
+  doctors: Doctor[];
+  colihVisits: ColihVisit[];
+  presentationGoal: number; 
+  cityMappings: CityMapping[];
+  documents: AppDocument[];
+  events: AppEvent[];
+}
+
+export const REGIONAL_CONFIG: Record<string, string[]> = {
+  'Litoral Sul': ['Mongaguá', 'Itanhaém', 'Peruíbe']
+};
+
+export const ALL_REGIONALS = Object.keys(REGIONAL_CONFIG);

@@ -1,78 +1,74 @@
 
--- ... (código existente acima mantido) ...
+-- Garante que a extensão de UUID esteja habilitada (necessária para uuid_generate_v4())
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- TABELA DE PACIENTES
-CREATE TABLE IF NOT EXISTS public.patients (
+-- TABELA DE DOCUMENTOS E MATERIAIS
+CREATE TABLE IF NOT EXISTS public.documents (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL,
-    hospital_id UUID REFERENCES public.hospitals(id) ON DELETE SET NULL,
-    hospital_name TEXT,
-    treatment TEXT,
-    admission_date DATE DEFAULT CURRENT_DATE,
-    estimated_discharge_date DATE,
-    active BOOLEAN DEFAULT true,
-    floor TEXT,
-    wing TEXT,
-    bed TEXT,
-    room TEXT,
-    phone TEXT,
-    email TEXT,
-    age TEXT,
-    gender TEXT,
-    companion_name TEXT,
-    companion_phone TEXT,
-    congregation TEXT,
-    spiritual_status TEXT,
-    local_elder TEXT,
-    elder_phone TEXT,
-    non_witness_family BOOLEAN DEFAULT false,
-    visit_time TEXT,
-    is_surgical BOOLEAN DEFAULT false,
-    surgery_date DATE,
-    clinical_status TEXT,
-    is_isolation BOOLEAN DEFAULT false,
-    isolation_type TEXT,
-    notes TEXT,
-    is_external_request BOOLEAN DEFAULT false,
-    needs_accommodation BOOLEAN DEFAULT false,
-    has_directives_card BOOLEAN DEFAULT false,
-    agents_notified BOOLEAN DEFAULT false,
-    forms_considered BOOLEAN DEFAULT false,
-    has_s55 BOOLEAN DEFAULT false,
-    gvp_request_pending BOOLEAN DEFAULT false,
-    assigned_colih_ids TEXT[], -- Array de UUIDs dos membros COLIH
+    title TEXT NOT NULL,
+    category TEXT NOT NULL, -- 'protocol' (HLC-7 etc), 'training' (Treinamentos) ou 'pauta'
+    url TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    content_type TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- TABELA DE MAPEAMENTO CIDADES X REGIONAIS (NOVO)
-CREATE TABLE IF NOT EXISTS public.city_mappings (
+-- TABELA DE EVENTOS (Reuniões, Assembleias, Treinamentos)
+CREATE TABLE IF NOT EXISTS public.events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    city TEXT NOT NULL,
-    regional TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    date DATE NOT NULL,
+    time TEXT,
+    location TEXT,
+    target_group TEXT NOT NULL DEFAULT 'ALL', -- 'GVP', 'COLIH', 'ALL'
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- MIGRAÇÃO: Adicionar colunas novas se não existirem
-DO $$ 
-BEGIN 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'email') THEN 
-        ALTER TABLE public.patients ADD COLUMN email TEXT; 
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'congregation') THEN 
-        ALTER TABLE public.patients ADD COLUMN congregation TEXT; 
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'elder_phone') THEN 
-        ALTER TABLE public.patients ADD COLUMN elder_phone TEXT; 
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'non_witness_family') THEN 
-        ALTER TABLE public.patients ADD COLUMN non_witness_family BOOLEAN DEFAULT false; 
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'gvp_request_pending') THEN 
-        ALTER TABLE public.patients ADD COLUMN gvp_request_pending BOOLEAN DEFAULT false; 
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'assigned_colih_ids') THEN 
-        ALTER TABLE public.patients ADD COLUMN assigned_colih_ids TEXT[]; 
-    END IF;
-END $$;
+-- CORREÇÃO: Adiciona coluna has_seen_onboarding na tabela members se não existir
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS has_seen_onboarding BOOLEAN DEFAULT FALSE;
 
--- ... (restante do código mantido) ...
+-- ==========================================
+-- CONFIGURAÇÃO DO STORAGE (Execute no SQL Editor do Supabase)
+-- ==========================================
+
+-- 1. Garante que o bucket 'resources' existe e é público
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('resources', 'resources', true, 52428800, null) -- Limite 50MB
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+-- 2. Limpeza: Remove políticas antigas para evitar conflitos/duplicação
+DROP POLICY IF EXISTS "Public Access" ON storage.objects;
+DROP POLICY IF EXISTS "Auth Upload" ON storage.objects;
+DROP POLICY IF EXISTS "Auth Update" ON storage.objects;
+DROP POLICY IF EXISTS "Auth Delete" ON storage.objects;
+DROP POLICY IF EXISTS "Give me access" ON storage.objects;
+DROP POLICY IF EXISTS "Public Upload" ON storage.objects;
+DROP POLICY IF EXISTS "Public Update" ON storage.objects;
+DROP POLICY IF EXISTS "Public Delete" ON storage.objects;
+
+-- 3. Cria Políticas de Segurança (RLS) Permissivas (TO public)
+-- Necessário para o admin mestre (sem auth) fazer upload
+
+-- LEITURA: Qualquer pessoa pode baixar/ver arquivos (Bucket Público)
+CREATE POLICY "Public Access"
+ON storage.objects FOR SELECT
+USING ( bucket_id = 'resources' );
+
+-- UPLOAD: Público (para permitir admin hardcoded)
+CREATE POLICY "Public Upload"
+ON storage.objects FOR INSERT
+TO public
+WITH CHECK ( bucket_id = 'resources' );
+
+-- ATUALIZAÇÃO: Público
+CREATE POLICY "Public Update"
+ON storage.objects FOR UPDATE
+TO public
+USING ( bucket_id = 'resources' );
+
+-- DELEÇÃO: Público
+CREATE POLICY "Public Delete"
+ON storage.objects FOR DELETE
+TO public
+USING ( bucket_id = 'resources' );

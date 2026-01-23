@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AppState, UserRole, Hospital, SocialWorkerVisit, AppNotification, LogEntry } from '../types';
 import { Button } from '../components/Button';
 
@@ -149,8 +150,8 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
         })}
       </div>
 
-      {/* Modal de Designação Admin */}
-      {designatingSocial && (
+      {/* Modal de Designação Admin (USANDO PORTAL PARA EVITAR BUG DE SCROLL) */}
+      {designatingSocial && createPortal(
         <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
            <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
               <div className="bg-indigo-600 p-6 text-white font-bold flex justify-between items-center shrink-0">
@@ -191,7 +192,8 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
                  </div>
               </div>
            </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

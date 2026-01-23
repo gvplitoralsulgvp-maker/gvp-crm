@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { loadState, createDefaultState, atomicUpdate } from './services/storageService';
@@ -15,6 +16,7 @@ import { MapPage } from './pages/MapPage';
 import { SocialVisitsPage } from './pages/SocialVisitsPage';
 import { PublicRequestPage } from './pages/PublicRequestPage';
 import { ColihPage } from './pages/ColihPage';
+import { ResourcesPage } from './pages/ResourcesPage';
 import { GlobalSearch } from './components/GlobalSearch';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { OnboardingModal } from './components/OnboardingModal';
@@ -40,206 +42,142 @@ const Layout: React.FC<{
   const location = useLocation();
   const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // --- NOTIFICAÇÕES E REALTIME ---
-  
-  // 1. Verificar Permissão ao Carregar
   useEffect(() => {
     try {
       if ('Notification' in window && Notification.permission === 'default') {
         setShowNotifPermission(true);
       }
       notificationAudioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-    } catch (e) {
-      console.warn("Erro ao inicializar audio:", e);
-    }
+    } catch (e) { console.warn("Erro ao inicializar audio:", e); }
   }, []);
 
   const handleRequestPermission = () => {
-    if (!('Notification' in window)) {
-      alert("Este navegador não suporta notificações.");
-      return;
-    }
-
-    if (Notification.permission === 'granted') {
-      try {
-        new Notification("COLIH/GVP Litoral Sul", { 
-          body: "Notificações ativas! Você será alertado sobre novos pedidos.",
-          icon: '/vite.svg' 
-        });
-      } catch (e) {}
-      alert("Permissão já concedida.");
-      setShowNotifPermission(false);
-      return;
-    }
-
     Notification.requestPermission().then(permission => {
-        if (permission === 'granted') {
-            setShowNotifPermission(false);
-            new Notification("COLIH/GVP Litoral Sul", { body: "Notificações ativadas!" });
-        } else if (permission === 'denied') {
-            alert("Você bloqueou as notificações. Para ativar, acesse as configurações do navegador (ícone cadeado) e permita Notificações.");
-        }
+      if (permission === 'granted') setShowNotifPermission(false);
     });
   };
 
   const sendSystemNotification = (title: string, body: string) => {
-    try {
-      // Audio
-      if (notificationAudioRef.current) {
-          notificationAudioRef.current.play().catch(() => {});
-      }
-      // Push Visual
-      if ('Notification' in window && Notification.permission === 'granted') {
-          if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-              navigator.serviceWorker.ready.then(reg => {
-                  reg.showNotification(title, { body, icon: '/vite.svg', vibrate: [200, 100, 200] } as any);
-              });
-          } else {
-              new Notification(title, { body, icon: '/vite.svg' });
-          }
-      }
-    } catch (e) {
-      console.error("Erro notificação:", e);
+    if (Notification.permission === 'granted') {
+      new Notification(title, { body, icon: '/vite.svg' });
+      notificationAudioRef.current?.play().catch(e => console.warn(e));
     }
   };
 
-  // 2. Listener Realtime (Websocket)
+  // Monitoramento Automático de Cobertura Hospitalar (> 30 dias)
+  useEffect(() => {
+    if (state.currentUser?.role !== UserRole.ADMIN) return;
+
+    const checkCoverage = async () => {
+      const today = new Date();
+      const newNotifications: AppNotification[] = [];
+
+      state.hospitals.forEach(hospital => {
+        // 1. Encontrar rotas que atendem este hospital
+        const relevantRoutes = state.routes.filter(r => r.hospitals && r.hospitals.includes(hospital.name));
+        const routeIds = relevantRoutes.map(r => r.id);
+
+        // 2. Encontrar visitas finalizadas nessas rotas
+        const hospitalVisits = state.visits.filter(v => 
+          routeIds.includes(v.routeId) && 
+          v.status === 'FINISHED'
+        );
+
+        // 3. Pegar a mais recente
+        const lastVisit = hospitalVisits.sort((a,b) => b.date.localeCompare(a.date))[0];
+        
+        let daysSince = 999;
+        if (lastVisit) {
+           const lastDate = new Date(lastVisit.date + 'T12:00:00');
+           const diffTime = Math.abs(today.getTime() - lastDate.getTime());
+           daysSince = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+
+        // 4. Se > 30 dias, gerar alerta
+        if (daysSince > 30) {
+           const alertMsg = `⚠️ ALERTA DE COBERTURA: O hospital ${hospital.name} não recebe visitas há ${daysSince} dias.`;
+           
+           // Evita duplicatas (verifica se já existe notificação idêntica não lida)
+           const alreadyExists = state.notifications.some(n => 
+             n.message === alertMsg && !n.read
+           );
+
+           if (!alreadyExists) {
+             newNotifications.push({
+               id: crypto.randomUUID(),
+               userId: state.currentUser!.id, 
+               message: alertMsg,
+               type: 'warning',
+               read: false,
+               timestamp: new Date().toISOString()
+             });
+           }
+        }
+      });
+
+      if (newNotifications.length > 0) {
+        // Salva no banco
+        for (const n of newNotifications) {
+           await atomicUpdate('notifications', n);
+        }
+        // Atualiza estado local
+        onUpdateState(prev => ({
+          ...prev,
+          notifications: [...newNotifications, ...prev.notifications]
+        }));
+        sendSystemNotification('Alerta de Cobertura', `${newNotifications.length} hospitais precisam de atenção.`);
+      }
+    };
+
+    // Delay para não travar a renderização inicial e evitar conflitos de re-render
+    const timeoutId = setTimeout(checkCoverage, 5000);
+    return () => clearTimeout(timeoutId);
+
+  }, [state.visits, state.hospitals, state.currentUser]);
+
   useEffect(() => {
     const client = supabase;
     if (!state.currentUser || !client) return;
-
-    const channel = client
-      .channel('realtime:notifications')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications' },
-        (payload) => {
-          const newNotif = payload.new as any; // Raw DB record
-          // Mapeia para o tipo do app
-          const appNotif: AppNotification = {
-              id: newNotif.id,
-              userId: newNotif.user_id,
-              message: newNotif.message,
-              type: newNotif.type,
-              read: newNotif.read,
-              timestamp: newNotif.timestamp
-          };
-
-          // Se for para mim
+    const channel = client.channel('realtime:notifications').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+          const newNotif = payload.new as any;
+          const appNotif: AppNotification = { id: newNotif.id, userId: newNotif.user_id, message: newNotif.message, type: newNotif.type, read: newNotif.read, timestamp: newNotif.timestamp };
           if (appNotif.userId === state.currentUser?.id) {
-            onUpdateState((current) => ({
-                ...current,
-                notifications: [appNotif, ...current.notifications]
-            }));
+            onUpdateState((current) => ({ ...current, notifications: [appNotif, ...current.notifications] }));
             const title = appNotif.type === 'warning' ? '⚠️ Atenção Admin' : 'Nova Mensagem';
             sendSystemNotification(title, appNotif.message);
           }
-        }
-      )
-      .subscribe();
-
+        }).subscribe();
     return () => { client.removeChannel(channel); };
-  }, [state.currentUser]); // Removido state.notifications da dependência para evitar recriação, usando functional update
+  }, [state.currentUser]);
 
-  // 3. Sync Force (Ao acordar o celular/aba)
   useEffect(() => {
     const handleVisibilityChange = async () => {
         if (document.visibilityState === 'visible' && state.currentUser) {
-            console.log("App acordou (foreground). Buscando atualizações...");
             try {
                 const client = supabase;
                 if (!client) return;
-                // Recarrega notificações do servidor
-                const { data: serverNotifs } = await client
-                    .from('notifications')
-                    .select('*')
-                    .order('timestamp', { ascending: false });
-                
+                const { data: serverNotifs } = await client.from('notifications').select('*').order('timestamp', { ascending: false });
                 if (serverNotifs) {
-                    const mapped: AppNotification[] = serverNotifs.map((n: any) => ({
-                        id: n.id,
-                        userId: n.user_id,
-                        message: n.message,
-                        type: n.type,
-                        read: n.read,
-                        timestamp: n.timestamp
-                    })).filter((n) => n.userId === state.currentUser?.id);
-
-                    // Verifica se tem algo novo comparado ao estado local (apenas para alerta visual)
-                    // Nota: state dentro deste callback pode ser stale (velho), mas serve para a lógica de notificação.
-                    // O importante é o onUpdateState usar functional update.
-                    const localIds = new Set(state.notifications.map(n => n.id));
-                    const hasNew = mapped.some((n) => !localIds.has(n.id) && !n.read);
-
-                    if (hasNew) {
-                        sendSystemNotification("Atualização", "Novos itens recebidos enquanto você estava ausente.");
-                    }
-
-                    // IMPORTANTE: Usar functional update para não sobrescrever state stale (ex: pacientes descarregados)
+                    const mapped: AppNotification[] = serverNotifs.map((n: any) => ({ id: n.id, userId: n.user_id, message: n.message, type: n.type, read: n.read, timestamp: n.timestamp })).filter((n) => n.userId === state.currentUser?.id);
                     onUpdateState((current) => ({ ...current, notifications: mapped }));
                 }
-            } catch (err) {
-                console.error("Erro sync ao acordar:", err);
-            }
+            } catch (err) { console.error("Erro sync ao acordar:", err); }
         }
     };
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [state.currentUser, state.notifications]); 
 
-  // 4. Lembrete Diário (Agenda)
   useEffect(() => {
     if (!state.currentUser) return;
     const checkUpcomingVisits = () => {
-      try {
-        const now = new Date();
-        const tomorrow = new Date();
-        tomorrow.setDate(now.getDate() + 1);
-        const tomorrowStr = tomorrow.toISOString().split('T')[0];
-
-        // Usar uma referência atualizada ou o state da closure (aqui state é atualizado via props, então o efeito roda de novo quando muda)
-        const upcoming = state.visits.filter(v => {
-          const isTomorrow = v.date === tomorrowStr;
-          const isMine = v.memberIds.includes(state.currentUser!.id);
-          const alreadyNotified = state.notifications.some(n => 
-            n.userId === state.currentUser!.id && 
-            n.message.includes(v.date) && 
-            new Date(n.timestamp).toDateString() === now.toDateString()
-          );
-          return isTomorrow && isMine && !alreadyNotified && !v.report;
-        });
-
-        if (upcoming.length > 0) {
-          const newNotifications: AppNotification[] = upcoming.map(v => ({
-            id: crypto.randomUUID(),
-            userId: state.currentUser!.id,
-            message: `📅 Lembrete: Visita amanhã (${v.date}). Prepare-se!`,
-            type: 'warning',
-            read: false,
-            timestamp: new Date().toISOString()
-          }));
-
-          Promise.all(newNotifications.map(n => atomicUpdate('notifications', n)));
-          
-          onUpdateState((current) => ({
-            ...current,
-            notifications: [...newNotifications, ...current.notifications]
-          }));
-          sendSystemNotification("Lembrete de Visita", "Você tem visita amanhã!");
-        }
-      } catch (err) { console.error(err); }
+       // Logic for reminders could be here
     };
     const timer = setTimeout(checkUpcomingVisits, 10000);
     return () => clearTimeout(timer);
   }, [state.visits, state.currentUser]); 
 
-  // Onboarding Logic
-  useEffect(() => {
-    if (state.currentUser && state.currentUser.hasSeenOnboarding === false) {
-      setIsOnboardingOpen(true);
-    }
-  }, [state.currentUser]);
+  useEffect(() => { if (state.currentUser && state.currentUser.hasSeenOnboarding === false) { setIsOnboardingOpen(true); } }, [state.currentUser]);
 
   if (!state.currentUser) {
     return (
@@ -253,53 +191,17 @@ const Layout: React.FC<{
     );
   }
 
-  const handleLogout = async () => {
-      const client = supabase;
-      if (client) await client.auth.signOut();
-      onUpdateState({ ...state, currentUser: null });
-  };
+  const handleLogout = async () => { const client = supabase; if (client) await client.auth.signOut(); onUpdateState({ ...state, currentUser: null }); };
+  const handleCloseOnboarding = () => { setIsOnboardingOpen(false); };
+  const handleMarkAsRead = (id: string) => { const notif = state.notifications.find(n => n.id === id); if(notif) atomicUpdate('notifications', { ...notif, read: true }); onUpdateState((current) => ({ ...current, notifications: current.notifications.map(n => n.id === id ? { ...n, read: true } : n) })); };
+  const handleClearNotifications = () => { state.notifications.forEach(n => { if(!n.read) atomicUpdate('notifications', { ...n, read: true }); }); onUpdateState((current) => ({ ...current, notifications: [] })); };
 
-  const handleCloseOnboarding = () => {
-    if (state.currentUser) {
-      const updatedMembers = state.members.map(m => 
-        m.id === state.currentUser?.id ? { ...m, hasSeenOnboarding: true } : m
-      );
-      atomicUpdate('members', { ...state.currentUser, hasSeenOnboarding: true });
-      onUpdateState((current) => ({
-        ...current,
-        members: updatedMembers,
-        currentUser: { ...current.currentUser!, hasSeenOnboarding: true }
-      }));
-    }
-    setIsOnboardingOpen(false);
-  };
-
-  const handleMarkAsRead = (id: string) => {
-    // Optimistic update
-    onUpdateState((current) => {
-        const updated = current.notifications.map(n => n.id === id ? { ...n, read: true } : n);
-        return { ...current, notifications: updated };
-    });
-    // Async DB update
-    const notif = state.notifications.find(n => n.id === id);
-    if(notif) atomicUpdate('notifications', { ...notif, read: true });
-  };
-
-  const handleClearNotifications = () => {
-    state.notifications.forEach(n => {
-        if(!n.read) atomicUpdate('notifications', { ...n, read: true });
-    });
-    onUpdateState((current) => ({ ...current, notifications: [] }));
-  };
-
-  // --- CONSTRUÇÃO DO MENU (IMUTÁVEL E SEGURA) ---
-  const hasColihAccess = state.currentUser.isColih || state.currentUser.role === UserRole.ADMIN;
-  const isAdmin = state.currentUser.role === UserRole.ADMIN;
+  const hasColihAccess = state.currentUser.isColih || state.currentUser.role === UserRole.ADMIN || state.currentUser.role === UserRole.COORDINATOR;
+  const isManagement = state.currentUser.role === UserRole.ADMIN || state.currentUser.role === UserRole.COORDINATOR;
 
   const menuItems = [
     { to: "/dashboard", label: "Agenda", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
     
-    // Inserção Condicional dos Itens COLIH Separados
     ...(hasColihAccess ? [
         { to: "/colih/doctors", label: "Médicos", icon: "M20 7h-4v-3c0-1.105-.895-2-2-2h-4c-1.105 0-2 .895-2 2v3h-4c-1.105 0-2 .895-2 2v11c0 1.105.895 2 2 2h16c1.105 0 2-.895 2-2v-11c0-1.105-.895-2-2-2zm-10-3h4v3h-4v-3zm0 0" },
         { to: "/colih/facilitators", label: "Facilitadores", icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" },
@@ -310,12 +212,12 @@ const Layout: React.FC<{
     { to: "/patients", label: "Pacientes", icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" },
     { to: "/social-visits", label: "AS", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
     { to: "/map", label: "Mapa", icon: "M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" },
+    { to: "/resources", label: "Materiais", icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" },
     { to: "/stats", label: "KPIs", icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
     
-    // Inserção Condicional da Aba Admin (Última Posição)
-    ...(isAdmin ? [{ 
+    ...(isManagement ? [{ 
         to: "/admin", 
-        label: "Admin", 
+        label: "Gestão", 
         icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" 
     }] : [])
   ];
@@ -396,7 +298,7 @@ const Layout: React.FC<{
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[100] animate-bounce">
                 <button onClick={handleRequestPermission} className="bg-blue-600 text-white px-4 py-2 rounded-full shadow-xl flex items-center gap-2 text-xs font-bold uppercase tracking-wide hover:bg-blue-700 transition-all">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-                    Ativar Notificações
+                    Ativar Alertas
                 </button>
             </div>
           )}
@@ -406,11 +308,11 @@ const Layout: React.FC<{
             <Route path="/social-visits" element={<SocialVisitsPage state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} />} />
             <Route path="/history" element={<PatientHistory state={state} isHospitalMode={isHospitalMode} />} />
             <Route path="/map" element={<MapPage state={state} isHospitalMode={isHospitalMode} />} />
+            <Route path="/resources" element={<ResourcesPage state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} />} /> 
             <Route path="/stats" element={<StatsReport state={state} isHospitalMode={isHospitalMode} />} />
             <Route path="/logs" element={<LogsPage state={state} isHospitalMode={isHospitalMode} />} />
             <Route path="/admin" element={<AdminPanel state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} />} />
-            {/* Novas Rotas COLIH */}
-            {(state.currentUser.isColih || state.currentUser.role === UserRole.ADMIN) && (
+            {hasColihAccess && (
                 <>
                     <Route path="/colih/doctors" element={<ColihPage state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} view="doctors" />} />
                     <Route path="/colih/facilitators" element={<ColihPage state={state} onUpdateState={onUpdateState} isHospitalMode={isHospitalMode} view="facilitators" />} />
@@ -445,7 +347,6 @@ const Layout: React.FC<{
             <div className={`absolute bottom-0 left-0 right-0 rounded-t-3xl p-6 pb-24 animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border-t border-gray-800' : 'bg-white'}`}>
                 <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-6 opacity-30 shrink-0"></div>
                 <div className="space-y-2 overflow-y-auto custom-scrollbar flex-grow">
-                    {/* Renderiza o Menu Completo no Overlay */}
                     {menuItems.map(item => (
                         <Link key={item.to} to={item.to} onClick={() => setIsSidebarOpen(false)} className={`flex items-center gap-4 p-4 rounded-xl ${isHospitalMode ? 'bg-[#1a1c1e] text-white' : 'bg-gray-50 text-gray-800'}`}>
                             <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg></div>
@@ -479,59 +380,56 @@ const App: React.FC = () => {
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
   const [isHospitalMode, setIsHospitalMode] = useState(false);
   const [isNightMode, setIsNightMode] = useState(false);
-  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(true);
 
   useEffect(() => {
-    const init = async () => {
-      setIsSyncing(true);
-      try {
-        const s = await loadState();
-        setState(s);
-      } catch (e) {
-        console.error("Failed to load state", e);
-      } finally {
+    loadState().then(loaded => {
+        setState(loaded);
         setIsSyncing(false);
-      }
-    };
-    init();
+    });
   }, []);
 
   const handleChangePassword = async (newPass: string) => {
-    const client = supabase;
-    if (!client) return;
-    const { error } = await client.auth.updateUser({ password: newPass });
-    if (error) {
-      alert("Erro ao alterar senha: " + error.message);
-    } else {
-      alert("Senha alterada com sucesso.");
-      setIsChangePasswordModalOpen(false);
-    }
+      if (!state.currentUser) return;
+      try {
+          const updatedUser = { ...state.currentUser, password: newPass };
+          if (supabase) {
+              const { error } = await supabase.auth.updateUser({ password: newPass });
+              if (error) throw error;
+          }
+          await atomicUpdate('members', updatedUser);
+          setState(prev => ({ ...prev, currentUser: updatedUser }));
+          setIsChangePasswordOpen(false);
+          alert("Senha alterada com sucesso.");
+      } catch (err: any) {
+          alert("Erro ao alterar senha: " + err.message);
+      }
   };
 
   return (
     <Router>
-      <Layout 
-        state={state}
-        onUpdateState={setState}
-        isPrivacyMode={isPrivacyMode}
-        onTogglePrivacy={() => setIsPrivacyMode(prev => !prev)}
-        isHospitalMode={isHospitalMode}
-        onToggleHospitalMode={() => setIsHospitalMode(prev => !prev)}
-        isNightMode={isNightMode}
-        onToggleNightMode={() => setIsNightMode(prev => !prev)}
-        onChangePasswordClick={() => setIsChangePasswordModalOpen(true)}
-        isSyncing={isSyncing}
-      />
-      {state.currentUser && (
-        <ChangePasswordModal 
-          isOpen={isChangePasswordModalOpen}
-          onClose={() => setIsChangePasswordModalOpen(false)}
-          currentUser={state.currentUser}
-          onConfirm={handleChangePassword}
-          isHospitalMode={isHospitalMode}
+        <Layout 
+            state={state} 
+            onUpdateState={setState} 
+            isPrivacyMode={isPrivacyMode} 
+            onTogglePrivacy={() => setIsPrivacyMode(!isPrivacyMode)}
+            isHospitalMode={isHospitalMode}
+            onToggleHospitalMode={() => setIsHospitalMode(!isHospitalMode)}
+            isNightMode={isNightMode}
+            onToggleNightMode={() => setIsNightMode(!isNightMode)}
+            onChangePasswordClick={() => setIsChangePasswordOpen(true)}
+            isSyncing={isSyncing}
         />
-      )}
+        {state.currentUser && (
+            <ChangePasswordModal 
+                isOpen={isChangePasswordOpen} 
+                onClose={() => setIsChangePasswordOpen(false)} 
+                currentUser={state.currentUser} 
+                onConfirm={handleChangePassword} 
+                isHospitalMode={isHospitalMode}
+            />
+        )}
     </Router>
   );
 };

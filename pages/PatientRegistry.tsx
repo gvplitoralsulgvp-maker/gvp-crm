@@ -26,6 +26,9 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
   // Lista para animação de saída
   const [closingIds, setClosingIds] = useState<Set<string>>(new Set());
 
+  const isCoordinator = state.currentUser?.role === UserRole.COORDINATOR;
+  const userRegional = state.currentUser?.regional;
+
   useEffect(() => {
       if (location.state && location.state.searchQuery) {
           setSearchQuery(location.state.searchQuery);
@@ -33,10 +36,15 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
   }, [location.state]);
 
   const activePatients = useMemo(() => {
-      return state.patients
-        .filter(p => p.active && !optimisticArchived.has(p.id))
-        .sort((a,b) => a.name.localeCompare(b.name));
-  }, [state.patients, optimisticArchived]);
+      let patients = state.patients
+        .filter(p => p.active && !optimisticArchived.has(p.id));
+
+      if (isCoordinator && userRegional) {
+          patients = patients.filter(p => p.regional === userRegional);
+      }
+
+      return patients.sort((a,b) => a.name.localeCompare(b.name));
+  }, [state.patients, optimisticArchived, isCoordinator, userRegional]);
 
   const filteredPatients = useMemo(() => {
       if (!searchQuery) return activePatients;
@@ -47,6 +55,13 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
           p.treatment?.toLowerCase().includes(lower)
       );
   }, [activePatients, searchQuery]);
+
+  const availableHospitals = useMemo(() => {
+      if (isCoordinator && userRegional) {
+          return state.hospitals.filter(h => h.regional === userRegional);
+      }
+      return state.hospitals;
+  }, [state.hospitals, isCoordinator, userRegional]);
 
   const animateAndArchive = (id: string, updatedPatients: Patient[]) => {
       setClosingIds(prev => new Set(prev).add(id));
@@ -63,38 +78,55 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
 
       const isColihUser = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
 
-      // FASE 2: Paciente já teve alta médica, agora é o fechamento COLIH (HLC-7)
-      if (patient.isMedicalDischarge) {
-          if (!isColihUser) {
-              alert("Apenas membros da COLIH podem realizar o arquivamento definitivo (HLC-7).");
+      try {
+          // FASE 2: Paciente já teve alta médica, agora é o fechamento COLIH (HLC-7)
+          if (patient.isMedicalDischarge) {
+              if (!isColihUser) {
+                  alert("Apenas membros da COLIH podem realizar o arquivamento definitivo (HLC-7).");
+                  return;
+              }
+              if (window.confirm(`[PROTOCOLO COLIH]\n\nConfirma o envio do formulário HLC-7 para o caso de ${name}?\n\nIsso arquivará o paciente definitivamente.`)) {
+                  // Prepara o objeto final atualizado
+                  const archivedPatient = { 
+                      ...patient, 
+                      active: false,
+                      gvpRequestPending: false, // Garante que a flag de solicitação seja removida
+                      isMedicalDischarge: true  // Mantém histórico
+                  };
+
+                  // Atualiza estado local imediatamente (Optimistic)
+                  const updatedPatients = state.patients.map(p => p.id === id ? archivedPatient : p);
+                  animateAndArchive(id, updatedPatients);
+                  setViewingPatientId(null);
+
+                  // Persiste no banco
+                  await atomicUpdate('patients', archivedPatient);
+              }
               return;
           }
-          if (window.confirm(`[PROTOCOLO COLIH]\n\nConfirma o envio do formulário HLC-7 para o caso de ${name}?\n\nIsso arquivará o paciente definitivamente.`)) {
-              const updatedPatients = state.patients.map(p => p.id === id ? { ...p, active: false } : p);
-              animateAndArchive(id, updatedPatients);
+
+          // FASE 1: Informar Alta Médica (Disponível para GVP e COLIH)
+          if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA do hospital?\n\nIsso removerá a solicitação de visita GVP, mas manterá o caso aberto para a COLIH (HLC-7).`)) {
+              const dischargedPatient = { 
+                  ...patient, 
+                  isMedicalDischarge: true,
+                  gvpRequestPending: false, // GVP sai de cena aqui
+                  active: true, // Continua ativo aguardando COLIH
+                  estimatedDischargeDate: new Date().toISOString() 
+              };
+
+              // Atualiza estado local
+              const updatedPatients = state.patients.map(p => p.id === id ? dischargedPatient : p); 
+              onUpdateState({ ...state, patients: updatedPatients });
               setViewingPatientId(null);
-              const p = updatedPatients.find(p => p.id === id);
-              if (p) await atomicUpdate('patients', p);
+
+              // Persiste no banco
+              await atomicUpdate('patients', dischargedPatient);
           }
-          return;
-      }
-
-      // FASE 1: Informar Alta Médica (Disponível para GVP e COLIH)
-      if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA do hospital?\n\nIsso removerá a solicitação de visita GVP, mas manterá o caso aberto para a COLIH (HLC-7).`)) {
-          const updatedPatients = state.patients.map(p => p.id === id ? { 
-              ...p, 
-              isMedicalDischarge: true,
-              gvpRequestPending: false, // GVP sai de cena aqui
-              active: true, // Continua ativo aguardando COLIH
-              estimatedDischargeDate: new Date().toISOString() 
-          } : p); 
-
-          // Atualiza estado visualmente (Card fica Roxo)
-          onUpdateState({ ...state, patients: updatedPatients });
-          setViewingPatientId(null);
-
-          const p = updatedPatients.find(p => p.id === id);
-          if (p) await atomicUpdate('patients', p);
+      } catch (err: any) {
+          console.error("Erro no processo de alta:", err);
+          alert(`Erro ao salvar status do paciente: ${err.message}. Verifique se todas as colunas do banco de dados estão atualizadas.`);
+          // Reverte o estado otimista se falhar (recarregando a página ou estado anterior seria ideal, mas alerta já ajuda)
       }
   };
 
@@ -107,7 +139,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
           const updatedList = state.patients.map(p => p.id === patient.id ? updatedPatient : p); 
           let newNotifications: AppNotification[] = []; 
           if (willEnable) { 
-              const adminIds = state.members.filter(m => m.role === UserRole.ADMIN).map(m => m.id); 
+              const adminIds = state.members.filter(m => m.role === UserRole.ADMIN || m.role === UserRole.COORDINATOR).map(m => m.id); 
               newNotifications = adminIds.map(adminId => ({ id: crypto.randomUUID(), userId: adminId, message: `🆘 Solicitação COLIH: Paciente ${patient.name} precisa de visita GVP.`, type: 'warning', read: false, timestamp: new Date().toISOString() })); 
           } 
           onUpdateState({ ...state, patients: updatedList, notifications: [...newNotifications, ...state.notifications] }); 
@@ -154,8 +186,9 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
           onUpdateState({ ...state, patients: updatedPatients });
           setIsEditModalOpen(false);
           setEditingPatient(null);
-      } catch (err) {
-          alert("Erro ao salvar paciente.");
+      } catch (err: any) {
+          console.error(err);
+          alert(`Erro ao salvar paciente: ${err.message || 'Verifique o banco de dados.'}`);
       }
   };
 
@@ -167,7 +200,9 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h2 className={`text-xl font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Pacientes Ativos</h2>
-                    <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Gestão de internados e solicitações.</p>
+                    <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Gestão de internados. {isCoordinator && userRegional && <span className="bg-purple-100 text-purple-700 px-2 rounded font-bold">{userRegional}</span>}
+                    </p>
                 </div>
                 <div className="flex gap-2 w-full md:w-auto">
                     <input 
@@ -180,7 +215,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                     <Button 
                         className="bg-blue-600 hover:bg-blue-700 rounded-xl" 
                         onClick={() => { 
-                            setEditingPatient({ active: true, spiritualStatus: 'Sim' }); 
+                            setEditingPatient({ active: true, spiritualStatus: 'Sim', regional: userRegional || '' }); 
                             setIsEditModalOpen(true); 
                         }}
                     >
@@ -339,7 +374,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                                     }}
                                 >
                                     <option value="">Selecione...</option>
-                                    {state.hospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                                    {availableHospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
                                 </select>
                             </div>
                             <div className="space-y-1">

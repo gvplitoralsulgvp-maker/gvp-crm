@@ -1,10 +1,11 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { AppState, Doctor, ColihVisit, ColihInteractionType, Member, Hospital, ALL_REGIONALS, CityMapping } from '../types';
+import { AppState, Doctor, ColihVisit, ColihInteractionType, Member, Hospital, ALL_REGIONALS, CityMapping, UserRole } from '../types';
 import { Button } from '../components/Button';
 import { atomicUpdate, atomicDelete } from '../services/storageService';
 import { getRegionalByCity } from '../services/geoService';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 const INTERACTION_TYPES: { id: ColihInteractionType, label: string }[] = [
     { id: 'visit', label: 'Visita de Rotina' },
@@ -16,6 +17,7 @@ const INTERACTION_TYPES: { id: ColihInteractionType, label: string }[] = [
 // --- MODAIS AUXILIARES (Atualizados com Autocomplete de Regional) ---
 
 const DoctorModal: React.FC<{ isOpen: boolean; onClose: () => void; doctor?: Doctor; hospitals: Hospital[]; cityMappings: CityMapping[]; onSave: (d: Doctor) => void; isHospitalMode?: boolean }> = ({ isOpen, onClose, doctor, cityMappings, onSave, isHospitalMode }) => {
+    // ... (mesmo conteúdo, apenas imports e funções onSave chamadas pelo pai) ...
     const [formData, setFormData] = useState<Partial<Doctor>>({});
     useEffect(() => { if (doctor) setFormData(doctor); else setFormData({ cooperationLevel: 'Unknown', isConsultant: false, treatsPediatric: false }); }, [doctor]);
     
@@ -66,7 +68,17 @@ const FacilitatorModal: React.FC<{ isOpen: boolean; onClose: () => void; member?
                 <div className="bg-teal-600 px-6 py-5 flex justify-between items-center shrink-0"><h3 className="text-white font-bold text-lg">Editar Membro COLIH</h3><button onClick={onClose} className="text-white hover:text-teal-200 text-2xl leading-none">&times;</button></div>
                 <div className="p-6 space-y-4">
                     <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Nome</label><input disabled className={`w-full p-3 border rounded-xl outline-none opacity-60 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-100'}`} value={formData.name || ''} /></div>
-                    <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Classificação</label><select className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={formData.colihClassification || 'Member'} onChange={e => setFormData({...formData, colihClassification: e.target.value as any})}><option value="Member">Membro Regular</option><option value="Facilitator">Facilitador</option><option value="Secretary">Secretário</option><option value="Coordinator">Coordenador</option></select></div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase text-gray-500">Classificação</label>
+                        <select className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={formData.colihClassification || 'Member'} onChange={e => setFormData({...formData, colihClassification: e.target.value as any})}>
+                            <option value="Member">Membro Regular</option>
+                            <option value="Facilitator">Facilitador</option>
+                            <option value="Assistant">Ajudante/Assistente</option>
+                            <option value="Secretary">Secretário</option>
+                            <option value="Coordinator">Coordenador Regional</option>
+                            <option value="President">Presidente</option>
+                        </select>
+                    </div>
                     <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Cidade</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={formData.city || ''} onChange={e => handleCityChange(e.target.value)} /></div>
                     <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Regional</label><select className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={formData.regional || ''} onChange={e => setFormData({...formData, regional: e.target.value})}><option value="">Selecione...</option>{ALL_REGIONALS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
                     <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => onSave({...formData} as Member)}>Salvar</Button></div>
@@ -77,6 +89,7 @@ const FacilitatorModal: React.FC<{ isOpen: boolean; onClose: () => void; member?
 };
 
 const HospitalRegionalModal: React.FC<{ isOpen: boolean; onClose: () => void; hospital?: Hospital; members: Member[]; cityMappings: CityMapping[]; onSave: (h: Hospital) => void; isHospitalMode?: boolean }> = ({ isOpen, onClose, hospital, members, cityMappings, onSave, isHospitalMode }) => {
+    // ... mantido ...
     const [formData, setFormData] = useState<Partial<Hospital>>({});
     useEffect(() => { if (hospital) setFormData(hospital); }, [hospital]);
     
@@ -101,6 +114,7 @@ const HospitalRegionalModal: React.FC<{ isOpen: boolean; onClose: () => void; ho
     );
 };
 
+// ... (PresentationModal e VisitModal mantidos iguais) ...
 const VisitModal: React.FC<{ isOpen: boolean; onClose: () => void; doctor: Doctor; currentUserId?: string; onSave: (notes: string, date: string, memberIds: string[], type: ColihInteractionType) => void; isHospitalMode?: boolean }> = ({ isOpen, onClose, doctor, currentUserId, onSave, isHospitalMode }) => {
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [notes, setNotes] = useState('');
@@ -123,6 +137,7 @@ const VisitModal: React.FC<{ isOpen: boolean; onClose: () => void; doctor: Docto
     );
 };
 
+// ... PresentationModal ...
 const PresentationModal: React.FC<{
     isOpen: boolean;
     onClose: () => void;
@@ -136,6 +151,7 @@ const PresentationModal: React.FC<{
     autoSelectId?: string | null; 
     onClearAutoSelect?: () => void; 
 }> = ({ isOpen, onClose, presentationToEdit, doctors, hospitals, members, onSave, onAddNew, isHospitalMode, autoSelectId, onClearAutoSelect }) => {
+    // ... mantido ...
     const [targetType, setTargetType] = useState<'hospital' | 'doctor'>('hospital');
     const [selectedId, setSelectedId] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -192,6 +208,7 @@ const PresentationModal: React.FC<{
                     <button onClick={onClose} className="text-white hover:text-purple-200 text-2xl leading-none">&times;</button>
                 </div>
                 <div className="p-6 overflow-y-auto custom-scrollbar space-y-5">
+                    {/* ... campos mantidos ... */}
                     {!presentationToEdit && (
                         <div className={`p-3 rounded-xl border flex items-center justify-between ${status === 'COMPLETED' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
                             <span className="text-xs font-bold uppercase text-gray-600">Já foi realizada?</span>
@@ -227,7 +244,9 @@ const PresentationModal: React.FC<{
     );
 };
 
+// ... PresentationsTab e ColihPage (componentes principais) ...
 const PresentationsTab: React.FC<{ visits: ColihVisit[]; doctors: Doctor[]; hospitals: Hospital[]; members: Member[]; goal: number; isHospitalMode?: boolean; onEdit: (v: ColihVisit) => void; onDelete: (id: string) => void; onUpdateGoal: (newGoal: number) => void; }> = ({ visits, doctors, hospitals, members, goal, isHospitalMode, onEdit, onDelete, onUpdateGoal }) => {
+    // ... mantido ...
     const currentYear = new Date().getFullYear();
     const thisYearVisits = visits.filter(v => new Date(v.date).getFullYear() === currentYear && v.status === 'COMPLETED');
     const progress = Math.min((thisYearVisits.length / (goal || 1)) * 100, 100);
@@ -237,6 +256,7 @@ const PresentationsTab: React.FC<{ visits: ColihVisit[]; doctors: Doctor[]; hosp
     return (
         <div className="space-y-6">
             <div className={`p-6 rounded-2xl border flex flex-col md:flex-row items-center gap-6 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700' : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white'}`}>
+                {/* ... conteúdo da tab ... */}
                 <div className="flex-grow">
                     <h3 className={`font-bold text-lg ${isHospitalMode ? 'text-white' : 'text-white'}`}>Meta Anual de Apresentações</h3>
                     <div className="flex items-center gap-2 mt-1">
@@ -264,6 +284,7 @@ export const ColihPage: React.FC<{
     isHospitalMode?: boolean,
     view: 'doctors' | 'facilitators' | 'hospitals' | 'presentations' 
 }> = ({ state, onUpdateState, isHospitalMode, view }) => {
+    // ... states ...
     const [searchTerm, setSearchTerm] = useState('');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [editingDoctor, setEditingDoctor] = useState<Doctor | undefined>(undefined);
@@ -280,25 +301,132 @@ export const ColihPage: React.FC<{
     const [facilitatorFilter, setFacilitatorFilter] = useState({ regional: '', hospitalId: '' });
     const [hospitalFilter, setHospitalFilter] = useState({ city: '', regional: '' });
 
+    // Modal de Confirmação
+    const [confirmConfig, setConfirmConfig] = useState<{isOpen: boolean, title: string, description: string, onConfirm: () => void} | null>(null);
+
+    const isCoordinator = state.currentUser?.role === UserRole.COORDINATOR;
+    const userRegional = state.currentUser?.regional;
+
     // Utils and Memos
     const getStatusColor = (lastVisit?: string) => { if (!lastVisit) return 'bg-gray-400'; const months = (new Date().getTime() - new Date(lastVisit).getTime()) / (1000 * 3600 * 24 * 30); if (months >= 6) return 'bg-red-500'; if (months >= 5) return 'bg-yellow-500'; return 'bg-green-500'; };
     const getStatusText = (lastVisit?: string) => { if (!lastVisit) return 'Nunca Visitado'; const months = Math.floor((new Date().getTime() - new Date(lastVisit).getTime()) / (1000 * 3600 * 24 * 30)); if (months >= 6) return `Atrasado (${months} meses)`; if (months >= 5) return `Vence em breve (${months} meses)`; return `Em dia (${months} meses)`; };
     const uniqueSpecialties = useMemo(() => Array.from(new Set(state.doctors.map(d => d.specialty).filter(Boolean))).sort(), [state.doctors]);
     const uniqueCities = useMemo(() => Array.from(new Set(state.hospitals.map(h => h.city).filter(Boolean))).sort(), [state.hospitals]);
     
-    const filteredDoctors = useMemo(() => { let result = state.doctors.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()) || (d.responsibleMemberName && d.responsibleMemberName.toLowerCase().includes(searchTerm.toLowerCase()))); if (doctorFilter.status === 'visited') result = result.filter(d => !!d.lastVisitDate); if (doctorFilter.status === 'not_visited') result = result.filter(d => !d.lastVisitDate); if (doctorFilter.specialty) result = result.filter(d => d.specialty === doctorFilter.specialty); if (doctorFilter.regional) result = result.filter(d => d.regional === doctorFilter.regional); result.sort((a, b) => { if (doctorFilter.sort === 'name') return a.name.localeCompare(b.name); if (doctorFilter.sort === 'visit_desc') return (b.lastVisitDate || '').localeCompare(a.lastVisitDate || ''); if (doctorFilter.sort === 'visit_asc') return (a.lastVisitDate || '').localeCompare(b.lastVisitDate || ''); return 0; }); return result; }, [state.doctors, searchTerm, doctorFilter]);
-    
-    const filteredFacilitators = useMemo(() => { let result = state.members.filter(m => m.isColih && m.colihClassification === 'Facilitator' && m.name.toLowerCase().includes(searchTerm.toLowerCase())); if (facilitatorFilter.regional) result = result.filter(m => m.regional === facilitatorFilter.regional); if (facilitatorFilter.hospitalId) { const hospital = state.hospitals.find(h => h.id === facilitatorFilter.hospitalId); if (hospital && hospital.responsibleMemberIds) result = result.filter(m => hospital.responsibleMemberIds!.includes(m.id)); else if (facilitatorFilter.hospitalId) result = []; } return result.sort((a,b) => a.name.localeCompare(b.name)); }, [state.members, searchTerm, facilitatorFilter, state.hospitals]);
-    
-    const filteredHospitals = useMemo(() => { let result = state.hospitals.filter(h => h.name.toLowerCase().includes(searchTerm.toLowerCase())); if (hospitalFilter.city) result = result.filter(h => h.city === hospitalFilter.city); if (hospitalFilter.regional) result = result.filter(h => h.regional === hospitalFilter.regional); return result.sort((a,b) => a.name.localeCompare(b.name)); }, [state.hospitals, searchTerm, hospitalFilter]);
+    const filteredDoctors = useMemo(() => { 
+        let result = state.doctors.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()) || (d.responsibleMemberName && d.responsibleMemberName.toLowerCase().includes(searchTerm.toLowerCase()))); 
+        
+        if (isCoordinator && userRegional) {
+            result = result.filter(d => d.regional === userRegional);
+        }
 
-    // Handlers
-    const handleSaveDoctor = async (doc: Doctor) => { try { await atomicUpdate('doctors', doc); const updated = state.doctors.some(d => d.id === doc.id) ? state.doctors.map(d => d.id === doc.id ? doc : d) : [...state.doctors, doc]; onUpdateState({ ...state, doctors: updated }); setPendingAutoSelect(doc.id); setIsDoctorModalOpen(false); } catch (e) { alert("Erro ao salvar médico."); } };
-    const handleSaveMember = async (mem: Member) => { try { await atomicUpdate('members', mem); const updated = state.members.map(m => m.id === mem.id ? mem : m); onUpdateState({ ...state, members: updated }); setIsFacilitatorModalOpen(false); } catch (e) { alert("Erro ao salvar membro."); } };
-    const handleSaveHospital = async (hos: Hospital) => { try { await atomicUpdate('hospitals', hos); const updated = state.hospitals.map(h => h.id === hos.id ? hos : h); onUpdateState({ ...state, hospitals: updated }); setPendingAutoSelect(hos.id); setIsHospitalModalOpen(false); } catch (e) { alert("Erro ao salvar hospital."); } };
-    const handleSaveVisit = async (notes: string, date: string, memberIds: string[], type: ColihInteractionType) => { if (!visitingDoctor) return; const visit: ColihVisit = { id: crypto.randomUUID(), doctorId: visitingDoctor.id, date, memberIds, notes, interactionType: type, status: 'COMPLETED', createdAt: new Date().toISOString() }; const updatedDoctor = { ...visitingDoctor, lastVisitDate: date }; try { await atomicUpdate('colih_visits', visit); await atomicUpdate('doctors', updatedDoctor); const updatedDoctors = state.doctors.map(d => d.id === updatedDoctor.id ? updatedDoctor : d); const updatedVisits = [...state.colihVisits, visit]; onUpdateState({ ...state, doctors: updatedDoctors, colihVisits: updatedVisits }); setVisitingDoctor(undefined); } catch (e) { alert("Erro ao registrar visita."); } };
-    const handleSavePresentation = async (data: Partial<ColihVisit>) => { const visit: ColihVisit = { id: data.id || crypto.randomUUID(), createdAt: presentationToEdit?.createdAt || new Date().toISOString(), date: data.date || new Date().toISOString(), memberIds: data.memberIds || [], notes: data.notes || '', interactionType: 'presentation', status: data.status || 'SCHEDULED', hospitalId: data.hospitalId, doctorId: data.doctorId, hlc38Presented: data.hlc38Presented, collaboratorInterest: data.collaboratorInterest }; try { await atomicUpdate('colih_visits', visit); const updatedVisits = data.id ? state.colihVisits.map(v => v.id === data.id ? visit : v) : [...state.colihVisits, visit]; onUpdateState({ ...state, colihVisits: updatedVisits }); setIsPresentationModalOpen(false); setPresentationToEdit(undefined); } catch (e) { alert("Erro ao salvar apresentação."); } };
-    const handleDeletePresentation = async (id: string) => { if(!window.confirm("Deseja realmente excluir este registro?")) return; try { await atomicDelete('colih_visits', id); const updated = state.colihVisits.filter(v => v.id !== id); onUpdateState({ ...state, colihVisits: updated }); } catch (e) { alert("Erro ao excluir."); } };
+        if (doctorFilter.status === 'visited') result = result.filter(d => !!d.lastVisitDate); 
+        if (doctorFilter.status === 'not_visited') result = result.filter(d => !d.lastVisitDate); 
+        if (doctorFilter.specialty) result = result.filter(d => d.specialty === doctorFilter.specialty); 
+        if (doctorFilter.regional) result = result.filter(d => d.regional === doctorFilter.regional); 
+        
+        result.sort((a, b) => { if (doctorFilter.sort === 'name') return a.name.localeCompare(b.name); if (doctorFilter.sort === 'visit_desc') return (b.lastVisitDate || '').localeCompare(a.lastVisitDate || ''); if (doctorFilter.sort === 'visit_asc') return (a.lastVisitDate || '').localeCompare(b.lastVisitDate || ''); return 0; }); return result; 
+    }, [state.doctors, searchTerm, doctorFilter, isCoordinator, userRegional]);
+    
+    const filteredFacilitators = useMemo(() => { 
+        let result = state.members.filter(m => m.isColih && m.colihClassification === 'Facilitator' && m.name.toLowerCase().includes(searchTerm.toLowerCase())); 
+        
+        if (isCoordinator && userRegional) {
+            result = result.filter(m => m.regional === userRegional);
+        }
+
+        if (facilitatorFilter.regional) result = result.filter(m => m.regional === facilitatorFilter.regional); 
+        if (facilitatorFilter.hospitalId) { const hospital = state.hospitals.find(h => h.id === facilitatorFilter.hospitalId); if (hospital && hospital.responsibleMemberIds) result = result.filter(m => hospital.responsibleMemberIds!.includes(m.id)); else if (facilitatorFilter.hospitalId) result = []; } return result.sort((a,b) => a.name.localeCompare(b.name)); 
+    }, [state.members, searchTerm, facilitatorFilter, state.hospitals, isCoordinator, userRegional]);
+    
+    const filteredHospitals = useMemo(() => { 
+        let result = state.hospitals.filter(h => h.name.toLowerCase().includes(searchTerm.toLowerCase())); 
+        
+        if (isCoordinator && userRegional) {
+            result = result.filter(h => h.regional === userRegional);
+        }
+
+        if (hospitalFilter.city) result = result.filter(h => h.city === hospitalFilter.city); 
+        if (hospitalFilter.regional) result = result.filter(h => h.regional === hospitalFilter.regional); 
+        return result.sort((a,b) => a.name.localeCompare(b.name)); 
+    }, [state.hospitals, searchTerm, hospitalFilter, isCoordinator, userRegional]);
+
+    // Handlers (Mantidos)
+    const handleSaveDoctor = async (doc: Doctor) => { 
+        try { 
+            await atomicUpdate('doctors', doc); 
+            const updated = state.doctors.some(d => d.id === doc.id) ? state.doctors.map(d => d.id === doc.id ? doc : d) : [...state.doctors, doc]; 
+            onUpdateState({ ...state, doctors: updated }); 
+            setPendingAutoSelect(doc.id); 
+            setIsDoctorModalOpen(false); 
+        } catch (e: any) { 
+            console.error(e); 
+            alert(`Erro ao salvar médico: ${e.message || 'Verifique o banco de dados.'}`); 
+        } 
+    };
+    const handleSaveMember = async (mem: Member) => { 
+        try { 
+            await atomicUpdate('members', mem); 
+            const updated = state.members.map(m => m.id === mem.id ? mem : m); 
+            onUpdateState({ ...state, members: updated }); 
+            setIsFacilitatorModalOpen(false); 
+        } catch (e: any) { 
+            console.error(e); 
+            alert(`Erro ao salvar membro: ${e.message || 'Coluna ausente no DB? Rode o script de migração.'}`); 
+        } 
+    };
+    const handleSaveHospital = async (hos: Hospital) => { 
+        try { 
+            await atomicUpdate('hospitals', hos); 
+            const updated = state.hospitals.map(h => h.id === hos.id ? hos : h); 
+            onUpdateState({ ...state, hospitals: updated }); 
+            setPendingAutoSelect(hos.id); 
+            setIsHospitalModalOpen(false); 
+        } catch (e: any) { 
+            console.error(e); 
+            alert(`Erro ao salvar hospital: ${e.message}`); 
+        } 
+    };
+    const handleSaveVisit = async (notes: string, date: string, memberIds: string[], type: ColihInteractionType) => { 
+        if (!visitingDoctor) return; 
+        const visit: ColihVisit = { id: crypto.randomUUID(), doctorId: visitingDoctor.id, date, memberIds, notes, interactionType: type, status: 'COMPLETED', createdAt: new Date().toISOString() }; 
+        const updatedDoctor = { ...visitingDoctor, lastVisitDate: date }; 
+        try { 
+            await atomicUpdate('colih_visits', visit); 
+            await atomicUpdate('doctors', updatedDoctor); 
+            const updatedDoctors = state.doctors.map(d => d.id === updatedDoctor.id ? updatedDoctor : d); 
+            const updatedVisits = [...state.colihVisits, visit]; 
+            onUpdateState({ ...state, doctors: updatedDoctors, colihVisits: updatedVisits }); 
+            setVisitingDoctor(undefined); 
+        } catch (e: any) { alert(`Erro ao registrar visita: ${e.message}`); } 
+    };
+    const handleSavePresentation = async (data: Partial<ColihVisit>) => { 
+        const visit: ColihVisit = { id: data.id || crypto.randomUUID(), createdAt: presentationToEdit?.createdAt || new Date().toISOString(), date: data.date || new Date().toISOString(), memberIds: data.memberIds || [], notes: data.notes || '', interactionType: 'presentation', status: data.status || 'SCHEDULED', hospitalId: data.hospitalId, doctorId: data.doctorId, hlc38Presented: data.hlc38Presented, collaboratorInterest: data.collaboratorInterest }; 
+        try { 
+            await atomicUpdate('colih_visits', visit); 
+            const updatedVisits = data.id ? state.colihVisits.map(v => v.id === data.id ? visit : v) : [...state.colihVisits, visit]; 
+            onUpdateState({ ...state, colihVisits: updatedVisits }); 
+            setIsPresentationModalOpen(false); 
+            setPresentationToEdit(undefined); 
+        } catch (e: any) { alert(`Erro ao salvar apresentação: ${e.message}`); } 
+    };
+    const handleDeletePresentation = (id: string) => { 
+        setConfirmConfig({
+            isOpen: true,
+            title: 'Excluir Apresentação',
+            description: 'Tem certeza que deseja excluir este registro de apresentação? Esta ação não pode ser desfeita.',
+            onConfirm: async () => {
+                try { 
+                    await atomicDelete('colih_visits', id); 
+                    const updated = state.colihVisits.filter(v => v.id !== id); 
+                    onUpdateState({ ...state, colihVisits: updated }); 
+                    setConfirmConfig(null);
+                } catch (e) { 
+                    alert("Erro ao excluir."); 
+                } 
+            }
+        });
+    };
 
     const getPageTitle = () => {
         switch(view) {
@@ -310,14 +438,26 @@ export const ColihPage: React.FC<{
         }
     }
 
+    // Filtrar listas para modais
+    const availableMembers = useMemo(() => {
+        if (isCoordinator && userRegional) {
+            return state.members.filter(m => m.regional === userRegional);
+        }
+        return state.members;
+    }, [state.members, isCoordinator, userRegional]);
+
     return (
         <>
             <div className="space-y-6 pb-12 animate-fade-in">
+                {/* ... conteúdo da página mantido ... */}
                 <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'} p-6 rounded-2xl border flex flex-col gap-4`}>
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <div>
                             <h2 className={`text-xl font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{getPageTitle()}</h2>
-                            <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Gestão específica para Comissão de Ligação com Hospitais.</p>
+                            <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                Gestão específica para Comissão de Ligação com Hospitais.
+                                {isCoordinator && userRegional && <span className="bg-teal-100 text-teal-700 px-2 rounded font-bold ml-2 text-xs">{userRegional}</span>}
+                            </p>
                         </div>
                         <div className="flex gap-2 w-full md:w-auto">
                             <input type="text" placeholder="Buscar..." className={`flex-grow md:w-64 p-2.5 rounded-xl border-2 text-sm outline-none focus:border-teal-500 transition-all ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50 border-gray-100'}`} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
@@ -331,6 +471,7 @@ export const ColihPage: React.FC<{
                 {view === 'doctors' && (
                     <div className="space-y-4">
                         <div className={`p-4 rounded-xl border flex flex-wrap items-center gap-3 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                            {/* ... filtros ... */}
                             <div className={`flex items-center p-1 rounded-lg border ${isHospitalMode ? 'bg-black/20 border-gray-700' : 'bg-gray-200/50 border-gray-200'}`}><button onClick={() => setViewMode('grid')} className={`p-1.5 rounded transition-all ${viewMode === 'grid' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z" /></svg></button><button onClick={() => setViewMode('list')} className={`p-1.5 rounded transition-all ${viewMode === 'list' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button></div>
                             <div className="w-px h-6 bg-gray-300 mx-1"></div>
                             <select className={`p-2 rounded-lg text-xs font-bold border outline-none ${isHospitalMode ? 'bg-[#212327] border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-700'}`} value={doctorFilter.status} onChange={e => setDoctorFilter({...doctorFilter, status: e.target.value})}><option value="all">Todos os Status</option><option value="visited">Visitados</option><option value="not_visited">Não Visitados</option></select>
@@ -373,7 +514,8 @@ export const ColihPage: React.FC<{
                 {view === 'facilitators' && (
                     <div className="space-y-4">
                         <div className={`p-4 rounded-xl border flex flex-wrap items-center gap-3 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
-                            <div className={`flex items-center p-1 rounded-lg border ${isHospitalMode ? 'bg-black/20 border-gray-700' : 'bg-gray-200/50 border-gray-200'}`}><button onClick={() => setViewMode('grid')} className={`p-1.5 rounded transition-all ${viewMode === 'grid' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z" /></svg></button><button onClick={() => setViewMode('list')} className={`p-1.5 rounded transition-all ${viewMode === 'list' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button></div>
+                            {/* ... filtros ... */}
+                            <div className={`flex items-center p-1 rounded-lg border ${isHospitalMode ? 'bg-black/20 border-gray-700' : 'bg-gray-200/50 border-gray-200'}`}><button onClick={() => setViewMode('grid')} className={`p-1.5 rounded transition-all ${viewMode === 'grid' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z" /></svg></button><button onClick={() => setViewMode('list')} className={`p-1.5 rounded transition-all ${viewMode === 'list' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button></div>
                             <div className="w-px h-6 bg-gray-300 mx-1"></div>
                             <select className={`p-2 rounded-lg text-xs font-bold border outline-none ${isHospitalMode ? 'bg-[#212327] border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-700'}`} value={facilitatorFilter.regional} onChange={e => setFacilitatorFilter({...facilitatorFilter, regional: e.target.value})}><option value="">Todas Regionais</option>{ALL_REGIONALS.map(r => <option key={r} value={r}>{r}</option>)}</select>
                             <select className={`p-2 rounded-lg text-xs font-bold border outline-none ${isHospitalMode ? 'bg-[#212327] border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-700'}`} value={facilitatorFilter.hospitalId} onChange={e => setFacilitatorFilter({...facilitatorFilter, hospitalId: e.target.value})}><option value="">Todos Hospitais</option>{state.hospitals.sort((a,b) => a.name.localeCompare(b.name)).map(h => <option key={h.id} value={h.id}>{h.name}</option>)}</select>
@@ -395,7 +537,7 @@ export const ColihPage: React.FC<{
                 {/* --- 3. HOSPITAIS --- */}
                 {view === 'hospitals' && (
                     <div className="space-y-4">
-                        <div className={`p-4 rounded-xl border flex flex-wrap items-center gap-3 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700' : 'bg-gray-50 border-gray-200'}`}><div className={`flex items-center p-1 rounded-lg border ${isHospitalMode ? 'bg-black/20 border-gray-700' : 'bg-gray-200/50 border-gray-200'}`}><button onClick={() => setViewMode('grid')} className={`p-1.5 rounded transition-all ${viewMode === 'grid' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z" /></svg></button><button onClick={() => setViewMode('list')} className={`p-1.5 rounded transition-all ${viewMode === 'list' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button></div><div className="w-px h-6 bg-gray-300 mx-1"></div><select className={`p-2 rounded-lg text-xs font-bold border outline-none ${isHospitalMode ? 'bg-[#212327] border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-700'}`} value={hospitalFilter.city} onChange={e => setHospitalFilter({...hospitalFilter, city: e.target.value})}><option value="">Todas Cidades</option>{uniqueCities.map(c => <option key={c} value={c}>{c}</option>)}</select><select className={`p-2 rounded-lg text-xs font-bold border outline-none ${isHospitalMode ? 'bg-[#212327] border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-700'}`} value={hospitalFilter.regional} onChange={e => setHospitalFilter({...hospitalFilter, regional: e.target.value})}><option value="">Todas Regionais</option>{ALL_REGIONALS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                        <div className={`p-4 rounded-xl border flex flex-wrap items-center gap-3 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700' : 'bg-gray-50 border-gray-200'}`}><div className={`flex items-center p-1 rounded-lg border ${isHospitalMode ? 'bg-black/20 border-gray-700' : 'bg-gray-200/50 border-gray-200'}`}><button onClick={() => setViewMode('grid')} className={`p-1.5 rounded transition-all ${viewMode === 'grid' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z" /></svg></button><button onClick={() => setViewMode('list')} className={`p-1.5 rounded transition-all ${viewMode === 'list' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button></div><div className="w-px h-6 bg-gray-300 mx-1"></div><select className={`p-2 rounded-lg text-xs font-bold border outline-none ${isHospitalMode ? 'bg-[#212327] border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-700'}`} value={hospitalFilter.city} onChange={e => setHospitalFilter({...hospitalFilter, city: e.target.value})}><option value="">Todas Cidades</option>{uniqueCities.map(c => <option key={c} value={c}>{c}</option>)}</select><select className={`p-2 rounded-lg text-xs font-bold border outline-none ${isHospitalMode ? 'bg-[#212327] border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-700'}`} value={hospitalFilter.regional} onChange={e => setHospitalFilter({...hospitalFilter, regional: e.target.value})}><option value="">Todas Regionais</option>{ALL_REGIONALS.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
                         {viewMode === 'grid' ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
                                 {filteredHospitals.map(h => (
@@ -416,7 +558,7 @@ export const ColihPage: React.FC<{
                         visits={state.colihVisits.filter(v => v.interactionType === 'presentation')} 
                         doctors={state.doctors} 
                         hospitals={state.hospitals}
-                        members={state.members} 
+                        members={availableMembers} 
                         goal={state.presentationGoal}
                         isHospitalMode={isHospitalMode}
                         onEdit={(v) => { setPresentationToEdit(v); setIsPresentationModalOpen(true); }}
@@ -453,6 +595,19 @@ export const ColihPage: React.FC<{
                 autoSelectId={pendingAutoSelect} 
                 onClearAutoSelect={() => setPendingAutoSelect(null)} 
             />
+
+            {/* Modal de Confirmação */}
+            {confirmConfig && (
+                <ConfirmModal 
+                    isOpen={confirmConfig.isOpen}
+                    onClose={() => setConfirmConfig(null)}
+                    onConfirm={confirmConfig.onConfirm}
+                    title={confirmConfig.title}
+                    description={confirmConfig.description}
+                    isDestructive={true}
+                    isHospitalMode={isHospitalMode}
+                />
+            )}
         </>
     );
 };

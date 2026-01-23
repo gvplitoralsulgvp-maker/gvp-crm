@@ -83,9 +83,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ state, onLogin }) => {
             throw new Error("Perfil de voluntário não localizado. Contate o administrador.");
         }
 
-        // 3. Usa o mapeamento padronizado do app
-        const mappedProfiles = mapFromDb<Member>([profileRaw]);
-        const userSession = mappedProfiles[0];
+        // 3. Mapeamento manual para garantir compatibilidade CamelCase/SnakeCase
+        // (Similar ao loadState em storageService.ts)
+        const userSession: Member = {
+            ...profileRaw,
+            isColih: profileRaw.is_colih ?? profileRaw.isColih ?? false,
+            colihClassification: profileRaw.colih_classification ?? profileRaw.colihClassification,
+            hasSeenOnboarding: profileRaw.has_seen_onboarding ?? profileRaw.hasSeenOnboarding ?? false
+        };
 
         // 4. Verificação de status ativo (aprovado pelo admin)
         if (userSession.active !== true) {
@@ -150,7 +155,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ state, onLogin }) => {
           <div className="mt-10 pt-6 border-t border-gray-50 text-center space-y-4">
              <button onClick={() => navigate('/signup')} className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] hover:opacity-70 transition-all">Solicitar Novo Cadastro</button>
              <div className="flex justify-center">
-                 <button onClick={() => navigate('/solicitar-visita')} className="text-[9px] font-bold text-gray-400 hover:text-blue-500 uppercase tracking-widest">Portal Público COLIH</button>
+                 <button onClick={() => navigate('/solicitar-visita')} className="text-[9px] font-bold text-gray-400 hover:text-blue-500 uppercase tracking-widest">Portal Publico Anciãos</button>
              </div>
           </div>
         </div>

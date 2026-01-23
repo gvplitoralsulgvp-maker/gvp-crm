@@ -21,10 +21,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
 
   const steps: OnboardingStep[] = [
     {
-      title: "Boas-vindas ao GVP Litoral Sul",
-      description: "Este é o seu novo centro de comando para o trabalho voluntário. Unimos logística avançada e cuidado pastoral em uma única plataforma.",
+      title: "Portal GVP & COLIH Litoral Sul",
+      description: "Bem-vindo ao sistema integrado de gestão pastoral e hospitalar. Uma plataforma única para organizar visitas, apoiar pacientes e coordenar ações institucionais.",
       color: "bg-blue-600",
-      featureList: ["Sincronização Cloud em tempo real", "Acesso seguro e restrito", "Foco total na ética hospitalar"],
+      featureList: ["Integração GVP e COLIH", "Segurança de Dados Enterprise", "Sincronização em Tempo Real"],
       icon: (
         <svg className="w-12 h-12 md:w-16 md:h-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -32,10 +32,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
       )
     },
     {
-      title: "Agenda e Gestão de Escalas",
-      description: "Gerencie suas visitas com precisão. O sistema organiza duplas e rotas, garantindo que nenhum hospital fique desassistido.",
+      title: "Agenda Inteligente & Eventos",
+      description: "Gerencie escalas de duplas com facilidade. Visualize eventos (Assembleias, Reuniões), receba briefings de rota gerados por IA e relate atividades por voz.",
       color: "bg-indigo-600",
-      featureList: ["Confirmação de Dupla em segundos", "Integração com Agenda do Google/iCal", "Alertas de vagas em aberto"],
+      featureList: ["Briefing de Rota via IA", "Visualização de Eventos", "Relatórios Ditados por Voz"],
       icon: (
         <svg className="w-12 h-12 md:w-16 md:h-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
@@ -43,10 +43,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
       )
     },
     {
-      title: "Relatórios Profissionais",
-      description: "Documente cada visita de forma ética. O relato ajuda a administração a acompanhar casos críticos.",
+      title: "Gestão de Pacientes & HLC-7",
+      description: "Controle total do ciclo de atendimento: desde a solicitação GVP, acompanhamento de diretivas/S-55, até a alta médica e arquivamento administrativo.",
       color: "bg-emerald-600",
-      featureList: ["Histórico de 'Passagem de Bastão'", "Checklist de Diretivas Éticas", "Sinalização de urgência"],
+      featureList: ["Solicitações e Bandeiras", "Fluxo de Alta vs Arquivamento", "Alertas de Isolamento"],
       icon: (
         <svg className="w-12 h-12 md:w-16 md:h-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -54,21 +54,21 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
       )
     },
     {
-      title: "Mapa de Equipe",
-      description: "Visualize a localização de todos os membros e hospitais em tempo real.",
-      color: "bg-rose-600",
-      featureList: ["Localização da Equipe", "Legenda de Recência", "Alertas Visuais (+5 dias)"],
+      title: "Módulo Institucional",
+      description: "Ferramentas exclusivas para a COLIH e Assistência Social. Mapeie médicos cooperadores, agende apresentações e registre interações com o hospital.",
+      color: "bg-purple-600",
+      featureList: ["Cadastro de Médicos & Especialidades", "Visitas de Assistência Social", "Metas de Apresentações"],
       icon: (
         <svg className="w-12 h-12 md:w-16 md:h-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
         </svg>
       )
     },
     {
-      title: "Segurança Hospitalar",
-      description: "Pensado para o ambiente clínico com Modo Hospitalar e Modo Privacidade.",
+      title: "Recursos & Modo Hospitalar",
+      description: "Acesse documentos, protocolos e mapas em um ambiente visual seguro e discreto, projetado para uso ético dentro das instituições.",
       color: "bg-slate-800",
-      featureList: ["Interface Dark otimizada", "Blur de nomes sensíveis", "Filtro Amber"],
+      featureList: ["Central de Documentos & Pautas", "Modo Escuro (Hospitalar)", "Modo Privacidade (Blur)"],
       icon: (
         <svg className="w-12 h-12 md:w-16 md:h-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -169,7 +169,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
                   onClick={handleNext}
                   className={`rounded-xl md:rounded-2xl px-6 md:px-12 shadow-xl border-none text-white font-black transition-all active:scale-95 text-xs md:text-base ${current.color} hover:brightness-110`}
                 >
-                  {currentStep === steps.length - 1 ? 'Iniciar' : 'Próximo'}
+                  {currentStep === steps.length - 1 ? 'Acessar Sistema' : 'Próximo'}
                 </Button>
             </div>
           </div>

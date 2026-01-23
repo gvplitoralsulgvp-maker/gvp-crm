@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { AppState, VisitRoute, VisitSlot, Patient, Member, AppNotification, UserRole } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { AppState, VisitRoute, VisitSlot, Patient, Member, AppNotification, UserRole, AppEvent } from '../types';
 import { FullCalendar } from '../components/FullCalendar';
 import { DailyAgendaModal } from '../components/DailyAgendaModal';
 import { MyVisitModal } from '../components/MyVisitModal';
@@ -18,6 +18,48 @@ interface DashboardProps {
   isPrivacyMode: boolean;
   isHospitalMode?: boolean;
 }
+
+// --- COMPONENTES VISUAIS INTERNOS (KPIs) ---
+
+const KpiCard: React.FC<{ title: string; value: number | string; icon: React.ReactNode; colorBg: string; colorText: string; isHospitalMode?: boolean }> = ({ title, value, icon, colorBg, colorText, isHospitalMode }) => (
+  <div className={`p-4 rounded-2xl border shadow-sm flex items-center gap-4 transition-all hover:shadow-md ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+    <div className={`p-3 rounded-xl ${colorBg} ${colorText}`}>
+      {icon}
+    </div>
+    <div>
+      <p className={`text-[10px] font-bold uppercase tracking-widest ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>{title}</p>
+      <p className={`text-2xl font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{value}</p>
+    </div>
+  </div>
+);
+
+const ActivityChart: React.FC<{ data: number[]; isHospitalMode?: boolean }> = ({ data, isHospitalMode }) => {
+  const max = Math.max(...data, 1);
+  return (
+    <div className={`p-5 rounded-2xl border shadow-sm flex flex-col justify-end h-40 ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+      <div className="flex justify-between items-end h-24 gap-1">
+        {data.map((val, idx) => (
+          <div key={idx} className="flex-1 flex flex-col justify-end items-center gap-1 group">
+             <div 
+                className={`w-full rounded-t-sm transition-all relative ${val > 0 ? (isHospitalMode ? 'bg-blue-600' : 'bg-blue-500') : (isHospitalMode ? 'bg-gray-800' : 'bg-gray-100')}`}
+                style={{ height: `${(val / max) * 100}%`, minHeight: val > 0 ? '4px' : '2px' }}
+             >
+                {/* Tooltip simples */}
+                <div className="opacity-0 group-hover:opacity-100 absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-black text-white text-[9px] font-bold px-1.5 py-0.5 rounded pointer-events-none whitespace-nowrap z-10">
+                    {val} visitas
+                </div>
+             </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between mt-2 pt-2 border-t border-gray-800/10">
+         <span className="text-[9px] font-bold text-gray-400">Dia 1</span>
+         <span className="text-[9px] font-bold text-gray-400">Atividade do Mês Atual</span>
+         <span className="text-[9px] font-bold text-gray-400">Dia {data.length}</span>
+      </div>
+    </div>
+  );
+};
 
 export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPrivacyMode, isHospitalMode }) => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -38,6 +80,66 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   // Derived data
   const activePatients = state.patients.filter(p => p.active && !optimisticArchived.has(p.id));
 
+  // --- CÁLCULO DE KPIS ---
+  const { kpis, chartData } = useMemo(() => {
+      const now = new Date();
+      const currentMonthStr = now.toISOString().slice(0, 7); // YYYY-MM
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      
+      const monthVisits = state.visits.filter(v => v.date.startsWith(currentMonthStr));
+      const finishedCount = monthVisits.filter(v => v.status === 'FINISHED').length;
+      const scheduledCount = monthVisits.filter(v => v.status !== 'FINISHED' && v.memberIds.length > 0).length;
+      
+      const activeP = state.patients.filter(p => p.active && !p.isMedicalDischarge).length;
+      
+      // Distinct hospitals visited this month
+      const visitedHospitalIds = new Set();
+      monthVisits.filter(v => v.status === 'FINISHED').forEach(v => {
+          const route = state.routes.find(r => r.id === v.routeId);
+          route?.hospitals?.forEach(h => visitedHospitalIds.add(h));
+      });
+
+      // Chart Data
+      const data = new Array(daysInMonth).fill(0);
+      monthVisits.filter(v => v.status === 'FINISHED').forEach(v => {
+          const day = parseInt(v.date.split('-')[2]);
+          if(day >= 1 && day <= daysInMonth) data[day-1]++;
+      });
+      
+      return {
+          kpis: {
+              finished: finishedCount,
+              scheduled: scheduledCount,
+              activePatients: activeP,
+              hospitalsVisited: visitedHospitalIds.size
+          },
+          chartData: data
+      };
+  }, [state.visits, state.patients, state.routes]);
+
+  // --- FILTRO DE EVENTOS ---
+  const myEvents = useMemo(() => {
+      const today = new Date().toISOString().split('T')[0];
+      const isColih = state.currentUser?.isColih;
+      const isAdmin = state.currentUser?.role === UserRole.ADMIN;
+      const isCoordinator = state.currentUser?.role === UserRole.COORDINATOR;
+
+      return state.events
+          .filter(e => e.date >= today)
+          .filter(e => {
+              // Administradores e Coordenadores veem todos os eventos
+              if (isAdmin || isCoordinator) return true;
+              
+              if (e.targetGroup === 'ALL') return true;
+              if (isColih && e.targetGroup === 'COLIH') return true;
+              if (!isColih && e.targetGroup === 'GVP') return true;
+              
+              return false;
+          })
+          .sort((a,b) => a.date.localeCompare(b.date))
+          .slice(0, 3); // Mostra apenas os 3 próximos
+  }, [state.events, state.currentUser]);
+
   // Lógica refatorada: Separação Alta Médica vs Arquivamento HLC-7
   const handleDischarge = async (id: string, name: string) => { 
       const patient = state.patients.find(p => p.id === id);
@@ -45,40 +147,51 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
 
       const isColihUser = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
 
-      // FASE 2: Paciente já teve alta médica, agora é o fechamento COLIH (HLC-7)
-      if (patient.isMedicalDischarge) {
-          if (!isColihUser) {
-              alert("Apenas membros da COLIH podem realizar o arquivamento definitivo (HLC-7).");
+      try {
+          // FASE 2: Paciente já teve alta médica, agora é o fechamento COLIH (HLC-7)
+          if (patient.isMedicalDischarge) {
+              if (!isColihUser) {
+                  alert("Apenas membros da COLIH podem realizar o arquivamento definitivo (HLC-7).");
+                  return;
+              }
+              if (window.confirm(`[PROTOCOLO COLIH]\n\nConfirma o envio do formulário HLC-7 para o caso de ${name}?\n\nIsso arquivará o paciente definitivamente.`)) {
+                  setOptimisticArchived(prev => new Set(prev).add(id));
+                  
+                  const archivedPatient = { 
+                      ...patient, 
+                      active: false,
+                      gvpRequestPending: false, // Limpa solicitação pendente se houver
+                      isMedicalDischarge: true  // Mantém histórico
+                  };
+
+                  const updatedPatients = state.patients.map(p => p.id === id ? archivedPatient : p);
+                  onUpdateState({ ...state, patients: updatedPatients });
+                  setViewingPatientId(null);
+
+                  await atomicUpdate('patients', archivedPatient);
+              }
               return;
           }
-          if (window.confirm(`[PROTOCOLO COLIH]\n\nConfirma o envio do formulário HLC-7 para o caso de ${name}?\n\nIsso arquivará o paciente definitivamente.`)) {
-              setOptimisticArchived(prev => new Set(prev).add(id));
-              
-              const updatedPatients = state.patients.map(p => p.id === id ? { ...p, active: false } : p);
+
+          // FASE 1: Informar Alta Médica (Disponível para GVP e COLIH)
+          if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA do hospital?\n\nIsso removerá a solicitação de visita GVP, mas manterá o caso aberto para a COLIH (HLC-7).`)) {
+              const dischargedPatient = { 
+                  ...patient, 
+                  isMedicalDischarge: true,
+                  gvpRequestPending: false, // GVP sai de cena aqui
+                  active: true, // Continua ativo aguardando COLIH
+                  estimatedDischargeDate: new Date().toISOString() 
+              };
+
+              const updatedPatients = state.patients.map(p => p.id === id ? dischargedPatient : p); 
               onUpdateState({ ...state, patients: updatedPatients });
               setViewingPatientId(null);
 
-              const p = updatedPatients.find(p => p.id === id);
-              if (p) await atomicUpdate('patients', p);
+              await atomicUpdate('patients', dischargedPatient);
           }
-          return;
-      }
-
-      // FASE 1: Informar Alta Médica (Disponível para GVP e COLIH)
-      if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA do hospital?\n\nIsso removerá a solicitação de visita GVP, mas manterá o caso aberto para a COLIH (HLC-7).`)) {
-          const updatedPatients = state.patients.map(p => p.id === id ? { 
-              ...p, 
-              isMedicalDischarge: true,
-              gvpRequestPending: false, // GVP sai de cena aqui
-              active: true, // Continua ativo aguardando COLIH
-              estimatedDischargeDate: new Date().toISOString() 
-          } : p); 
-
-          onUpdateState({ ...state, patients: updatedPatients });
-          setViewingPatientId(null);
-
-          const p = updatedPatients.find(p => p.id === id);
-          if (p) await atomicUpdate('patients', p);
+      } catch (err: any) {
+          console.error(err);
+          alert(`Erro ao processar alta: ${err.message}`);
       }
   };
 
@@ -220,6 +333,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
+        {/* KPI DASHBOARD SECTION */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <KpiCard 
+                title="Visitas (Mês)" 
+                value={kpis.finished} 
+                icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                colorBg={isHospitalMode ? 'bg-green-900/30' : 'bg-green-100'}
+                colorText={isHospitalMode ? 'text-green-400' : 'text-green-600'}
+                isHospitalMode={isHospitalMode}
+            />
+            <KpiCard 
+                title="Pacientes Ativos" 
+                value={kpis.activePatients} 
+                icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>}
+                colorBg={isHospitalMode ? 'bg-blue-900/30' : 'bg-blue-100'}
+                colorText={isHospitalMode ? 'text-blue-400' : 'text-blue-600'}
+                isHospitalMode={isHospitalMode}
+            />
+            <KpiCard 
+                title="Hospitais (Mês)" 
+                value={kpis.hospitalsVisited} 
+                icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>}
+                colorBg={isHospitalMode ? 'bg-purple-900/30' : 'bg-purple-100'}
+                colorText={isHospitalMode ? 'text-purple-400' : 'text-purple-600'}
+                isHospitalMode={isHospitalMode}
+            />
+            <KpiCard 
+                title="Agendamentos" 
+                value={kpis.scheduled} 
+                icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>}
+                colorBg={isHospitalMode ? 'bg-orange-900/30' : 'bg-orange-100'}
+                colorText={isHospitalMode ? 'text-orange-400' : 'text-orange-600'}
+                isHospitalMode={isHospitalMode}
+            />
+        </div>
+
+        {/* ACTIVITY CHART SECTION */}
+        <ActivityChart data={chartData} isHospitalMode={isHospitalMode} />
+
+        {/* EVENTOS GLOBAIS */}
+        {myEvents.length > 0 && (
+            <div className={`p-4 rounded-2xl border shadow-sm ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100'}`}>
+                <h3 className={`text-xs font-black uppercase tracking-widest mb-3 ${isHospitalMode ? 'text-gray-400' : 'text-blue-600'}`}>Próximos Eventos</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {myEvents.map(event => (
+                        <div key={event.id} className={`p-3 rounded-xl border flex flex-col justify-between ${isHospitalMode ? 'bg-black/20 border-gray-700' : 'bg-white border-blue-100 shadow-sm'}`}>
+                            <div>
+                                <div className="flex justify-between items-start">
+                                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                                        event.targetGroup === 'GVP' ? 'bg-blue-100 text-blue-700' : 
+                                        event.targetGroup === 'COLIH' ? 'bg-teal-100 text-teal-700' : 
+                                        'bg-gray-100 text-gray-700'
+                                    }`}>{event.targetGroup === 'ALL' ? 'Geral' : event.targetGroup}</span>
+                                    <span className={`text-xs font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{new Date(event.date + 'T12:00:00').toLocaleDateString()}</span>
+                                </div>
+                                <h4 className={`font-bold mt-1 ${isHospitalMode ? 'text-gray-200' : 'text-gray-900'}`}>{event.title}</h4>
+                                <p className={`text-xs mt-1 truncate ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>{event.location} {event.time ? `• ${event.time}` : ''}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+
         <FullCalendar 
             selectedDate={selectedDate}
             onChange={(d) => { setSelectedDate(d); setIsDailyOpen(true); }}
@@ -227,6 +404,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             routes={state.routes}
             members={state.members}
             currentUser={state.currentUser}
+            events={state.events} // Prop passada para o calendário
             isHospitalMode={isHospitalMode}
         />
 

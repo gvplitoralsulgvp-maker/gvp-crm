@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { VisitSlot, VisitRoute, Member } from '../types';
+import { VisitSlot, VisitRoute, Member, AppEvent, UserRole } from '../types';
 
 interface FullCalendarProps {
   selectedDate: string;
@@ -9,10 +9,11 @@ interface FullCalendarProps {
   routes: VisitRoute[];
   members: Member[];
   currentUser: Member | null;
+  events?: AppEvent[]; // Nova prop para eventos
   isHospitalMode?: boolean;
 }
 
-export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChange, visits, routes, members, currentUser, isHospitalMode }) => {
+export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChange, visits, routes, members, currentUser, events = [], isHospitalMode }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate));
   
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -38,7 +39,7 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
 
     const isPast = dateStr < todayStr;
     const allFinished = dayVisits.every(v => !!v.report || v.status === 'FINISHED');
-    const someScheduled = dayVisits.some(v => v.memberIds.length > 0);
+    const someScheduled = dayVisits.some(v => (v.memberIds?.length || 0) > 0);
 
     if (isPast) {
       if (someScheduled && !allFinished) return 'missed';
@@ -47,7 +48,7 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
     }
 
     let filledSlots = 0;
-    dayVisits.forEach(v => filledSlots += v.memberIds.length);
+    dayVisits.forEach(v => filledSlots += (v.memberIds?.length || 0));
     
     if (filledSlots === 0) return 'empty';
     if (filledSlots === totalSlots) return 'full';
@@ -56,7 +57,24 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
 
   const isUserEscalated = (dateStr: string) => {
     if (!currentUser) return false;
-    return visits.some(v => v.date === dateStr && v.memberIds.includes(currentUser.id));
+    return visits.some(v => v.date === dateStr && v.memberIds?.includes(currentUser.id));
+  };
+
+  // Filtra eventos relevantes para o usuário atual
+  const getEventsForDay = (dateStr: string) => {
+      return events.filter(e => {
+          if (e.date !== dateStr) return false;
+          
+          // Lógica de Permissão de Visualização
+          const isColih = currentUser?.isColih;
+          const isAdmin = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.COORDINATOR;
+          
+          if (isAdmin) return true;
+          if (e.targetGroup === 'ALL') return true;
+          if (isColih && e.targetGroup === 'COLIH') return true;
+          if (!isColih && e.targetGroup === 'GVP') return true;
+          return false;
+      });
   };
 
   return (
@@ -86,13 +104,16 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
           const isToday = new Date().toISOString().split('T')[0] === dateStr;
           const status = getDayStatus(dateStr);
           const dayVisits = visits.filter(v => v.date === dateStr);
-          const confirmados = dayVisits.reduce((acc, v) => acc + v.memberIds.length, 0);
+          const confirmados = dayVisits.reduce((acc, v) => acc + (v.memberIds?.length || 0), 0);
           const totalNecessario = activeRoutesCount * 2;
           const userScheduled = isUserEscalated(dateStr);
           
-          const userVisit = userScheduled ? dayVisits.find(v => v.memberIds.includes(currentUser?.id || '')) : null;
+          const dayEvents = getEventsForDay(dateStr);
+          const hasEvent = dayEvents.length > 0;
+          
+          const userVisit = userScheduled ? dayVisits.find(v => v.memberIds?.includes(currentUser?.id || '')) : null;
           const partnerNames = userVisit?.memberIds
-            .filter(id => id !== currentUser?.id)
+            ?.filter(id => id !== currentUser?.id)
             .map(id => members.find(m => m.id === id)?.name.split(' ')[0])
             .filter(Boolean)
             .join(' & ');
@@ -101,13 +122,25 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
             <div 
               key={day}
               onClick={() => onChange(dateStr)}
-              className={`h-16 sm:h-32 border-r border-b relative cursor-pointer transition-all flex flex-col items-center justify-start p-1 sm:p-2
+              className={`h-16 sm:h-32 border-r border-b relative cursor-pointer transition-all flex flex-col items-center justify-start p-1 sm:p-2 group
                 ${isHospitalMode ? 'border-gray-800' : 'border-gray-50'}
                 ${isSelected ? (isHospitalMode ? 'bg-blue-900/20 ring-2 ring-inset ring-blue-500/50' : 'bg-blue-50 ring-2 ring-inset ring-blue-500') : (isHospitalMode ? 'bg-[#212327] hover:bg-[#2d3135]' : 'bg-white hover:bg-blue-50/50')}
               `}
             >
-              <span className={`text-xs font-bold w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-full mb-1 ${
-                isToday ? 'bg-blue-600 text-white shadow-md' : (isHospitalMode ? 'text-gray-400' : 'text-gray-500')
+              {/* ANIMAÇÃO DE EVENTO - Ponto Pulsante no Topo */}
+              {hasEvent && (
+                  <span className="absolute top-1.5 right-1.5 flex h-2 w-2 sm:h-3 sm:w-3">
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isHospitalMode ? 'bg-indigo-400' : 'bg-indigo-500'}`}></span>
+                    <span className={`relative inline-flex rounded-full h-2 w-2 sm:h-3 sm:w-3 ${isHospitalMode ? 'bg-indigo-500' : 'bg-indigo-600'}`}></span>
+                  </span>
+              )}
+
+              <span className={`text-xs font-bold w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-full mb-1 transition-all ${
+                isToday 
+                    ? 'bg-blue-600 text-white shadow-md' 
+                    : hasEvent 
+                        ? (isHospitalMode ? 'text-indigo-400 font-black' : 'text-indigo-600 font-black') 
+                        : (isHospitalMode ? 'text-gray-400' : 'text-gray-500')
               }`}>
                 {day}
               </span>
@@ -117,10 +150,24 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
                  {userScheduled && <div className="w-2 h-2 rounded-full bg-blue-600"></div>}
                  {!userScheduled && status === 'missed' && <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>}
                  {!userScheduled && status === 'partial' && <div className="w-1.5 h-1.5 rounded-full bg-yellow-400"></div>}
+                 
+                 {/* Ponto Roxo para Eventos no Mobile */}
+                 {hasEvent && !userScheduled && (
+                     <div className={`w-1.5 h-1.5 rounded-full ${isHospitalMode ? 'bg-indigo-400' : 'bg-indigo-500'}`}></div>
+                 )}
               </div>
 
               {/* Desktop View: Full Details */}
               <div className="hidden sm:flex mt-auto mb-2 flex-col items-center gap-1 w-full">
+                
+                {/* Badge de Evento Desktop */}
+                {hasEvent && (
+                    <div className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter shadow-sm w-full text-center truncate ${isHospitalMode ? 'bg-indigo-900/30 text-indigo-300 border border-indigo-800' : 'bg-indigo-100 text-indigo-700 border border-indigo-200'}`}>
+                        {dayEvents[0].title.split(' ')[0]}
+                        {dayEvents.length > 1 ? '+' : ''}
+                    </div>
+                )}
+
                 {userScheduled && currentUser && (
                   <div className="flex flex-col items-center gap-0.5 w-full">
                     <div className="px-1.5 py-0.5 rounded bg-blue-600 text-white text-[8px] font-black uppercase tracking-tighter shadow-sm animate-fade-in truncate max-w-full">
@@ -134,15 +181,15 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
                   </div>
                 )}
 
-                {status === 'missed' ? (
+                {!hasEvent && status === 'missed' ? (
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border scale-90 sm:scale-100 bg-red-500/10 border-red-500/50 text-red-500 shadow-sm animate-pulse`}>
                     <span className="text-[8px] font-black uppercase tracking-tighter">Perdida</span>
                   </div>
-                ) : status === 'full' ? (
+                ) : !hasEvent && status === 'full' ? (
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border scale-90 sm:scale-100 ${isHospitalMode ? 'bg-green-900/20 border-green-900/50 text-green-500' : 'bg-green-50 border-green-100 text-green-600'}`}>
                     <span className="text-[9px] font-bold uppercase tracking-tighter">Ok</span>
                   </div>
-                ) : status === 'partial' ? (
+                ) : !hasEvent && status === 'partial' ? (
                   <div className="flex flex-col items-center gap-1 w-full px-1">
                     {!userScheduled && (
                        <>
@@ -154,7 +201,7 @@ export const FullCalendar: React.FC<FullCalendarProps> = ({ selectedDate, onChan
                     )}
                   </div>
                 ) : (
-                  !userScheduled && !isToday && (
+                  !userScheduled && !hasEvent && !isToday && (
                     <div className={`px-2 py-0.5 rounded-full border scale-90 sm:scale-100 ${isHospitalMode ? 'bg-gray-900/10 border-gray-900/30 text-gray-500' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
                       <span className="text-[8px] font-bold uppercase">Livre</span>
                     </div>

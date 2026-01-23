@@ -38,7 +38,7 @@ export const Welcome: React.FC = () => {
         </div>
         
         <p className="text-sm font-medium text-blue-100 tracking-wider uppercase border-t border-white/20 pt-6 mt-2 inline-block">
-          Litoral Sul & Vale do Ribeira
+          Litoral Sul
         </p>
         
         <div className="mt-12">
