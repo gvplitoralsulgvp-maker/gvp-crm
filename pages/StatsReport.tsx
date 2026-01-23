@@ -288,9 +288,9 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
                                           <td className="px-6 py-4 font-mono font-bold">{h.daysSince === 999 ? '-' : h.daysSince}</td>
                                           <td className="px-6 py-4">
                                               {isCritical ? (
-                                                  <span className="px-2 py-1 bg-red-100 text-red-600 rounded text-[10px] font-black uppercase">Crítico (>30d)</span>
+                                                  <span className="px-2 py-1 bg-red-100 text-red-600 rounded text-[10px] font-black uppercase">Crítico (&gt;30d)</span>
                                               ) : isWarning ? (
-                                                  <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-[10px] font-black uppercase">Atenção (>7d)</span>
+                                                  <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-[10px] font-black uppercase">Atenção (&gt;7d)</span>
                                               ) : (
                                                   <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-black uppercase">Em Dia</span>
                                               )}
