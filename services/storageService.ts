@@ -77,13 +77,15 @@ export const loadState = async (): Promise<AppState> => {
           hospitals: ensureArray(r.hospitals)
       })),
 
-      visits: mapFromDb<VisitSlot>(fetchAll[3].data).map(v => ({
+      visits: mapFromDb<any>(fetchAll[3].data).map(v => ({
           ...v,
+          routeId: v.route_id ?? v.routeId,
           memberIds: ensureArray(v.memberIds, (v as any).member_ids)
-      })),
+      }) as VisitSlot),
 
       socialWorkerVisits: mapFromDb<any>(fetchAll[4].data).map(v => ({
           ...v,
+          hospitalId: v.hospital_id ?? v.hospitalId,
           memberIds: ensureArray(v.memberIds, (v as any).member_ids),
           createdAt: v.created_at ?? v.createdAt
       }) as SocialWorkerVisit),
@@ -138,10 +140,16 @@ export const loadState = async (): Promise<AppState> => {
           hospitalIds: ensureArray(d.hospitalIds, (d as any).hospital_ids)
       })),
 
-      colihVisits: mapFromDb<ColihVisit>(fetchAll[9].data).map(v => ({
+      colihVisits: mapFromDb<any>(fetchAll[9].data).map(v => ({
           ...v,
-          memberIds: ensureArray(v.memberIds, (v as any).member_ids)
-      })),
+          doctorId: v.doctor_id ?? v.doctorId,
+          hospitalId: v.hospital_id ?? v.hospitalId,
+          interactionType: v.interaction_type ?? v.interactionType,
+          hlc38Presented: v.hlc38_presented ?? v.hlc38Presented,
+          collaboratorInterest: v.collaborator_interest ?? v.collaboratorInterest,
+          memberIds: ensureArray(v.memberIds, (v as any).member_ids),
+          createdAt: v.created_at ?? v.createdAt
+      }) as ColihVisit),
 
       presentationGoal: 12,
       cityMappings: mapFromDb<CityMapping>(fetchAll[10].data),
@@ -227,12 +235,24 @@ const sanitizeForDb = (table: string, data: any) => {
         if (copy.responsibleMemberIds !== undefined) { copy.responsible_member_ids = copy.responsibleMemberIds; delete copy.responsibleMemberIds; }
     }
 
-    if (table === 'visits' || table === 'colih_visits') {
+    if (table === 'visits') {
         if (copy.memberIds !== undefined) { copy.member_ids = copy.memberIds; delete copy.memberIds; }
+        if (copy.routeId !== undefined) { copy.route_id = copy.routeId; delete copy.routeId; }
+    }
+
+    if (table === 'colih_visits') {
+        if (copy.memberIds !== undefined) { copy.member_ids = copy.memberIds; delete copy.memberIds; }
+        if (copy.doctorId !== undefined) { copy.doctor_id = copy.doctorId; delete copy.doctorId; }
+        if (copy.hospitalId !== undefined) { copy.hospital_id = copy.hospitalId; delete copy.hospitalId; }
+        if (copy.interactionType !== undefined) { copy.interaction_type = copy.interactionType; delete copy.interactionType; }
+        if (copy.hlc38Presented !== undefined) { copy.hlc38_presented = copy.hlc38Presented; delete copy.hlc38Presented; }
+        if (copy.collaboratorInterest !== undefined) { copy.collaborator_interest = copy.collaboratorInterest; delete copy.collaboratorInterest; }
+        if (copy.createdAt !== undefined) { copy.created_at = copy.createdAt; delete copy.createdAt; }
     }
 
     if (table === 'social_worker_visits') {
         if (copy.memberIds !== undefined) { copy.member_ids = copy.memberIds; delete copy.memberIds; }
+        if (copy.hospitalId !== undefined) { copy.hospital_id = copy.hospitalId; delete copy.hospitalId; }
         if (copy.createdAt !== undefined) { copy.created_at = copy.createdAt; delete copy.createdAt; }
     }
 
