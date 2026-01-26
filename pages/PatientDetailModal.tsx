@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Patient, VisitSlot, Member } from '../types';
-import { Button } from './Button';
+import { Button } from '../components/Button';
 
 interface PatientDetailModalProps {
   isOpen: boolean;
@@ -36,7 +37,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
     { label: 'Família Não TJ Envolvida', status: patient.nonWitnessFamily, warn: true }
   ];
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className="bg-blue-600 px-6 py-5 flex justify-between items-center shrink-0">
@@ -234,6 +235,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
           <Button variant="secondary" onClick={onClose} className="w-full">Fechar Prontuário</Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

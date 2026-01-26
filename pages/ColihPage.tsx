@@ -503,11 +503,35 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
         onUpdateState({ ...state, presentationGoal: newGoal });
     };
 
-    const colihMembers = state.members.filter(m => m.isColih);
+    const isCoordinator = state.currentUser?.role === UserRole.COORDINATOR;
+    const userRegional = state.currentUser?.regional;
+
+    const colihMembers = useMemo(() => {
+        let list = state.members.filter(m => m.isColih);
+        if (isCoordinator && userRegional) {
+            // Coordinator sees members of their regional OR unassigned (permissive)
+            list = list.filter(m => !m.regional || m.regional === userRegional);
+        }
+        return list;
+    }, [state.members, isCoordinator, userRegional]);
     
-    // Sort logic
-    const sortedDoctors = [...state.doctors].sort((a,b) => a.name.localeCompare(b.name));
-    const sortedHospitals = [...state.hospitals].sort((a,b) => a.name.localeCompare(b.name));
+    const sortedDoctors = useMemo(() => {
+        let list = [...state.doctors];
+        if (isCoordinator && userRegional) {
+            // Coordinator sees doctors of their regional OR unassigned (permissive)
+            list = list.filter(d => !d.regional || d.regional === userRegional);
+        }
+        return list.sort((a,b) => a.name.localeCompare(b.name));
+    }, [state.doctors, isCoordinator, userRegional]);
+
+    const sortedHospitals = useMemo(() => {
+        let list = [...state.hospitals];
+        if (isCoordinator && userRegional) {
+            // Coordinator sees hospitals of their regional OR unassigned (permissive)
+            list = list.filter(h => !h.regional || h.regional === userRegional);
+        }
+        return list.sort((a,b) => a.name.localeCompare(b.name));
+    }, [state.hospitals, isCoordinator, userRegional]);
 
     return (
         <div className="space-y-6 pb-20 animate-fade-in">
@@ -520,7 +544,10 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
                         {view === 'hospitals' && 'Hospitais (Institucional)'}
                         {view === 'presentations' && 'Apresentações & Metas'}
                     </h2>
-                    <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Gestão da Comissão de Ligação com Hospitais</p>
+                    <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Gestão da Comissão de Ligação com Hospitais
+                        {isCoordinator && userRegional && <span className="ml-2 bg-purple-100 text-purple-700 px-2 rounded font-bold text-xs uppercase">{userRegional}</span>}
+                    </p>
                 </div>
                 <div>
                     {view === 'doctors' && <Button onClick={() => { setEditingDoctor(undefined); setIsDoctorModalOpen(true); }} className="rounded-xl shadow-lg bg-teal-600 hover:bg-teal-700 text-white">+ Novo Médico</Button>}
@@ -568,7 +595,7 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
                                     <tr key={m.id} className={`${isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
                                         <td className="px-6 py-4 font-bold">{m.name}</td>
                                         <td className="px-6 py-4"><span className={`text-[10px] font-bold uppercase px-2 py-1 rounded ${m.colihClassification === 'Coordinator' ? 'bg-purple-100 text-purple-700' : 'bg-teal-100 text-teal-700'}`}>{m.colihClassification || 'Membro'}</span></td>
-                                        <td className="px-6 py-4 text-xs">{m.regional} - {m.city}</td>
+                                        <td className="px-6 py-4 text-xs">{m.regional || '-'} - {m.city}</td>
                                         <td className="px-6 py-4 text-right"><button onClick={() => { setEditingFacilitator(m); setIsFacilitatorModalOpen(true); }} className="text-blue-500 font-bold text-xs uppercase hover:underline">Editar</button></td>
                                     </tr>
                                 ))}
