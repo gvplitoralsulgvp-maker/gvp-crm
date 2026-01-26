@@ -278,7 +278,7 @@ const PresentationModal: React.FC<{ isOpen: boolean; onClose: () => void; presen
                     <div className="space-y-1"><label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Data {status === 'SCHEDULED' ? 'Prevista' : 'Realizada'}</label><input type="date" className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={date} onChange={e => setDate(e.target.value)} /></div>
                     <div className="space-y-2">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Equipe Designada (Membros COLIH)</label>
-                        <div className={`border rounded-xl max-h-40 overflow-y-auto custom-scrollbar p-2 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700' : 'bg-gray-50'}`}>{members.filter(m => m.isColih && m.active).sort((a, b) => a.name.localeCompare(b.name)).map(m => (<label key={m.id} className={`flex items-center gap-3 p-2 rounded-lg hover:bg-black/5 cursor-pointer transition-all ${selectedMembers.includes(m.id) ? 'bg-purple-100' : ''}`}><input type="checkbox" className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" checked={selectedMembers.includes(m.id)} onChange={() => toggleMember(m.id)} /><div><span className={`text-xs font-bold block ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{m.name}</span><span className="text-[8px] font-bold uppercase text-gray-400 tracking-wider">{m.colihClassification || 'Membro'}</span></div></label>))}</div>
+                        <div className={`border rounded-xl max-h-40 overflow-y-auto custom-scrollbar p-2 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700' : 'bg-gray-50'}`}>{members.filter(m => m.active && (m.isColih || m.role === UserRole.COORDINATOR || m.colihClassification === 'Coordinator')).sort((a, b) => a.name.localeCompare(b.name)).map(m => (<label key={m.id} className={`flex items-center gap-3 p-2 rounded-lg hover:bg-black/5 cursor-pointer transition-all ${selectedMembers.includes(m.id) ? 'bg-purple-100' : ''}`}><input type="checkbox" className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" checked={selectedMembers.includes(m.id)} onChange={() => toggleMember(m.id)} /><div><span className={`text-xs font-bold block ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{m.name}</span><span className="text-[8px] font-bold uppercase text-gray-400 tracking-wider">{m.colihClassification || 'Membro'}</span></div></label>))}</div>
                     </div>
                     {(status === 'COMPLETED' || presentationToEdit) && (
                         <div className="animate-fade-in space-y-5 pt-4 border-t border-dashed border-gray-300">
@@ -473,8 +473,9 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
             createdAt: data.createdAt || new Date().toISOString(),
             hlc38Presented: data.hlc38Presented,
             collaboratorInterest: data.collaboratorInterest,
-            hospitalId: data.hospitalId,
-            doctorId: data.doctorId
+            // Importante: Enviar null para o ID que não está sendo usado
+            hospitalId: data.hospitalId || null as any,
+            doctorId: data.doctorId || null as any
         };
 
         try {
@@ -483,7 +484,10 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
             onUpdateState({ ...state, colihVisits: updatedVisits });
             setIsPresentationModalOpen(false);
             setEditingPresentation(undefined);
-        } catch (e) { alert("Erro ao salvar apresentação."); }
+        } catch (e: any) { 
+            console.error("Erro presentation:", e);
+            alert(`Erro ao salvar apresentação: ${e.message || "Verifique conexão"}`); 
+        }
     };
 
     const handleDeleteVisit = (id: string) => {
