@@ -1,6 +1,5 @@
 
 import React, { useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Patient, VisitSlot, Member } from '../types';
 import { Button } from './Button';
 
@@ -37,7 +36,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
     { label: 'Família Não TJ Envolvida', status: patient.nonWitnessFamily, warn: true }
   ];
 
-  return createPortal(
+  return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className="bg-blue-600 px-6 py-5 flex justify-between items-center shrink-0">
@@ -54,7 +53,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
           {patient.isMedicalDischarge && (
               <div className="bg-purple-100 border border-purple-200 p-4 rounded-xl text-purple-800 flex flex-col gap-2">
                   <p className="font-bold text-sm">🏥 Paciente com Alta Médica Informada</p>
-                  <p className="text-xs">O paciente já saiu do hospital. A solicitação GVP foi encerrada automaticamente.</p>
+                  <p className="text-xs">O paciente já saiu do hospital. A solicitação de visita foi encerrada automaticamente.</p>
                   <p className="text-xs font-bold mt-1">{isColihUser ? 'Ação Pendente: Confirmar HLC-7' : 'Aguardando fechamento administrativo pela COLIH.'}</p>
               </div>
           )}
@@ -126,7 +125,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                     ) : (
                         <>
                             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-8a2 2 0 01-2-18h10a2 2 0 012 18v8" /><path d="M4 4h9v8H4z" /></svg>
-                            <span className="font-bold text-sm tracking-widest uppercase">Marcar para Visita GVP</span>
+                            <span className="font-bold text-sm tracking-widest uppercase">Marcar para Visita</span>
                         </>
                     )}
                 </button>
@@ -235,7 +234,6 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
           <Button variant="secondary" onClick={onClose} className="w-full">Fechar Prontuário</Button>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
 };

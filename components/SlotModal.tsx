@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
-import { Member, VisitRoute, UserRole } from '../types';
+import { createPortal } from 'react-dom';
+import { Member, VisitRoute, UserRole, Hospital } from '../types';
 import { Button } from './Button';
 
 interface SlotModalProps {
@@ -12,39 +13,63 @@ interface SlotModalProps {
   onSave: (newMemberIds: string[]) => void;
   currentUser: Member | null;
   isHospitalMode?: boolean;
+  hospitals?: Hospital[];
 }
 
 export const SlotModal: React.FC<SlotModalProps> = ({ 
-  isOpen, onClose, route, currentMemberIds, allMembers, onSave, currentUser, isHospitalMode 
+  isOpen, onClose, route, currentMemberIds, allMembers, onSave, currentUser, isHospitalMode, hospitals 
 }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>(currentMemberIds);
   const [searchTerm, setSearchTerm] = useState('');
 
   if (!isOpen || !currentUser) return null;
 
-  const isAdmin = currentUser.role === UserRole.ADMIN;
+  const canManage = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.COORDINATOR;
 
-  const toggleMember = (id: string) => {
-    if (!isAdmin && id !== currentUser.id) {
+  const toggleMember = (member: Member) => {
+    if (!canManage && member.id !== currentUser.id) {
         alert("Você só pode adicionar ou remover seu próprio nome da agenda.");
         return;
     }
 
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter(mid => mid !== id));
+    if (selectedIds.includes(member.id)) {
+      setSelectedIds(selectedIds.filter(mid => mid !== member.id));
     } else {
       if (selectedIds.length < 2) {
-        setSelectedIds([...selectedIds, id]);
+        // --- REGIONAL CHECK ---
+        const routeHospitals = hospitals?.filter(h => route.hospitals?.includes(h.name)) || [];
+        const routeRegional = routeHospitals.length > 0 ? routeHospitals[0].regional : null;
+        
+        // Determinar a regional do membro (campo direto ou inferido da cidade se possível)
+        // Por simplificação, usaremos member.regional. Se nulo, assumimos "Global" ou sem restrição.
+        if (routeRegional && member.regional && member.regional !== routeRegional) {
+            const confirmed = window.confirm(
+                `Aviso de Regional!\n\n` +
+                `Este membro é da regional "${member.regional}", mas a rota pertence a "${routeRegional}".\n` +
+                `Deseja prosseguir com a designação mesmo assim?`
+            );
+            if (!confirmed) return;
+        }
+
+        setSelectedIds([...selectedIds, member.id]);
       } else {
         alert("Esta dupla já está completa. Remova alguém antes de adicionar.");
       }
     }
   };
 
-  const filteredMembers = allMembers.filter(m => 
-    m.active && 
-    m.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredMembers = allMembers.filter(m => {
+    // Basic search and active check
+    const matchesSearch = m.active && m.name.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // GVP Filter Rule: "aparecer apenas o nome dos membros GVP"
+    // Hide COLIH members unless they are already selected in this slot.
+    // This allows seeing existing COLIH assignments but prioritizes GVP for new ones.
+    const isGVP = !m.isColih;
+    const isSelected = selectedIds.includes(m.id);
+    
+    return matchesSearch && (isGVP || isSelected);
+  });
 
   filteredMembers.sort((a, b) => {
     if (a.id === currentUser.id) return -1;
@@ -56,11 +81,11 @@ export const SlotModal: React.FC<SlotModalProps> = ({
     return a.name.localeCompare(b.name);
   });
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className={`px-6 py-5 border-b ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-gray-50 border-gray-100'}`}>
-          <h3 className={`text-lg font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Definir Dupla</h3>
+          <h3 className={`text-lg font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Definir Dupla (GVP)</h3>
           <p className="text-sm text-blue-600 font-medium">{route.name}</p>
           <div className="flex flex-wrap gap-1 mt-2 text-[10px] text-gray-500 uppercase font-bold tracking-wider">
             {route.hospitals?.join(' • ') || 'Nenhum hospital'}
@@ -71,7 +96,7 @@ export const SlotModal: React.FC<SlotModalProps> = ({
           <div className="relative">
             <input
               type="text"
-              placeholder="Buscar membro..."
+              placeholder="Buscar membro GVP..."
               className={`w-full border-2 rounded-xl px-10 py-2.5 text-sm focus:ring-0 transition-all ${
                   isHospitalMode ? 'bg-[#212327] border-gray-800 text-white focus:border-blue-600' : 'bg-white border-gray-100 focus:border-blue-500'
               }`}
@@ -92,17 +117,17 @@ export const SlotModal: React.FC<SlotModalProps> = ({
            {filteredMembers.map(member => {
              const isSelected = selectedIds.includes(member.id);
              const isMe = member.id === currentUser.id;
-             const canToggle = isAdmin || isMe;
+             const toggleAllowed = canManage || isMe;
              
              return (
                <div 
                  key={member.id}
-                 onClick={() => canToggle && toggleMember(member.id)}
+                 onClick={() => toggleAllowed && toggleMember(member)}
                  className={`flex items-center justify-between p-3 rounded-xl border-2 transition-all ${
                    isSelected 
                      ? (isHospitalMode ? 'bg-blue-900/10 border-blue-600 shadow-md' : 'bg-blue-50 border-blue-600 shadow-sm')
                      : (isHospitalMode ? 'bg-[#212327] border-transparent hover:border-gray-800' : 'bg-white border-transparent hover:border-gray-200')
-                 } ${!canToggle ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                 } ${!toggleAllowed ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
                >
                   <div className="flex items-center gap-3">
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[10px] font-bold ${
@@ -114,7 +139,12 @@ export const SlotModal: React.FC<SlotModalProps> = ({
                       <p className={`text-sm font-bold ${isSelected ? (isHospitalMode ? 'text-blue-400' : 'text-blue-900') : (isHospitalMode ? 'text-gray-300' : 'text-gray-800')}`}>
                         {member.name} {isMe && '(Você)'}
                       </p>
-                      {!canToggle && <p className="text-[9px] text-red-500 font-bold uppercase tracking-tight">Vaga de outro membro</p>}
+                      {member.regional && (
+                          <span className="text-[9px] font-bold uppercase bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200 mr-1">
+                              {member.regional}
+                          </span>
+                      )}
+                      {!toggleAllowed && <p className="text-[9px] text-red-500 font-bold uppercase tracking-tight">Restrito</p>}
                     </div>
                   </div>
                   {isSelected && (
@@ -134,6 +164,7 @@ export const SlotModal: React.FC<SlotModalProps> = ({
           <Button variant="primary" className="px-6" onClick={() => onSave(selectedIds)}>Confirmar</Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

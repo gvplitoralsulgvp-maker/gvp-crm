@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from './Button';
 
 interface ConfirmModalProps {
@@ -27,7 +28,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-fade-in">
       <div className={`w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
         <div className={`p-6 text-center ${isHospitalMode ? 'text-white' : 'text-gray-900'}`}>
@@ -63,6 +64,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

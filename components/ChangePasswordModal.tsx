@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from './Button';
 import { Member } from '../types';
 
@@ -44,7 +45,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
     onConfirm(newPassword);
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className="bg-blue-600 px-6 py-5 flex justify-between items-center">
@@ -89,6 +90,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

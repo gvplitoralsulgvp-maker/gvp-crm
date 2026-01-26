@@ -1,6 +1,7 @@
 
 import React from 'react';
-import { VisitRoute, VisitSlot, Member, Patient, UserRole } from '../types';
+import { createPortal } from 'react-dom';
+import { VisitRoute, VisitSlot, Member, Patient, UserRole, Hospital } from '../types';
 import { Button } from './Button';
 
 interface DailyAgendaModalProps {
@@ -17,10 +18,11 @@ interface DailyAgendaModalProps {
   onRouteClick: (route: VisitRoute, slot: VisitSlot | undefined) => void;
   onReportClick: (slot: VisitSlot) => void;
   onPatientClick: (patient: Patient) => void;
+  hospitals?: Hospital[];
 }
 
 export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
-  isOpen, onClose, date, routes, visits, members, patients, currentUser, isPrivacyMode, isHospitalMode, onRouteClick, onReportClick, onPatientClick
+  isOpen, onClose, date, routes, visits, members, patients, currentUser, isPrivacyMode, isHospitalMode, onRouteClick, onReportClick, onPatientClick, hospitals
 }) => {
   if (!isOpen) return null;
 
@@ -30,7 +32,7 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
 
   const getMemberName = (id: string) => members.find(m => m.id === id)?.name || 'Desconhecido';
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className="bg-blue-600 px-6 py-5 flex justify-between items-center flex-shrink-0">
@@ -59,17 +61,18 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
             });
 
             const isUserInRoute = currentUser && memberIds.includes(currentUser.id);
-            const isAdmin = currentUser?.role === UserRole.ADMIN;
+            const canManage = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.COORDINATOR;
             
             let buttonLabel = 'Entrar na Rota';
             let isButtonDisabled = false;
             let buttonClass = 'bg-blue-600 text-white hover:bg-blue-700';
 
-            if (isAdmin) {
+            if (canManage) {
                 buttonLabel = 'Gerenciar Dupla';
                 buttonClass = isHospitalMode 
                     ? 'bg-[#1a1c1e] text-gray-300 border border-gray-700 hover:bg-gray-800' 
                     : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50';
+                isButtonDisabled = false; // Always enabled for managers
             } else {
                 if (isUserInRoute) {
                     buttonLabel = 'Escalado';
@@ -165,6 +168,7 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
           <Button variant="secondary" onClick={onClose} className="w-full sm:w-auto">Fechar Agenda</Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

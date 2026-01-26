@@ -126,7 +126,7 @@ export const SignUpPage: React.FC<{ state: AppState, onUpdateState: (s: AppState
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4 animate-fade-in">
       <div className="w-full max-w-xl bg-white p-10 rounded-[3rem] shadow-2xl border border-gray-100 space-y-8">
         <div className="text-center">
-            <h2 className="text-3xl font-black text-gray-900 tracking-tight">COLIH/GVP Litoral Sul</h2>
+            <h2 className="text-3xl font-black text-gray-900 tracking-tight">COLIH Litoral Sul</h2>
             <p className="text-sm font-bold text-blue-500 uppercase tracking-widest mt-2">Solicitar Cadastro</p>
         </div>
 

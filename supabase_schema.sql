@@ -25,6 +25,17 @@ CREATE TABLE IF NOT EXISTS public.events (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- TABELA DE VISITAS DE ASSISTÊNCIA SOCIAL (AS)
+CREATE TABLE IF NOT EXISTS public.social_worker_visits (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    hospital_id UUID NOT NULL, -- Referência ao hospital
+    date DATE NOT NULL,
+    member_ids TEXT[] DEFAULT '{}', -- Lista de IDs dos membros designados
+    status TEXT DEFAULT 'PENDING', -- 'PENDING', 'FINISHED'
+    report JSONB, -- Objeto JSON com detalhes do relatório { notes, doctorName, etc }
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- CORREÇÃO: Adiciona coluna has_seen_onboarding na tabela members se não existir
 ALTER TABLE public.members ADD COLUMN IF NOT EXISTS has_seen_onboarding BOOLEAN DEFAULT FALSE;
 

@@ -3,10 +3,14 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AppState, UserRole, Hospital, SocialWorkerVisit, AppNotification, LogEntry } from '../types';
 import { Button } from '../components/Button';
+import { SocialHistoryModal } from '../components/SocialHistoryModal';
 
 export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newState: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
   const [designatingSocial, setDesignatingSocial] = useState<string | null>(null); // hospitalId
   const [designationData, setDesignationData] = useState({ date: new Date().toISOString().split('T')[0], memberIds: [] as string[] });
+  
+  // Histórico
+  const [viewHistoryHospitalId, setViewHistoryHospitalId] = useState<string | null>(null);
 
   const isAdmin = state.currentUser?.role === UserRole.ADMIN;
 
@@ -18,7 +22,8 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
       hospitalId: designatingSocial,
       date: designationData.date,
       memberIds: designationData.memberIds,
-      status: 'PENDING'
+      status: 'PENDING',
+      createdAt: new Date().toISOString()
     };
 
     const newNotifications: AppNotification[] = designationData.memberIds.map(mid => ({
@@ -68,27 +73,6 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
          </div>
       </div>
 
-      {/* Minhas Designações (Se houver) */}
-      {myDesignations.length > 0 && (
-        <div className="space-y-3">
-           <h3 className="text-xs font-black uppercase text-orange-500 tracking-widest px-1">Minhas Próximas Visitas Institucionais</h3>
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {myDesignations.map(v => {
-                const hospital = state.hospitals.find(h => h.id === v.hospitalId);
-                return (
-                  <div key={v.id} className={`p-5 rounded-xl border-2 border-indigo-500/30 ${isHospitalMode ? 'bg-indigo-900/10' : 'bg-indigo-50'}`}>
-                    <div className="flex justify-between mb-2">
-                       <span className="font-bold text-indigo-600">{hospital?.name}</span>
-                       <span className="text-xs font-black text-indigo-400">{new Date(v.date + 'T12:00:00').toLocaleDateString()}</span>
-                    </div>
-                    <p className="text-xs text-indigo-900/60 leading-relaxed italic">"Fortalecer o vínculo institucional e verificar receptividade."</p>
-                  </div>
-                );
-              })}
-           </div>
-        </div>
-      )}
-
       {/* Grid Geral de Instituições */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {state.hospitals.map(h => {
@@ -134,21 +118,43 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
                    </div>
                 </div>
 
-                {isAdmin && (
-                  <Button 
-                    size="sm" 
-                    variant={hasPending ? 'secondary' : 'primary'}
-                    disabled={hasPending}
-                    onClick={() => setDesignatingSocial(h.id)}
-                    className="w-full justify-center rounded-xl bg-indigo-600 hover:bg-indigo-700"
-                  >
-                     {hasPending ? 'Designação Ativa' : 'Designar Visita'}
-                  </Button>
-                )}
+                <div className="grid grid-cols-2 gap-2">
+                    <Button 
+                        size="sm" 
+                        variant="secondary"
+                        onClick={() => setViewHistoryHospitalId(h.id)}
+                        className="w-full justify-center rounded-xl text-xs font-bold"
+                    >
+                        Ver Histórico
+                    </Button>
+                    {isAdmin && (
+                        <Button 
+                            size="sm" 
+                            variant={hasPending ? 'secondary' : 'primary'}
+                            disabled={hasPending}
+                            onClick={() => setDesignatingSocial(h.id)}
+                            className="w-full justify-center rounded-xl bg-indigo-600 hover:bg-indigo-700"
+                        >
+                            {hasPending ? 'Designação Ativa' : 'Designar Visita'}
+                        </Button>
+                    )}
+                </div>
             </div>
           );
         })}
       </div>
+
+      {/* Modal de Histórico */}
+      {viewHistoryHospitalId && (
+          <SocialHistoryModal 
+              isOpen={true} 
+              onClose={() => setViewHistoryHospitalId(null)} 
+              hospital={state.hospitals.find(h => h.id === viewHistoryHospitalId)!}
+              visits={state.socialWorkerVisits.filter(v => v.hospitalId === viewHistoryHospitalId)}
+              members={state.members}
+              isHospitalMode={isHospitalMode}
+          />
+      )}
 
       {/* Modal de Designação Admin (USANDO PORTAL PARA EVITAR BUG DE SCROLL) */}
       {designatingSocial && createPortal(
@@ -169,8 +175,9 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
                  </div>
                  <div>
                     <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">Membros Escalados (Dupla)</label>
+                    <p className="text-[10px] text-gray-500 mb-2">Selecione membros do GVP ou COLIH.</p>
                     <div className="max-h-56 overflow-y-auto space-y-2 p-3 border-2 rounded-2xl custom-scrollbar border-gray-800/10">
-                        {state.members.filter(m => m.active).map(m => (
+                        {state.members.filter(m => m.active).sort((a,b) => a.name.localeCompare(b.name)).map(m => (
                            <label key={m.id} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${designationData.memberIds.includes(m.id) ? 'bg-indigo-500/10' : 'hover:bg-gray-50'}`}>
                               <input 
                                 type="checkbox" 
@@ -181,7 +188,12 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
                                   else setDesignationData({...designationData, memberIds: designationData.memberIds.filter(id => id !== m.id)});
                                 }}
                               />
-                              <span className="text-sm font-bold">{m.name}</span>
+                              <div className="flex-grow">
+                                  <span className="text-sm font-bold block">{m.name}</span>
+                                  <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded ${m.isColih ? 'bg-teal-100 text-teal-700' : 'bg-blue-100 text-blue-700'}`}>
+                                      {m.isColih ? 'COLIH' : 'GVP'}
+                                  </span>
+                              </div>
                            </label>
                         ))}
                     </div>

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { AppState, VisitRoute, VisitSlot, Patient, Member, AppNotification, UserRole, AppEvent } from '../types';
+import { AppState, VisitRoute, VisitSlot, Patient, Member, AppNotification, UserRole, AppEvent, SocialWorkerVisit } from '../types';
 import { FullCalendar } from '../components/FullCalendar';
 import { DailyAgendaModal } from '../components/DailyAgendaModal';
 import { MyVisitModal } from '../components/MyVisitModal';
@@ -8,6 +8,7 @@ import { PatientDetailModal } from '../components/PatientDetailModal';
 import { SlotModal } from '../components/SlotModal';
 import { ViewReportModal } from '../components/ViewReportModal';
 import { FinishVisitModal } from '../components/FinishVisitModal';
+import { FinishSocialVisitModal } from '../components/FinishSocialVisitModal';
 import { CancelVisitModal } from '../components/CancelVisitModal';
 import { SwapRequestModal } from '../components/SwapRequestModal';
 import { atomicUpdate } from '../services/storageService';
@@ -70,6 +71,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const [slotModalData, setSlotModalData] = useState<{ route: VisitRoute; slot?: VisitSlot } | null>(null);
   const [reportModalSlot, setReportModalSlot] = useState<{ slot: VisitSlot, route: VisitRoute } | null>(null);
   const [myVisitModalData, setMyVisitModalData] = useState<{ slot: VisitSlot, route: VisitRoute } | null>(null);
+  const [finishSocialVisit, setFinishSocialVisit] = useState<SocialWorkerVisit | null>(null);
+  
   const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
@@ -116,6 +119,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
           chartData: data
       };
   }, [state.visits, state.patients, state.routes]);
+
+  // --- MINHAS VISITAS SOCIAIS PENDENTES ---
+  const mySocialVisits = useMemo(() => {
+      if (!state.currentUser) return [];
+      return state.socialWorkerVisits
+        .filter(v => v.memberIds.includes(state.currentUser!.id) && v.status !== 'FINISHED')
+        .sort((a, b) => a.date.localeCompare(b.date));
+  }, [state.socialWorkerVisits, state.currentUser]);
 
   // --- FILTRO DE EVENTOS ---
   const myEvents = useMemo(() => {
@@ -316,6 +327,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       }
   };
 
+  const handleFinishSocialVisit = async (notes: string) => {
+      if (!finishSocialVisit || !state.currentUser) return;
+
+      const updatedVisit: SocialWorkerVisit = {
+          ...finishSocialVisit,
+          status: 'FINISHED',
+          report: {
+              doctorName: state.currentUser.name,
+              notes: notes,
+              followUpNeeded: false,
+              createdAt: new Date().toISOString()
+          }
+      };
+
+      try {
+          await atomicUpdate('social_worker_visits', updatedVisit);
+          const updatedList = state.socialWorkerVisits.map(v => v.id === updatedVisit.id ? updatedVisit : v);
+          onUpdateState({ ...state, socialWorkerVisits: updatedList });
+          setFinishSocialVisit(null);
+      } catch (e) {
+          alert("Erro ao finalizar visita social.");
+      }
+  };
+
   // Derived data
   const viewingPatient = viewingPatientId ? activePatients.find(p => p.id === viewingPatientId) : null;
   const myVisitSlot = myVisitModalData?.slot;
@@ -372,6 +407,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
         {/* ACTIVITY CHART SECTION */}
         <ActivityChart data={chartData} isHospitalMode={isHospitalMode} />
 
+        {/* VISITAS SOCIAIS PENDENTES (NOVO) */}
+        {mySocialVisits.length > 0 && (
+            <div className={`p-4 rounded-2xl border-2 border-indigo-500/30 ${isHospitalMode ? 'bg-indigo-900/10' : 'bg-indigo-50'}`}>
+                <h3 className="text-xs font-black uppercase text-indigo-600 tracking-widest mb-3">Designações de Assistência Social</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {mySocialVisits.map(v => {
+                        const hospital = state.hospitals.find(h => h.id === v.hospitalId);
+                        const partnerId = v.memberIds.find(id => id !== state.currentUser?.id);
+                        const partner = state.members.find(m => m.id === partnerId);
+                        return (
+                            <div key={v.id} className={`p-4 rounded-xl shadow-sm flex flex-col justify-between ${isHospitalMode ? 'bg-[#212327] border border-gray-700' : 'bg-white border border-gray-200'}`}>
+                                <div className="mb-3">
+                                    <div className="flex justify-between items-start">
+                                        <h4 className={`font-bold ${isHospitalMode ? 'text-white' : 'text-gray-900'}`}>{hospital?.name}</h4>
+                                        <span className="text-xs font-black text-indigo-500">{new Date(v.date + 'T12:00:00').toLocaleDateString()}</span>
+                                    </div>
+                                    <p className={`text-xs mt-1 ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        Dupla: {partner ? partner.name : 'Você'}
+                                    </p>
+                                </div>
+                                <button 
+                                    onClick={() => setFinishSocialVisit(v)}
+                                    className="w-full py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase hover:bg-indigo-700 transition-colors shadow-md"
+                                >
+                                    Relatar & Finalizar
+                                </button>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        )}
+
         {/* EVENTOS GLOBAIS */}
         {myEvents.length > 0 && (
             <div className={`p-4 rounded-2xl border shadow-sm ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100'}`}>
@@ -425,6 +493,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 if (route) setReportModalSlot({ slot, route });
             }}
             onPatientClick={(p) => setViewingPatientId(p.id)}
+            hospitals={state.hospitals} // Passed for regional checks
         />
 
         {slotModalData && (
@@ -437,6 +506,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 currentUser={state.currentUser}
                 onSave={handleSlotSave}
                 isHospitalMode={isHospitalMode}
+                hospitals={state.hospitals} // Passed for regional checks
             />
         )}
 
@@ -493,6 +563,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             patients={myVisitPatients}
             isHospitalMode={isHospitalMode}
         />
+
+        {/* Modal de Finalizar Visita Social */}
+        {finishSocialVisit && (
+            <FinishSocialVisitModal 
+                isOpen={true}
+                onClose={() => setFinishSocialVisit(null)}
+                onConfirm={handleFinishSocialVisit}
+                hospitalName={state.hospitals.find(h => h.id === finishSocialVisit.hospitalId)?.name || ''}
+                isHospitalMode={isHospitalMode}
+            />
+        )}
 
         <CancelVisitModal 
             isOpen={isCancelModalOpen}

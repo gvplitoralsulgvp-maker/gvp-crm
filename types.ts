@@ -89,6 +89,7 @@ export interface SocialWorkerVisit {
   memberIds: string[];
   status: VisitStatus;
   report?: VisitReport;
+  createdAt?: string;
 }
 
 export interface Patient {
@@ -132,6 +133,7 @@ export interface Patient {
   estimatedDischargeDate?: string;
   needsAccommodation?: boolean;
   isExternalRequest?: boolean;
+  requestDate?: string;
   
   isIsolation?: boolean;
   isolationType?: string;

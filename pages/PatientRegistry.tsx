@@ -39,8 +39,9 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
       let patients = state.patients
         .filter(p => p.active && !optimisticArchived.has(p.id));
 
+      // Filtro de Regional para Coordenadores (Permite ver pacientes da regional OU sem regional definida)
       if (isCoordinator && userRegional) {
-          patients = patients.filter(p => p.regional === userRegional);
+          patients = patients.filter(p => !p.regional || p.regional === userRegional);
       }
 
       return patients.sort((a,b) => a.name.localeCompare(b.name));
@@ -58,7 +59,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
 
   const availableHospitals = useMemo(() => {
       if (isCoordinator && userRegional) {
-          return state.hospitals.filter(h => h.regional === userRegional);
+          return state.hospitals.filter(h => !h.regional || h.regional === userRegional);
       }
       return state.hospitals;
   }, [state.hospitals, isCoordinator, userRegional]);
@@ -106,7 +107,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
           }
 
           // FASE 1: Informar Alta Médica (Disponível para GVP e COLIH)
-          if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA do hospital?\n\nIsso removerá a solicitação de visita GVP, mas manterá o caso aberto para a COLIH (HLC-7).`)) {
+          if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA do hospital?\n\nIsso removerá a solicitação de visita, mas manterá o caso aberto para a COLIH (HLC-7).`)) {
               const dischargedPatient = { 
                   ...patient, 
                   isMedicalDischarge: true,
@@ -140,7 +141,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
           let newNotifications: AppNotification[] = []; 
           if (willEnable) { 
               const adminIds = state.members.filter(m => m.role === UserRole.ADMIN || m.role === UserRole.COORDINATOR).map(m => m.id); 
-              newNotifications = adminIds.map(adminId => ({ id: crypto.randomUUID(), userId: adminId, message: `🆘 Solicitação COLIH: Paciente ${patient.name} precisa de visita GVP.`, type: 'warning', read: false, timestamp: new Date().toISOString() })); 
+              newNotifications = adminIds.map(adminId => ({ id: crypto.randomUUID(), userId: adminId, message: `🆘 Solicitação COLIH: Paciente ${patient.name} precisa de visita.`, type: 'warning', read: false, timestamp: new Date().toISOString() })); 
           } 
           onUpdateState({ ...state, patients: updatedList, notifications: [...newNotifications, ...state.notifications] }); 
           await atomicUpdate('patients', updatedPatient); 
@@ -275,7 +276,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                                     ⚠️ Pendente HLC-7 (COLIH)
                                 </p>
                                 <p className={`text-[9px] text-center mt-1 leading-tight ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                    GVP encerrado. Aguardando fechamento administrativo.
+                                    Visitas encerradas. Aguardando fechamento administrativo.
                                 </p>
                             </div>
                         ) : (
@@ -319,7 +320,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
             })}
             {filteredPatients.length === 0 && (
                 <div className="col-span-full py-12 text-center text-gray-400">
-                    <p className="text-sm font-bold uppercase tracking-widest">Nenhum paciente encontrado</p>
+                    <p className="text-sm font-bold uppercase tracking-widest">Nenhum paciente encontrado nesta regional.</p>
                 </div>
             )}
         </div>
@@ -341,7 +342,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
             />
         )}
 
-        {/* EDIT MODAL - ATUALIZADO COM AUTO-REGIONAL */}
+        {/* EDIT MODAL */}
         {isEditModalOpen && editingPatient && createPortal(
             <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
                 <div className={`w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
@@ -408,7 +409,7 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
                         <div className="space-y-2 pt-2 border-t border-gray-200/20">
                             <label className="text-[10px] font-bold uppercase text-gray-500">Designar Membros COLIH</label>
                             <div className={`border rounded-xl max-h-40 overflow-y-auto custom-scrollbar p-2 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700' : 'bg-gray-50'}`}>
-                                {state.members.filter(m => m.isColih && m.active).sort((a,b) => a.name.localeCompare(b.name)).map(m => (
+                                {state.members.filter(m => m.isColih && m.active && m.colihClassification !== 'Facilitator').sort((a,b) => a.name.localeCompare(b.name)).map(m => (
                                     <label key={m.id} className={`flex items-center gap-3 p-2 rounded-lg hover:bg-black/5 cursor-pointer transition-all ${editingPatient.assignedColihIds?.includes(m.id) ? 'bg-blue-100' : ''}`}>
                                         <input 
                                             type="checkbox" 

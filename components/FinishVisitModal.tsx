@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from './Button';
 import { Patient } from '../types';
 
@@ -58,7 +59,7 @@ export const FinishVisitModal: React.FC<FinishVisitModalProps> = ({ isOpen, onCl
 
   const isFormValid = generalNote.trim().length >= 3;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-fade-in flex flex-col max-h-[95vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className="bg-green-600 px-6 py-4 flex justify-between items-center shrink-0">
@@ -195,6 +196,7 @@ export const FinishVisitModal: React.FC<FinishVisitModalProps> = ({ isOpen, onCl
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

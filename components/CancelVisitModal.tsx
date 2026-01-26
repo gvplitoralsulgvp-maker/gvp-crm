@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from './Button';
 
 interface CancelVisitModalProps {
@@ -21,7 +22,7 @@ export const CancelVisitModal: React.FC<CancelVisitModalProps> = ({ isOpen, onCl
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black bg-opacity-50 p-4 backdrop-blur-sm">
       <div className={`rounded-lg shadow-xl w-full max-w-sm overflow-hidden animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className="bg-red-600 px-6 py-4 flex justify-between items-center">
@@ -59,6 +60,7 @@ export const CancelVisitModal: React.FC<CancelVisitModalProps> = ({ isOpen, onCl
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

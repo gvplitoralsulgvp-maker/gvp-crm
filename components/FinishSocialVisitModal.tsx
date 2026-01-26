@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from './Button';
 
 interface FinishSocialVisitModalProps {
@@ -15,7 +16,7 @@ export const FinishSocialVisitModal: React.FC<FinishSocialVisitModalProps> = ({ 
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in flex flex-col ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className="bg-indigo-600 px-6 py-4 flex justify-between items-center shrink-0">
@@ -54,6 +55,7 @@ export const FinishSocialVisitModal: React.FC<FinishSocialVisitModalProps> = ({ 
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

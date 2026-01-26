@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { VisitRoute, Member, Hospital, Patient } from '../types';
 import { HistoryItem } from './ReportModal';
 import { Button } from './Button';
@@ -74,7 +75,7 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
     return route.hospitals!.includes(p.hospitalName!);
   });
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black bg-opacity-60 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800 shadow-black' : 'bg-white'}`}>
         <div className="bg-blue-600 px-6 py-5 flex justify-between items-start shrink-0">
@@ -206,6 +207,7 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
           <button onClick={onClose} className="bg-blue-600 text-white rounded-lg shadow-md font-bold text-sm px-6 py-2.5 hover:bg-blue-700 transition-all active:scale-95">Fechar</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

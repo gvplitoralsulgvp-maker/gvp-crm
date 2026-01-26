@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AppState, VisitRoute, VisitSlot, Member, UserRole } from '../types';
 import { Button } from './Button';
 import { downloadIcsFile } from '../services/calendarService';
@@ -73,7 +74,7 @@ export const QuickScaleModal: React.FC<QuickScaleModalProps> = ({ isOpen, onClos
   };
 
   if (isSuccess && selectedRoute) {
-    return (
+    return createPortal(
       <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black bg-opacity-50 p-4">
         <div className={`rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in flex flex-col ${isHospitalMode ? 'bg-[#212327]' : 'bg-white'}`}>
            <div className="p-8 text-center space-y-4">
@@ -95,11 +96,12 @@ export const QuickScaleModal: React.FC<QuickScaleModalProps> = ({ isOpen, onClos
               </div>
            </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black bg-opacity-50 p-4">
       <div className={`rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327]' : 'bg-white'}`}>
         <div className="bg-blue-600 px-6 py-5 flex justify-between items-center flex-shrink-0">
@@ -230,6 +232,7 @@ export const QuickScaleModal: React.FC<QuickScaleModalProps> = ({ isOpen, onClos
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

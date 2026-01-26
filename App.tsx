@@ -230,7 +230,7 @@ const Layout: React.FC<{
             <div className="bg-blue-600 p-1.5 rounded-lg text-white">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
             </div>
-            <span className="font-bold text-sm">COLIH/GVP Litoral Sul</span>
+            <span className="font-bold text-sm">COLIH Litoral Sul</span>
           </div>
         </div>
         <nav className="flex-grow p-4 space-y-2 overflow-y-auto custom-scrollbar">
@@ -263,7 +263,7 @@ const Layout: React.FC<{
                <div className="bg-blue-600 p-1 rounded-md text-white">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                </div>
-               <span className={`font-black text-sm tracking-tight ${isHospitalMode ? 'text-white' : 'text-gray-900'}`}>COLIH/GVP</span>
+               <span className={`font-black text-sm tracking-tight ${isHospitalMode ? 'text-white' : 'text-gray-900'}`}>COLIH</span>
             </div>
             <div className="hidden sm:block flex-grow">
               <GlobalSearch state={state} isHospitalMode={isHospitalMode} />

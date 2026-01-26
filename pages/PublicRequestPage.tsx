@@ -30,6 +30,7 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
     companionPhone: '', // Contato do Acompanhante (Telefone)
     localElder: '', // Nome do Ancião de Congregação
     elderPhone: '', // Contato do Ancião de Congregação
+    requestDate: new Date().toLocaleString('sv').slice(0, 16).replace(' ', 'T'), // Data/Hora do Contato (Formato ISO local para input)
     
     // Campos Extras (mantidos hidden ou default para compatibilidade)
     gender: '',
@@ -87,6 +88,7 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
         companionPhone: formData.companionPhone,
         localElder: formData.localElder,
         elderPhone: formData.elderPhone,
+        requestDate: new Date(formData.requestDate).toISOString(),
         
         // Campos padrão / extras
         gender: formData.gender,
@@ -195,14 +197,25 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
              <div className="inline-flex p-3 bg-blue-600 rounded-2xl text-white shadow-xl mb-4">
                 <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
              </div>
-             <h1 className="text-3xl font-black text-gray-900 tracking-tight">Solicitação de Visita - COLIH / GVP</h1>
-             <p className="text-gray-500 font-medium">Preencha os dados abaixo para encaminhamento ao COLIH/GVP.</p>
+             <h1 className="text-3xl font-black text-gray-900 tracking-tight">Solicitação de Visita - COLIH</h1>
+             <p className="text-gray-500 font-medium">Preencha os dados abaixo para encaminhamento à COLIH.</p>
           </div>
 
           {/* Form Card */}
           <div className="bg-white rounded-[2.5rem] shadow-2xl border border-gray-100 overflow-visible mb-12">
              <form onSubmit={handleSubmit} className="p-6 md:p-10 space-y-8">
                 
+                {/* 0. Data/Hora do Contato (NOVO) */}
+                <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Data/Hora do Contato</label>
+                    <input 
+                      required type="datetime-local" 
+                      className="w-full border-2 border-gray-50 bg-gray-50 rounded-2xl p-4 text-sm focus:border-blue-600 focus:bg-white outline-none transition-all shadow-sm"
+                      value={formData.requestDate}
+                      onChange={e => setFormData({...formData, requestDate: e.target.value})}
+                    />
+                </div>
+
                 {/* 1. Nome do Paciente */}
                 <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nome do Paciente</label>
@@ -387,13 +400,13 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
                     disabled={isSubmitting} 
                     className="w-full rounded-2xl py-5 text-lg font-bold shadow-2xl shadow-blue-500/40 transition-all active:scale-95 bg-blue-600 text-white"
                   >
-                    {isSubmitting ? 'Enviando Solicitação...' : 'Enviar Solicitação ao GVP'}
+                    {isSubmitting ? 'Enviando Solicitação...' : 'Enviar Solicitação à COLIH'}
                   </Button>
                 </div>
              </form>
              
              <div className="bg-gray-50 p-6 text-center border-t border-gray-100 rounded-b-[2.5rem]">
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em]">GVP Litoral Sul - Grupo de Visita a Pacientes</p>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em]">COLIH Litoral Sul - Comissão de Ligação com Hospitais</p>
              </div>
           </div>
           

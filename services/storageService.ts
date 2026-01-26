@@ -82,24 +82,56 @@ export const loadState = async (): Promise<AppState> => {
           memberIds: ensureArray(v.memberIds, (v as any).member_ids)
       })),
 
-      socialWorkerVisits: mapFromDb<SocialWorkerVisit>(fetchAll[4].data).map(v => ({
+      socialWorkerVisits: mapFromDb<any>(fetchAll[4].data).map(v => ({
           ...v,
-          memberIds: ensureArray(v.memberIds, (v as any).member_ids)
-      })),
+          memberIds: ensureArray(v.memberIds, (v as any).member_ids),
+          createdAt: v.created_at ?? v.createdAt
+      }) as SocialWorkerVisit),
 
       // Mapeamento Explícito para PACIENTES (Snake -> Camel)
       patients: mapFromDb<any>(fetchAll[5].data).map(p => ({
           ...p,
+          admissionDate: p.admission_date ?? p.admissionDate,
+          hospitalId: p.hospital_id ?? p.hospitalId,
+          hospitalName: p.hospital_name ?? p.hospitalName,
+          companionName: p.companion_name ?? p.companionName,
+          companionPhone: p.companion_phone ?? p.companionPhone,
+          localElder: p.local_elder ?? p.localElder,
+          spiritualStatus: p.spiritual_status ?? p.spiritualStatus,
+          hasDirectivesCard: p.has_directives_card ?? p.hasDirectivesCard ?? false,
+          hasS55: p.has_s55 ?? p.hasS55 ?? false,
+          formsConsidered: p.forms_considered ?? p.formsConsidered ?? false,
+          agentsNotified: p.agents_notified ?? p.agentsNotified ?? false,
+          visitTime: p.visit_time ?? p.visitTime,
+          isSurgical: p.is_surgical ?? p.isSurgical ?? false,
+          surgeryDate: p.surgery_date ?? p.surgeryDate,
+          clinicalStatus: p.clinical_status ?? p.clinicalStatus,
+          estimatedDischargeDate: p.estimated_discharge_date ?? p.estimatedDischargeDate,
+          needsAccommodation: p.needs_accommodation ?? p.needsAccommodation ?? false,
+          isIsolation: p.is_isolation ?? p.isIsolation ?? false,
+          isolationType: p.isolation_type ?? p.isolationType,
+          
           assignedColihIds: ensureArray(p.assignedColihIds, p.assigned_colih_ids),
           isMedicalDischarge: p.is_medical_discharge ?? p.isMedicalDischarge ?? false,
           gvpRequestPending: p.gvp_request_pending ?? p.gvpRequestPending ?? false,
           nonWitnessFamily: p.non_witness_family ?? p.nonWitnessFamily ?? false,
           elderPhone: p.elder_phone ?? p.elderPhone,
-          isExternalRequest: p.is_external_request ?? p.isExternalRequest ?? false
+          isExternalRequest: p.is_external_request ?? p.isExternalRequest ?? false,
+          requestDate: p.request_date ?? p.requestDate
       }) as Patient),
 
-      logs: mapFromDb<LogEntry>(fetchAll[6].data),
-      notifications: mapFromDb<AppNotification>(fetchAll[7].data),
+      // Mapeamento LOGS (Snake -> Camel)
+      logs: mapFromDb<any>(fetchAll[6].data).map(l => ({
+          ...l,
+          userId: l.user_id ?? l.userId,
+          userName: l.user_name ?? l.userName
+      }) as LogEntry),
+
+      // Mapeamento NOTIFICATIONS (Snake -> Camel)
+      notifications: mapFromDb<any>(fetchAll[7].data).map(n => ({
+          ...n,
+          userId: n.user_id ?? n.userId
+      }) as AppNotification),
       
       doctors: mapFromDb<Doctor>(fetchAll[8].data).map(d => ({
           ...d,
@@ -158,18 +190,65 @@ const sanitizeForDb = (table: string, data: any) => {
         if (copy.nonWitnessFamily !== undefined) { copy.non_witness_family = copy.nonWitnessFamily; delete copy.nonWitnessFamily; }
         if (copy.elderPhone !== undefined) { copy.elder_phone = copy.elderPhone; delete copy.elderPhone; }
         if (copy.isExternalRequest !== undefined) { copy.is_external_request = copy.isExternalRequest; delete copy.isExternalRequest; }
+        if (copy.requestDate !== undefined) { copy.request_date = copy.requestDate; delete copy.requestDate; }
+        
+        // Mapeamentos adicionais para evitar PGRST204 e erros de data vazia (22007)
+        if (copy.admissionDate !== undefined) { 
+            copy.admission_date = copy.admissionDate === '' ? null : copy.admissionDate; 
+            delete copy.admissionDate; 
+        }
+        if (copy.hospitalId !== undefined) { copy.hospital_id = copy.hospitalId; delete copy.hospitalId; }
+        if (copy.hospitalName !== undefined) { copy.hospital_name = copy.hospitalName; delete copy.hospitalName; }
+        if (copy.companionName !== undefined) { copy.companion_name = copy.companionName; delete copy.companionName; }
+        if (copy.companionPhone !== undefined) { copy.companion_phone = copy.companionPhone; delete copy.companionPhone; }
+        if (copy.localElder !== undefined) { copy.local_elder = copy.localElder; delete copy.localElder; }
+        if (copy.spiritualStatus !== undefined) { copy.spiritual_status = copy.spiritualStatus; delete copy.spiritualStatus; }
+        if (copy.hasDirectivesCard !== undefined) { copy.has_directives_card = copy.hasDirectivesCard; delete copy.hasDirectivesCard; }
+        if (copy.hasS55 !== undefined) { copy.has_s55 = copy.hasS55; delete copy.hasS55; }
+        if (copy.formsConsidered !== undefined) { copy.forms_considered = copy.formsConsidered; delete copy.formsConsidered; }
+        if (copy.agentsNotified !== undefined) { copy.agents_notified = copy.agentsNotified; delete copy.agentsNotified; }
+        if (copy.visitTime !== undefined) { copy.visit_time = copy.visitTime; delete copy.visitTime; }
+        if (copy.isSurgical !== undefined) { copy.is_surgical = copy.isSurgical; delete copy.isSurgical; }
+        if (copy.surgeryDate !== undefined) { 
+            copy.surgery_date = copy.surgeryDate === '' ? null : copy.surgeryDate; 
+            delete copy.surgeryDate; 
+        }
+        if (copy.clinicalStatus !== undefined) { copy.clinical_status = copy.clinicalStatus; delete copy.clinicalStatus; }
+        if (copy.estimatedDischargeDate !== undefined) { 
+            copy.estimated_discharge_date = copy.estimatedDischargeDate === '' ? null : copy.estimatedDischargeDate; 
+            delete copy.estimatedDischargeDate; 
+        }
+        if (copy.needsAccommodation !== undefined) { copy.needs_accommodation = copy.needsAccommodation; delete copy.needsAccommodation; }
+        if (copy.isIsolation !== undefined) { copy.is_isolation = copy.isIsolation; delete copy.isIsolation; }
+        if (copy.isolationType !== undefined) { copy.isolation_type = copy.isolationType; delete copy.isolationType; }
     }
 
     if (table === 'hospitals') {
         if (copy.responsibleMemberIds !== undefined) { copy.responsible_member_ids = copy.responsibleMemberIds; delete copy.responsibleMemberIds; }
     }
 
-    if (table === 'visits' || table === 'social_worker_visits' || table === 'colih_visits') {
+    if (table === 'visits' || table === 'colih_visits') {
         if (copy.memberIds !== undefined) { copy.member_ids = copy.memberIds; delete copy.memberIds; }
+    }
+
+    if (table === 'social_worker_visits') {
+        if (copy.memberIds !== undefined) { copy.member_ids = copy.memberIds; delete copy.memberIds; }
+        if (copy.createdAt !== undefined) { copy.created_at = copy.createdAt; delete copy.createdAt; }
     }
 
     if (table === 'doctors') {
         if (copy.hospitalIds !== undefined) { copy.hospital_ids = copy.hospitalIds; delete copy.hospitalIds; }
+    }
+
+    // Mapeamento LOGS (Camel -> Snake)
+    if (table === 'logs') {
+        if (copy.userId !== undefined) { copy.user_id = copy.userId; delete copy.userId; }
+        if (copy.userName !== undefined) { copy.user_name = copy.userName; delete copy.userName; }
+    }
+
+    // Mapeamento NOTIFICATIONS (Camel -> Snake)
+    if (table === 'notifications') {
+        if (copy.userId !== undefined) { copy.user_id = copy.userId; delete copy.userId; }
     }
 
     // Mapeamento DOCUMENTOS (Camel -> Snake)

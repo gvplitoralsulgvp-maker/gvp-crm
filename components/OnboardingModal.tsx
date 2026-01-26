@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from './Button';
 
 interface OnboardingStep {
@@ -89,7 +90,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 md:p-4 backdrop-blur-xl overflow-hidden">
       {/* Botão de Fechar Rápido para Mobile */}
       <button 
@@ -175,6 +176,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClos
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

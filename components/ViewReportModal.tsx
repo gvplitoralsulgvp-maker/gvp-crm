@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { VisitSlot, VisitRoute, Member } from '../types';
 import { Button } from './Button';
 
@@ -29,7 +30,7 @@ export const ViewReportModal: React.FC<ViewReportModalProps> = ({
       year: 'numeric'
   });
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className="bg-blue-600 px-6 py-5 flex justify-between items-center shrink-0">
@@ -87,6 +88,7 @@ export const ViewReportModal: React.FC<ViewReportModalProps> = ({
           <Button onClick={onClose} className="w-full sm:w-auto">Fechar Relatório</Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

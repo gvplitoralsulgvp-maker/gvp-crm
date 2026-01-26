@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { VisitReport } from '@/types';
 import { Button } from './Button';
 import { improveReport } from '../services/geminiService';
@@ -108,7 +109,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
     onClose();
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black bg-opacity-60 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className="bg-blue-600 px-6 py-5 flex justify-between items-center shrink-0">
@@ -232,6 +233,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
             <Button variant="primary" type="submit" form="report-form">Salvar Relatório</Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
