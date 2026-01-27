@@ -242,7 +242,19 @@ const PresentationModal: React.FC<{ isOpen: boolean; onClose: () => void; presen
     const handleSubmit = () => {
         if (!selectedId) return alert("Selecione o destino da apresentação.");
         if (selectedMembers.length === 0) return alert("Selecione quem realizou/realizará a apresentação.");
-        onSave({ id: presentationToEdit?.id, date, memberIds: selectedMembers, notes, interactionType: 'presentation', hlc38Presented: hlc38, collaboratorInterest: interest, status: status, hospitalId: targetType === 'hospital' ? selectedId : undefined, doctorId: targetType === 'doctor' ? selectedId : undefined });
+        onSave({ 
+            id: presentationToEdit?.id, 
+            date, 
+            memberIds: selectedMembers, 
+            notes, 
+            interactionType: 'presentation', 
+            hlc38Presented: hlc38, 
+            collaboratorInterest: interest, 
+            status: status, 
+            // Fix: Use undefined instead of null for optional types
+            hospitalId: targetType === 'hospital' ? selectedId : undefined, 
+            doctorId: targetType === 'doctor' ? selectedId : undefined 
+        });
     };
 
     const toggleMember = (id: string) => {
@@ -494,10 +506,9 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
             createdAt: data.createdAt || new Date().toISOString(),
             hlc38Presented: data.hlc38Presented,
             collaboratorInterest: data.collaboratorInterest,
-            // Importante: Enviar null para o ID que não está sendo usado. 
-            // O uso de '|| null' é crucial para evitar undefined que pode ser ignorado pelo Supabase em updates.
-            hospitalId: data.hospitalId || null,
-            doctorId: data.doctorId || null
+            // FIX: Using undefined for optional types instead of null
+            hospitalId: data.hospitalId || undefined,
+            doctorId: data.doctorId || undefined
         };
 
         try {

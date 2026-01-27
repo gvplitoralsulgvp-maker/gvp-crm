@@ -79,7 +79,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const [optimisticArchived, setOptimisticArchived] = useState<Set<string>>(new Set());
 
   // Derived data
-  const activePatients = state.patients.filter(p => p.active && !optimisticArchived.has(p.id));
+  const activePatients = state.patients.filter((p: Patient) => p.active && !optimisticArchived.has(p.id));
 
   // --- CÁLCULO DE KPIS (useMemo) ...
   const { kpis, chartData } = useMemo(() => {
@@ -87,20 +87,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       const currentMonthStr = now.toISOString().slice(0, 7); // YYYY-MM
       const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
       
-      const monthVisits = state.visits.filter(v => v.date.startsWith(currentMonthStr));
-      const finishedCount = monthVisits.filter(v => v.status === 'FINISHED').length;
-      const scheduledCount = monthVisits.filter(v => v.status !== 'FINISHED' && v.memberIds.length > 0).length;
+      const monthVisits = state.visits.filter((v: VisitSlot) => v.date.startsWith(currentMonthStr));
+      const finishedCount = monthVisits.filter((v: VisitSlot) => v.status === 'FINISHED').length;
+      const scheduledCount = monthVisits.filter((v: VisitSlot) => v.status !== 'FINISHED' && v.memberIds.length > 0).length;
       
-      const activeP = state.patients.filter(p => p.active && !p.isMedicalDischarge).length;
+      const activeP = state.patients.filter((p: Patient) => p.active && !p.isMedicalDischarge).length;
       
       const visitedHospitalIds = new Set();
-      monthVisits.filter(v => v.status === 'FINISHED').forEach(v => {
-          const route = state.routes.find(r => r.id === v.routeId);
-          route?.hospitals?.forEach(h => visitedHospitalIds.add(h));
+      monthVisits.filter((v: VisitSlot) => v.status === 'FINISHED').forEach((v: VisitSlot) => {
+          const route = state.routes.find((r: VisitRoute) => r.id === v.routeId);
+          route?.hospitals?.forEach((h: string) => visitedHospitalIds.add(h));
       });
 
       const data = new Array(daysInMonth).fill(0);
-      monthVisits.filter(v => v.status === 'FINISHED').forEach(v => {
+      monthVisits.filter((v: VisitSlot) => v.status === 'FINISHED').forEach((v: VisitSlot) => {
           const day = parseInt(v.date.split('-')[2]);
           if(day >= 1 && day <= daysInMonth) data[day-1]++;
       });
@@ -112,13 +112,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const myUpcomingVisits = useMemo(() => {
       if (!state.currentUser) return [];
       const today = new Date().toISOString().split('T')[0];
-      return state.visits.filter(v => v.memberIds.includes(state.currentUser!.id) && v.status !== 'FINISHED' && v.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+      return state.visits.filter((v: VisitSlot) => v.memberIds.includes(state.currentUser!.id) && v.status !== 'FINISHED' && v.date >= today).sort((a: VisitSlot, b: VisitSlot) => a.date.localeCompare(b.date));
   }, [state.visits, state.currentUser]);
 
   // --- MINHAS VISITAS SOCIAIS PENDENTES ---
   const mySocialVisits = useMemo(() => {
       if (!state.currentUser) return [];
-      return state.socialWorkerVisits.filter(v => v.memberIds.includes(state.currentUser!.id) && v.status !== 'FINISHED').sort((a, b) => a.date.localeCompare(b.date));
+      return state.socialWorkerVisits.filter((v: SocialWorkerVisit) => v.memberIds.includes(state.currentUser!.id) && v.status !== 'FINISHED').sort((a: SocialWorkerVisit, b: SocialWorkerVisit) => a.date.localeCompare(b.date));
   }, [state.socialWorkerVisits, state.currentUser]);
 
   // --- FILTRO DE EVENTOS ---
@@ -127,18 +127,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       const isColih = state.currentUser?.isColih;
       const isAdmin = state.currentUser?.role === UserRole.ADMIN;
       const isCoordinator = state.currentUser?.role === UserRole.COORDINATOR;
-      return state.events.filter(e => e.date >= today).filter(e => {
+      return state.events.filter((e: AppEvent) => e.date >= today).filter((e: AppEvent) => {
           if (isAdmin || isCoordinator) return true;
           if (e.targetGroup === 'ALL') return true;
           if (isColih && e.targetGroup === 'COLIH') return true;
           if (!isColih && e.targetGroup === 'GVP') return true;
           return false;
-      }).sort((a,b) => a.date.localeCompare(b.date)).slice(0, 3);
+      }).sort((a: AppEvent, b: AppEvent) => a.date.localeCompare(b.date)).slice(0, 3);
   }, [state.events, state.currentUser]);
 
   // Lógica refatorada: Separação Alta Médica vs Arquivamento HLC-7
   const handleDischarge = async (id: string, name: string) => { 
-      const patient = state.patients.find(p => p.id === id);
+      const patient = state.patients.find((p: Patient) => p.id === id);
       if (!patient) return;
       const isColihUser = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
       try {
@@ -147,7 +147,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
               if (window.confirm(`[PROTOCOLO COLIH]\n\nConfirma o envio do formulário HLC-7 para o caso de ${name}?\n\nIsso arquivará o paciente definitivamente.`)) {
                   setOptimisticArchived(prev => new Set(prev).add(id));
                   const archivedPatient = { ...patient, active: false, gvpRequestPending: false, isMedicalDischarge: true };
-                  const updatedPatients = state.patients.map(p => p.id === id ? archivedPatient : p);
+                  const updatedPatients = state.patients.map((p: Patient) => p.id === id ? archivedPatient : p);
                   onUpdateState({ ...state, patients: updatedPatients });
                   setViewingPatientId(null);
                   await atomicUpdate('patients', archivedPatient);
@@ -156,7 +156,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
           }
           if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA do hospital?\n\nIsso removerá a solicitação de visita GVP, mas manterá o caso aberto para a COLIH (HLC-7).`)) {
               const dischargedPatient = { ...patient, isMedicalDischarge: true, gvpRequestPending: false, active: true, estimatedDischargeDate: new Date().toISOString() };
-              const updatedPatients = state.patients.map(p => p.id === id ? dischargedPatient : p); 
+              const updatedPatients = state.patients.map((p: Patient) => p.id === id ? dischargedPatient : p); 
               onUpdateState({ ...state, patients: updatedPatients });
               setViewingPatientId(null);
               await atomicUpdate('patients', dischargedPatient);
@@ -169,7 +169,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       if (!window.confirm(willEnable ? "Marcar solicitação?" : "Remover solicitação?")) return;
       const updated = { ...patient, gvpRequestPending: willEnable };
       await atomicUpdate('patients', updated);
-      onUpdateState({ ...state, patients: state.patients.map(p => p.id === patient.id ? updated : p) });
+      onUpdateState({ ...state, patients: state.patients.map((p: Patient) => p.id === patient.id ? updated : p) });
   };
 
   const handleRouteClick = (route: VisitRoute, slot: VisitSlot | undefined) => {
@@ -178,7 +178,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   };
 
   const handleOpenMyVisit = (visit: VisitSlot) => {
-      const route = state.routes.find(r => r.id === visit.routeId);
+      const route = state.routes.find((r: VisitRoute) => r.id === visit.routeId);
       if (route) { setMyVisitModalData({ slot: visit, route }); }
   };
 
@@ -188,7 +188,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       const newSlot: VisitSlot = slot ? { ...slot, memberIds: newMemberIds } : { id: crypto.randomUUID(), routeId: route.id, date: selectedDate, memberIds: newMemberIds, status: 'PENDING' };
       try {
           await atomicUpdate('visits', newSlot);
-          const updatedVisits = slot ? state.visits.map(v => v.id === slot.id ? newSlot : v) : [...state.visits, newSlot];
+          const updatedVisits = slot ? state.visits.map((v: VisitSlot) => v.id === slot.id ? newSlot : v) : [...state.visits, newSlot];
           onUpdateState({ ...state, visits: updatedVisits });
           setSlotModalData(null);
       } catch (e) { alert("Erro ao salvar escala."); }
@@ -203,7 +203,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       try {
           await atomicUpdate('visits', updatedSlot);
           await atomicUpdate('logs', logEntry);
-          const updatedVisits = state.visits.map(v => v.id === slot.id ? updatedSlot : v);
+          const updatedVisits = state.visits.map((v: VisitSlot) => v.id === slot.id ? updatedSlot : v);
           onUpdateState({ ...state, visits: updatedVisits, logs: [...state.logs, logEntry] });
           setIsCancelModalOpen(false);
           setMyVisitModalData(null);
@@ -225,7 +225,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       }
       try {
           await atomicUpdate('visits', updatedSlot);
-          const updatedVisits = state.visits.map(v => v.id === slot.id ? updatedSlot : v);
+          const updatedVisits = state.visits.map((v: VisitSlot) => v.id === slot.id ? updatedSlot : v);
           onUpdateState({ ...state, visits: updatedVisits, patients: updatedPatients });
           setIsFinishModalOpen(false);
           setMyVisitModalData(null);
@@ -237,19 +237,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       const updatedVisit: SocialWorkerVisit = { ...finishSocialVisit, status: 'FINISHED', report: { doctorName: state.currentUser.name, notes: notes, followUpNeeded: false, createdAt: new Date().toISOString() } };
       try {
           await atomicUpdate('social_worker_visits', updatedVisit);
-          const updatedList = state.socialWorkerVisits.map(v => v.id === updatedVisit.id ? updatedVisit : v);
+          const updatedList = state.socialWorkerVisits.map((v: SocialWorkerVisit) => v.id === updatedVisit.id ? updatedVisit : v);
           onUpdateState({ ...state, socialWorkerVisits: updatedList });
           setFinishSocialVisit(null);
       } catch (e) { alert("Erro ao finalizar visita social."); }
   };
 
-  const viewingPatient = viewingPatientId ? activePatients.find(p => p.id === viewingPatientId) : null;
+  const viewingPatient = viewingPatientId ? activePatients.find((p: Patient) => p.id === viewingPatientId) : null;
   const myVisitSlot = myVisitModalData?.slot;
   const myVisitRoute = myVisitModalData?.route;
-  const myVisitPatients = myVisitRoute && myVisitRoute.hospitals ? activePatients.filter(p => myVisitRoute.hospitals?.includes(p.hospitalName || '')) : [];
+  const myVisitPatients = myVisitRoute && myVisitRoute.hospitals ? activePatients.filter((p: Patient) => myVisitRoute.hospitals?.includes(p.hospitalName || '')) : [];
   const partnerId = myVisitSlot?.memberIds.find(id => id !== state.currentUser?.id);
   const partner = partnerId ? state.members.find(m => m.id === partnerId) : null;
-  const hospitalDetails = myVisitRoute?.hospitals ? state.hospitals.filter(h => myVisitRoute.hospitals?.includes(h.name)) : [];
+  const hospitalDetails = myVisitRoute?.hospitals ? state.hospitals.filter((h: Hospital) => myVisitRoute.hospitals?.includes(h.name)) : [];
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
@@ -258,7 +258,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             <KpiCard title="Visitas (Mês)" value={kpis.finished} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} colorBg={isHospitalMode ? 'bg-green-900/30' : 'bg-green-100'} colorText={isHospitalMode ? 'text-green-400' : 'text-green-600'} isHospitalMode={isHospitalMode} />
             <KpiCard title="Pacientes Ativos" value={kpis.activePatients} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>} colorBg={isHospitalMode ? 'bg-blue-900/30' : 'bg-blue-100'} colorText={isHospitalMode ? 'text-blue-400' : 'text-blue-600'} isHospitalMode={isHospitalMode} />
             <KpiCard title="Hospitais (Mês)" value={kpis.hospitalsVisited} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>} colorBg={isHospitalMode ? 'bg-purple-900/30' : 'bg-purple-100'} colorText={isHospitalMode ? 'text-purple-400' : 'text-purple-600'} isHospitalMode={isHospitalMode} />
-            <KpiCard title="Agendamentos" value={kpis.scheduled} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} colorBg={isHospitalMode ? 'bg-orange-900/30' : 'bg-orange-100'} colorText={isHospitalMode ? 'text-orange-400' : 'text-orange-600'} isHospitalMode={isHospitalMode} />
+            <KpiCard title="Agendamentos" value={kpis.scheduled} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} colorBg={isHospitalMode ? 'bg-orange-900/30' : 'bg-orange-100'} colorText={isHospitalMode ? 'text-orange-400' : 'text-orange-600'} isHospitalMode={isHospitalMode} />
         </div>
 
         <ActivityChart data={chartData} isHospitalMode={isHospitalMode} />
@@ -271,8 +271,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                     Meus Agendamentos
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 relative z-10">
-                    {myUpcomingVisits.map(visit => {
-                        const route = state.routes.find(r => r.id === visit.routeId);
+                    {myUpcomingVisits.map((visit: VisitSlot) => {
+                        const route = state.routes.find((r: VisitRoute) => r.id === visit.routeId);
                         const partnerId = visit.memberIds.find(id => id !== state.currentUser?.id);
                         const partner = state.members.find(m => m.id === partnerId);
                         const isToday = visit.date === new Date().toISOString().split('T')[0];
@@ -294,12 +294,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             <div className={`p-4 rounded-2xl border-2 border-indigo-500/30 ${isHospitalMode ? 'bg-indigo-900/10' : 'bg-indigo-50'}`}>
                 <h3 className="text-xs font-black uppercase text-indigo-600 tracking-widest mb-3">Designações de Assistência Social</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {mySocialVisits.map(v => {
-                        const hospital = state.hospitals.find(h => h.id === v.hospitalId);
+                    {mySocialVisits.map((v: SocialWorkerVisit) => {
+                        const hospital = state.hospitals.find((h: Hospital) => h.id === v.hospitalId);
                         const partnerId = v.memberIds.find(id => id !== state.currentUser?.id);
                         const partner = state.members.find(m => m.id === partnerId);
                         return (
-                            <div key={v.id} className={`p-4 rounded-xl shadow-sm flex flex-col justify-between ${isHospitalMode ? 'bg-[#212327] border border-gray-700' : 'bg-white border-gray-200'}`}>
+                            <div key={v.id} className={`p-4 rounded-xl shadow-sm flex flex-col justify-between ${isHospitalMode ? 'bg-[#212327] border border-gray-700' : 'bg-white border border-gray-200'}`}>
                                 <div className="mb-3">
                                     <div className="flex justify-between items-start">
                                         <h4 className={`font-bold ${isHospitalMode ? 'text-white' : 'text-gray-900'}`}>{hospital?.name}</h4>
@@ -319,7 +319,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             <div className={`p-4 rounded-2xl border shadow-sm ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100'}`}>
                 <h3 className={`text-xs font-black uppercase tracking-widest mb-3 ${isHospitalMode ? 'text-gray-400' : 'text-blue-600'}`}>Próximos Eventos</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {myEvents.map(event => (
+                    {myEvents.map((event: AppEvent) => (
                         <div key={event.id} className={`p-3 rounded-xl border flex flex-col justify-between ${isHospitalMode ? 'bg-black/20 border-gray-700' : 'bg-white border-blue-100 shadow-sm'}`}>
                             <div>
                                 <div className="flex justify-between items-start">
@@ -358,7 +358,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             isPrivacyMode={isPrivacyMode}
             isHospitalMode={isHospitalMode}
             onRouteClick={handleRouteClick}
-            onReportClick={(slot) => { const route = state.routes.find(r => r.id === slot.routeId); if (route) setReportModalSlot({ slot, route }); }}
+            onReportClick={(slot) => { const route = state.routes.find((r: VisitRoute) => r.id === slot.routeId); if (route) setReportModalSlot({ slot, route }); }}
             onPatientClick={(p) => setViewingPatientId(p.id)}
             hospitals={state.hospitals}
         />
@@ -437,7 +437,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 isOpen={true}
                 onClose={() => setFinishSocialVisit(null)}
                 onConfirm={handleFinishSocialVisit}
-                hospitalName={state.hospitals.find(h => h.id === finishSocialVisit.hospitalId)?.name || ''}
+                hospitalName={state.hospitals.find((h: Hospital) => h.id === finishSocialVisit.hospitalId)?.name || ''}
                 isHospitalMode={isHospitalMode}
             />
         )}
