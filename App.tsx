@@ -116,10 +116,13 @@ const Layout: React.FC<{
       });
 
       if (newNotifications.length > 0) {
-        // Salva no banco
-        for (const n of newNotifications) {
-           await atomicUpdate('notifications', n);
+        // Se for o usuário admin hardcoded, não salva no banco para evitar erro FK
+        if (state.currentUser && state.currentUser.id !== 'admin-master-id') {
+            for (const n of newNotifications) {
+               await atomicUpdate('notifications', n);
+            }
         }
+        
         // Atualiza estado local
         onUpdateState(prev => ({
           ...prev,
@@ -152,7 +155,7 @@ const Layout: React.FC<{
 
   useEffect(() => {
     const handleVisibilityChange = async () => {
-        if (document.visibilityState === 'visible' && state.currentUser) {
+        if (document.visibilityState === 'visible' && state.currentUser && state.currentUser.id !== 'admin-master-id') {
             try {
                 const client = supabase;
                 if (!client) return;
@@ -193,8 +196,19 @@ const Layout: React.FC<{
 
   const handleLogout = async () => { const client = supabase; if (client) await client.auth.signOut(); onUpdateState({ ...state, currentUser: null }); };
   const handleCloseOnboarding = () => { setIsOnboardingOpen(false); };
-  const handleMarkAsRead = (id: string) => { const notif = state.notifications.find(n => n.id === id); if(notif) atomicUpdate('notifications', { ...notif, read: true }); onUpdateState((current) => ({ ...current, notifications: current.notifications.map(n => n.id === id ? { ...n, read: true } : n) })); };
-  const handleClearNotifications = () => { state.notifications.forEach(n => { if(!n.read) atomicUpdate('notifications', { ...n, read: true }); }); onUpdateState((current) => ({ ...current, notifications: [] })); };
+  const handleMarkAsRead = (id: string) => { 
+      const notif = state.notifications.find(n => n.id === id); 
+      if(notif && state.currentUser?.id !== 'admin-master-id') {
+          atomicUpdate('notifications', { ...notif, read: true }); 
+      }
+      onUpdateState((current) => ({ ...current, notifications: current.notifications.map(n => n.id === id ? { ...n, read: true } : n) })); 
+  };
+  const handleClearNotifications = () => { 
+      if (state.currentUser?.id !== 'admin-master-id') {
+          state.notifications.forEach(n => { if(!n.read) atomicUpdate('notifications', { ...n, read: true }); }); 
+      }
+      onUpdateState((current) => ({ ...current, notifications: [] })); 
+  };
 
   const hasColihAccess = state.currentUser.isColih || state.currentUser.role === UserRole.ADMIN || state.currentUser.role === UserRole.COORDINATOR;
   const isManagement = state.currentUser.role === UserRole.ADMIN || state.currentUser.role === UserRole.COORDINATOR;

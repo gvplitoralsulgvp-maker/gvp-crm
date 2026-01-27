@@ -250,6 +250,12 @@ const PresentationModal: React.FC<{ isOpen: boolean; onClose: () => void; presen
         else setSelectedMembers(prev => [...prev, id]);
     };
 
+    // Filter Logic: COLIH members + Coordinators + Admins (Explicitly exclude normal GVP members)
+    const assignableMembers = members.filter(m => 
+        m.active && 
+        (m.isColih || m.role === UserRole.COORDINATOR || m.colihClassification === 'Coordinator' || m.role === UserRole.ADMIN)
+    );
+
     return createPortal(
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
              <div className={`w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
@@ -277,8 +283,20 @@ const PresentationModal: React.FC<{ isOpen: boolean; onClose: () => void; presen
                     </div>
                     <div className="space-y-1"><label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Data {status === 'SCHEDULED' ? 'Prevista' : 'Realizada'}</label><input type="date" className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={date} onChange={e => setDate(e.target.value)} /></div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Equipe Designada (Membros COLIH)</label>
-                        <div className={`border rounded-xl max-h-40 overflow-y-auto custom-scrollbar p-2 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700' : 'bg-gray-50'}`}>{members.filter(m => m.active && (m.isColih || m.role === UserRole.COORDINATOR || m.colihClassification === 'Coordinator')).sort((a, b) => a.name.localeCompare(b.name)).map(m => (<label key={m.id} className={`flex items-center gap-3 p-2 rounded-lg hover:bg-black/5 cursor-pointer transition-all ${selectedMembers.includes(m.id) ? 'bg-purple-100' : ''}`}><input type="checkbox" className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" checked={selectedMembers.includes(m.id)} onChange={() => toggleMember(m.id)} /><div><span className={`text-xs font-bold block ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{m.name}</span><span className="text-[8px] font-bold uppercase text-gray-400 tracking-wider">{m.colihClassification || 'Membro'}</span></div></label>))}</div>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Equipe Designada (Apenas COLIH/Coord)</label>
+                        <div className={`border rounded-xl max-h-40 overflow-y-auto custom-scrollbar p-2 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700' : 'bg-gray-50'}`}>
+                            {assignableMembers.sort((a, b) => a.name.localeCompare(b.name)).map(m => (
+                                <label key={m.id} className={`flex items-center gap-3 p-2 rounded-lg hover:bg-black/5 cursor-pointer transition-all ${selectedMembers.includes(m.id) ? 'bg-purple-100' : ''}`}>
+                                    <input type="checkbox" className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" checked={selectedMembers.includes(m.id)} onChange={() => toggleMember(m.id)} />
+                                    <div>
+                                        <span className={`text-xs font-bold block ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{m.name}</span>
+                                        <span className="text-[8px] font-bold uppercase text-gray-400 tracking-wider">
+                                            {m.colihClassification || (m.role === 'ADMIN' ? 'Admin' : m.role === 'COORDINATOR' ? 'Coord' : 'Membro')}
+                                        </span>
+                                    </div>
+                                </label>
+                            ))}
+                        </div>
                     </div>
                     {(status === 'COMPLETED' || presentationToEdit) && (
                         <div className="animate-fade-in space-y-5 pt-4 border-t border-dashed border-gray-300">
@@ -385,6 +403,9 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
     const [isPresentationModalOpen, setIsPresentationModalOpen] = useState(false);
     const [editingPresentation, setEditingPresentation] = useState<ColihVisit | undefined>(undefined);
     
+    // Filtro de Especialidade (Estado)
+    const [selectedSpecialty, setSelectedSpecialty] = useState<string>('ALL');
+
     // Auto-select for presentation from doctor/hospital list
     const [autoSelectForPresentation, setAutoSelectForPresentation] = useState<string | null>(null);
 
@@ -473,9 +494,10 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
             createdAt: data.createdAt || new Date().toISOString(),
             hlc38Presented: data.hlc38Presented,
             collaboratorInterest: data.collaboratorInterest,
-            // Importante: Enviar null para o ID que não está sendo usado
-            hospitalId: data.hospitalId || null as any,
-            doctorId: data.doctorId || null as any
+            // Importante: Enviar null para o ID que não está sendo usado. 
+            // O uso de '|| null' é crucial para evitar undefined que pode ser ignorado pelo Supabase em updates.
+            hospitalId: data.hospitalId || null,
+            doctorId: data.doctorId || null
         };
 
         try {
@@ -519,14 +541,27 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
         return list;
     }, [state.members, isCoordinator, userRegional]);
     
+    // Lista de especialidades disponíveis (Memoizado para performance)
+    const availableSpecialties = useMemo(() => {
+        const specs = new Set(state.doctors.map(d => d.specialty).filter(Boolean));
+        return Array.from(specs).sort();
+    }, [state.doctors]);
+
     const sortedDoctors = useMemo(() => {
         let list = [...state.doctors];
+        
+        // Filtro de Regional (Lógica de Coordenador)
         if (isCoordinator && userRegional) {
-            // Coordinator sees doctors of their regional OR unassigned (permissive)
             list = list.filter(d => !d.regional || d.regional === userRegional);
         }
+
+        // Filtro de Especialidade
+        if (selectedSpecialty !== 'ALL') {
+            list = list.filter(d => d.specialty === selectedSpecialty);
+        }
+
         return list.sort((a,b) => a.name.localeCompare(b.name));
-    }, [state.doctors, isCoordinator, userRegional]);
+    }, [state.doctors, isCoordinator, userRegional, selectedSpecialty]);
 
     const sortedHospitals = useMemo(() => {
         let list = [...state.hospitals];
@@ -554,7 +589,19 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
                     </p>
                 </div>
                 <div>
-                    {view === 'doctors' && <Button onClick={() => { setEditingDoctor(undefined); setIsDoctorModalOpen(true); }} className="rounded-xl shadow-lg bg-teal-600 hover:bg-teal-700 text-white">+ Novo Médico</Button>}
+                    {view === 'doctors' && (
+                        <div className="flex gap-2">
+                            <select 
+                                className={`p-2.5 rounded-xl text-xs font-bold border outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-700'}`}
+                                value={selectedSpecialty}
+                                onChange={e => setSelectedSpecialty(e.target.value)}
+                            >
+                                <option value="ALL">Todas Especialidades</option>
+                                {availableSpecialties.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                            <Button onClick={() => { setEditingDoctor(undefined); setIsDoctorModalOpen(true); }} className="rounded-xl shadow-lg bg-teal-600 hover:bg-teal-700 text-white">+ Novo Médico</Button>
+                        </div>
+                    )}
                     {view === 'presentations' && <Button onClick={() => { setEditingPresentation(undefined); setIsPresentationModalOpen(true); }} className="rounded-xl shadow-lg bg-purple-600 hover:bg-purple-700 text-white">+ Nova Apresentação</Button>}
                 </div>
             </div>

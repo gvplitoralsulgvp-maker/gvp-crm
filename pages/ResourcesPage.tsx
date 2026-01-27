@@ -85,14 +85,37 @@ export const ResourcesPage: React.FC<{ state: AppState, onUpdateState: (s: AppSt
       });
   };
 
-  // SQL ATUALIZADO: Policies configuradas para "TO public" para permitir que o admin mestre (sem auth real) faça uploads.
+  // SQL ATUALIZADO: Inclui ALTER TABLE para patients e colih_visits
   const sqlCode = `
--- Execute este bloco COMPLETO no SQL Editor do Supabase
--- para corrigir o erro 403 e liberar o upload.
+-- Execute este bloco COMPLETO no SQL Editor do Supabase.
+-- Ele corrige permissões de upload e cria/atualiza as tabelas necessárias.
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Criação do Bucket
+-- 1. TABELA DE VISITAS COLIH (Garante que existe e tem as colunas)
+CREATE TABLE IF NOT EXISTS public.colih_visits (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    doctor_id UUID,
+    hospital_id UUID,
+    date DATE NOT NULL,
+    member_ids TEXT[] DEFAULT '{}',
+    notes TEXT,
+    interaction_type TEXT,
+    status TEXT DEFAULT 'SCHEDULED',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- CORREÇÃO DE COLUNAS FALTANTES (Erro "Could not find column")
+ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS hospital_id UUID;
+ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS doctor_id UUID;
+ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS hlc38_presented BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS collaborator_interest BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'SCHEDULED';
+
+-- CORREÇÃO PARA PACIENTES (Erro PGRST204 em patients)
+ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS regional TEXT;
+
+-- 2. CONFIGURAÇÃO DE STORAGE (Corrige erro 403 no upload)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('resources', 'resources', true, 52428800, null)
 ON CONFLICT (id) DO UPDATE SET public = true;
@@ -106,7 +129,7 @@ DROP POLICY IF EXISTS "Public Upload" ON storage.objects;
 DROP POLICY IF EXISTS "Public Update" ON storage.objects;
 DROP POLICY IF EXISTS "Public Delete" ON storage.objects;
 
--- Policies Permissivas (Permite Admin Mestre funcionar sem Auth real)
+-- Policies Permissivas
 CREATE POLICY "Public Access" ON storage.objects FOR SELECT USING ( bucket_id = 'resources' );
 CREATE POLICY "Public Upload" ON storage.objects FOR INSERT TO public WITH CHECK ( bucket_id = 'resources' );
 CREATE POLICY "Public Update" ON storage.objects FOR UPDATE TO public USING ( bucket_id = 'resources' );
@@ -126,7 +149,7 @@ CREATE POLICY "Public Delete" ON storage.objects FOR DELETE TO public USING ( bu
                         onClick={() => setIsHelpOpen(true)} 
                         className={`px-4 py-2 rounded-xl text-xs font-bold uppercase border transition-all ${isHospitalMode ? 'border-gray-700 text-gray-400 hover:text-white hover:border-white' : 'border-gray-200 text-gray-500 hover:text-gray-800 hover:border-gray-400'}`}
                     >
-                        ⚙️ Configurar Storage
+                        ⚙️ Configurar BD/Storage
                     </button>
                     <Button onClick={() => setIsModalOpen(true)} className="rounded-xl shadow-lg bg-blue-600 text-white">
                         + Enviar Arquivo
@@ -276,14 +299,14 @@ CREATE POLICY "Public Delete" ON storage.objects FOR DELETE TO public USING ( bu
                 <div className={`w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
                     <div className="bg-gray-800 px-6 py-5 flex justify-between items-center text-white">
                         <div>
-                            <h3 className="font-bold text-lg">Configuração do Storage (Supabase)</h3>
-                            <p className="text-gray-400 text-xs uppercase tracking-widest">Correção de Permissão 403</p>
+                            <h3 className="font-bold text-lg">Configuração do Banco de Dados</h3>
+                            <p className="text-gray-400 text-xs uppercase tracking-widest">Correção de Tabelas e Permissões</p>
                         </div>
                         <button onClick={() => setIsHelpOpen(false)} className="text-white hover:text-gray-300 text-2xl leading-none">&times;</button>
                     </div>
                     <div className="p-6 overflow-y-auto custom-scrollbar space-y-4">
                         <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl text-sm text-yellow-800">
-                            <p className="font-bold mb-1">Como resolver o erro de upload:</p>
+                            <p className="font-bold mb-1">Instruções:</p>
                             <ol className="list-decimal list-inside space-y-1">
                                 <li>Copie o código SQL abaixo.</li>
                                 <li>Vá ao seu painel do Supabase.</li>

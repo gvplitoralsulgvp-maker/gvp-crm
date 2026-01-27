@@ -36,8 +36,33 @@ CREATE TABLE IF NOT EXISTS public.social_worker_visits (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- TABELA DE VISITAS COLIH (Apresentações e Visitas Médicas)
+CREATE TABLE IF NOT EXISTS public.colih_visits (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    doctor_id UUID, -- Pode ser nulo se for visita institucional
+    hospital_id UUID, -- Pode ser nulo se for visita a consultório
+    date DATE NOT NULL,
+    member_ids TEXT[] DEFAULT '{}',
+    notes TEXT,
+    interaction_type TEXT, -- 'visit', 'presentation', 'material_delivery', 'email_phone'
+    status TEXT DEFAULT 'SCHEDULED',
+    hlc38_presented BOOLEAN DEFAULT FALSE,
+    collaborator_interest BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- CORREÇÃO: Garante que colunas críticas existam (Correção do erro PGRST204)
+ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS hospital_id UUID;
+ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS doctor_id UUID;
+ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS hlc38_presented BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS collaborator_interest BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'SCHEDULED';
+
 -- CORREÇÃO: Adiciona coluna has_seen_onboarding na tabela members se não existir
 ALTER TABLE public.members ADD COLUMN IF NOT EXISTS has_seen_onboarding BOOLEAN DEFAULT FALSE;
+
+-- CORREÇÃO: Adiciona coluna regional na tabela patients (Correção do erro atual)
+ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS regional TEXT;
 
 -- ==========================================
 -- CONFIGURAÇÃO DO STORAGE (Execute no SQL Editor do Supabase)

@@ -1,4 +1,5 @@
 
+// ... keep imports ...
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { AppState, Member, VisitRoute, UserRole, Hospital, VisitSlot, CityMapping, ColihVisit, Doctor, ColihInteractionType, AppEvent } from '../types';
@@ -109,7 +110,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     }
   };
 
-  // ... (Existing geocoding and save handlers: handleGeocodeHospital, handleSaveMember, etc.) ...
   const handleGeocodeHospital = async () => {
     if (!editingHospital?.address) {
       alert("Digite o endereço ou CEP do hospital primeiro.");
@@ -160,7 +160,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       lat: editingMember.lat,
       lng: editingMember.lng,
       isColih: editingMember.isColih || false, 
-      colihClassification: editingMember.colihClassification,
+      colihClassification: editingMember.isColih ? (editingMember.colihClassification || 'Member') : null,
       regional: editingMember.regional
     };
 
@@ -175,18 +175,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         console.error(err);
         alert(`Erro ao salvar membro: ${err.message}`); 
     }
-  };
-
-  const getProfileType = (m: Partial<Member>) => {
-    if (m.role === UserRole.ADMIN) return 'ADMIN';
-    if (m.role === UserRole.COORDINATOR) return 'COORDINATOR_ROLE'; // Distinção do papel
-    if (m.colihClassification === 'President') return 'PRESIDENT';
-    if (m.colihClassification === 'Coordinator') return 'COORDINATOR'; // Classificação COLIH
-    if (m.colihClassification === 'Secretary') return 'SECRETARY';
-    if (m.colihClassification === 'Assistant') return 'ASSISTANT';
-    if (m.colihClassification === 'Facilitator') return 'FACILITATOR';
-    if (m.isColih) return 'COLIH';
-    return 'GVP';
   };
 
   const handleAddCity = async () => {
@@ -427,11 +415,21 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                                 <tr key={m.id} className={`${isHospitalMode ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}>
                                     <td className="px-6 py-4"><p className="font-bold">{m.name}</p><p className="text-[10px] text-gray-500">{m.email}</p></td>
                                     <td className="px-6 py-4">
-                                        {m.role === UserRole.ADMIN ? (<span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-purple-100 text-purple-700">ADMIN GLOBAL</span>) : 
-                                         m.role === UserRole.COORDINATOR ? (<span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-orange-100 text-orange-700">COORDENADOR</span>) :
-                                         m.colihClassification ? (<span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-teal-100 text-teal-700">{m.colihClassification}</span>) :
-                                         m.isColih ? (<span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-teal-100 text-teal-700">COLIH</span>) : 
-                                         (<span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-blue-100 text-blue-700">GVP</span>)}
+                                        <div className="flex flex-col items-start gap-1">
+                                            {m.role === UserRole.ADMIN ? (<span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-purple-100 text-purple-700">ADMIN GLOBAL</span>) : 
+                                             m.role === UserRole.COORDINATOR ? (<span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-orange-100 text-orange-700">COORDENADOR REGIONAL</span>) :
+                                             (<span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-blue-100 text-blue-700">GVP</span>)}
+                                            
+                                            {m.isColih && (
+                                                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-teal-100 text-teal-700">
+                                                    {m.colihClassification === 'President' ? 'PRESIDENTE (COLIH)' :
+                                                     m.colihClassification === 'Coordinator' ? 'COORDENADOR (COLIH)' :
+                                                     m.colihClassification === 'Secretary' ? 'SECRETÁRIO' :
+                                                     m.colihClassification === 'Assistant' ? 'ASSISTENTE' :
+                                                     m.colihClassification === 'Facilitator' ? 'FACILITADOR' : 'MEMBRO COLIH'}
+                                                </span>
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4"><span className="text-[10px] font-bold uppercase text-gray-500">{m.regional || '-'}</span><p className="text-[9px] text-gray-400">{m.city}</p></td>
                                     <td className="px-6 py-4"><span className={`w-2 h-2 inline-block rounded-full mr-2 ${m.active ? 'bg-green-500' : 'bg-red-500'}`}></span><span className="font-bold text-[11px]">{m.active ? 'ATIVO' : 'PENDENTE'}</span></td>
@@ -445,7 +443,8 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         </div>
       )}
 
-      {/* --- ABA UNIDADES (HOSPITAIS) --- */}
+      {/* ... (rest of modals: Hospital, Route) ... */}
+      
       {activeTab === 'hospitals' && (
         <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
             <div className="overflow-x-auto custom-scrollbar">
@@ -648,7 +647,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
           </div>, document.body
       )}
 
-      {/* MODAL: EDITAR MEMBRO */}
+      {/* MODAL: EDITAR MEMBRO (ATUALIZADO) */}
       {editingMember && createPortal(
           <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
              <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
@@ -665,16 +664,65 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                         <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Cidade</label><input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.city || ''} onChange={e => handleMemberCityChange(e.target.value)} /></div>
                         <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Regional</label><select className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.regional || ''} onChange={e => setEditingMember({...editingMember, regional: e.target.value})}><option value="">Automática</option>{availableRegionals.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="col-span-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Função / Cargo</label><select className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={getProfileType(editingMember)} onChange={(e) => { const type = e.target.value; let updates: Partial<Member> = {}; const baseColih = { role: UserRole.MEMBER, isColih: true }; switch (type) { case 'ADMIN': updates = { role: UserRole.ADMIN, isColih: true, colihClassification: null }; break; case 'COORDINATOR_ROLE': updates = { role: UserRole.COORDINATOR, isColih: false, colihClassification: null }; break; case 'PRESIDENT': updates = { ...baseColih, colihClassification: 'President' }; break; case 'COORDINATOR': updates = { ...baseColih, colihClassification: 'Coordinator' }; break; case 'SECRETARY': updates = { ...baseColih, colihClassification: 'Secretary' }; break; case 'ASSISTANT': updates = { ...baseColih, colihClassification: 'Assistant' }; break; case 'FACILITATOR': updates = { ...baseColih, colihClassification: 'Facilitator' }; break; case 'COLIH': updates = { ...baseColih, colihClassification: 'Member' }; break; default: updates = { role: UserRole.MEMBER, isColih: false, colihClassification: null }; break; } setEditingMember(prev => ({ ...prev, ...updates })); }} > <option value="GVP">Voluntário GVP</option> <option value="COLIH">Membro COLIH</option> <option value="FACILITATOR">Facilitador</option> <option value="ASSISTANT">Ajudante/Assistente</option> <option value="SECRETARY">Secretário</option> <option value="COORDINATOR">Coordenador COLIH</option> <option value="PRESIDENT">Presidente</option> {isGlobalAdmin && <option value="COORDINATOR_ROLE">Coordenador Regional</option>} {isGlobalAdmin && <option value="ADMIN">Administrador</option>} </select></div>
-                      <div className="col-span-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Status</label><select className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.active ? 'true' : 'false'} onChange={e => setEditingMember({...editingMember, active: e.target.value === 'true'})}> <option value="true">Ativo</option> <option value="false">Bloqueado</option> </select></div>
+                    
+                    {/* Seção de Permissões e Funções (ATUALIZADA) */}
+                    <div className={`space-y-4 border p-4 rounded-xl ${isHospitalMode ? 'border-gray-800 bg-[#1a1c1e]' : 'border-gray-100 bg-gray-50'}`}>
+                        <h4 className="text-xs font-black uppercase text-gray-400 tracking-widest border-b border-gray-300/10 pb-2 mb-2">Permissões e Funções</h4>
+                        
+                        <div className="grid grid-cols-1 gap-4">
+                            <div>
+                                <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Nível de Acesso (GVP)</label>
+                                <select 
+                                    className={`w-full p-2.5 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#212327] border-gray-700 text-white' : 'bg-white border-gray-200'}`}
+                                    value={editingMember.role || UserRole.MEMBER}
+                                    onChange={e => setEditingMember({...editingMember, role: e.target.value as UserRole})}
+                                >
+                                    <option value={UserRole.MEMBER}>Membro (Acesso Padrão)</option>
+                                    {isGlobalAdmin && <option value={UserRole.COORDINATOR}>Coordenador Regional</option>}
+                                    {isGlobalAdmin && <option value={UserRole.ADMIN}>Administrador Global</option>}
+                                </select>
+                            </div>
+                            
+                            <div className="flex items-center justify-between p-2 rounded-lg border border-gray-200/50">
+                                 <label className="flex items-center gap-3 cursor-pointer select-none">
+                                    <input 
+                                        type="checkbox" 
+                                        className="w-5 h-5 text-blue-600 rounded"
+                                        checked={editingMember.isColih || false}
+                                        onChange={e => setEditingMember({...editingMember, isColih: e.target.checked})}
+                                    />
+                                    <span className={`text-sm font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Membro da COLIH?</span>
+                                 </label>
+                            </div>
+
+                            {editingMember.isColih && (
+                                <div className="animate-fade-in">
+                                    <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Classificação COLIH</label>
+                                    <select
+                                        className={`w-full p-2.5 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#212327] border-gray-700 text-white' : 'bg-white border-gray-200'}`}
+                                        value={editingMember.colihClassification || 'Member'}
+                                        onChange={e => setEditingMember({...editingMember, colihClassification: e.target.value as any})}
+                                    >
+                                        <option value="Member">Membro Regular</option>
+                                        <option value="Facilitator">Facilitador</option>
+                                        <option value="Assistant">Ajudante / Assistente</option>
+                                        <option value="Secretary">Secretário</option>
+                                        <option value="Coordinator">Coordenador (Comissão)</option>
+                                        <option value="President">Presidente</option>
+                                    </select>
+                                </div>
+                            )}
+                        </div>
                     </div>
+
+                    <div className="col-span-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Status da Conta</label><select className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.active ? 'true' : 'false'} onChange={e => setEditingMember({...editingMember, active: e.target.value === 'true'})}> <option value="true">Ativo</option> <option value="false">Bloqueado</option> </select></div>
                     <div className="pt-4"><Button className="w-full rounded-xl py-4" type="submit">Salvar Alterações</Button></div>
                 </form>
              </div>
           </div>, document.body
       )}
 
+      {/* ... (rest of modals: Hospital, Route) ... */}
       {/* MODAL: EDITAR HOSPITAL */}
       {editingHospital && createPortal(
           <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
