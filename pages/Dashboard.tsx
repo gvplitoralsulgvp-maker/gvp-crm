@@ -1,7 +1,6 @@
 
-// ... keep imports ...
 import React, { useState, useEffect, useMemo } from 'react';
-import { AppState, VisitRoute, VisitSlot, Patient, Member, AppNotification, UserRole, AppEvent, SocialWorkerVisit } from '../types';
+import { AppState, VisitRoute, VisitSlot, Patient, Member, AppNotification, UserRole, AppEvent, SocialWorkerVisit, Hospital } from '../types';
 import { FullCalendar } from '../components/FullCalendar';
 import { DailyAgendaModal } from '../components/DailyAgendaModal';
 import { MyVisitModal } from '../components/MyVisitModal';
@@ -14,7 +13,6 @@ import { CancelVisitModal } from '../components/CancelVisitModal';
 import { SwapRequestModal } from '../components/SwapRequestModal';
 import { atomicUpdate } from '../services/storageService';
 
-// ... keep KpiCard and ActivityChart definitions ...
 const KpiCard: React.FC<{ title: string; value: number | string; icon: React.ReactNode; colorBg: string; colorText: string; isHospitalMode?: boolean }> = ({ title, value, icon, colorBg, colorText, isHospitalMode }) => (
   <div className={`p-4 rounded-2xl border shadow-sm flex items-center gap-4 transition-all hover:shadow-md ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
     <div className={`p-3 rounded-xl ${colorBg} ${colorText}`}>
@@ -55,8 +53,14 @@ const ActivityChart: React.FC<{ data: number[]; isHospitalMode?: boolean }> = ({
   );
 };
 
-export const Dashboard: React.FC<any> = ({ state, onUpdateState, isPrivacyMode, isHospitalMode }) => {
-  // ... (keep state declarations and logic exactly as before) ...
+interface DashboardProps {
+  state: AppState;
+  onUpdateState: (newState: AppState) => void;
+  isPrivacyMode: boolean;
+  isHospitalMode?: boolean;
+}
+
+export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPrivacyMode, isHospitalMode }) => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [isDailyOpen, setIsDailyOpen] = useState(false);
   
@@ -104,7 +108,6 @@ export const Dashboard: React.FC<any> = ({ state, onUpdateState, isPrivacyMode, 
       return { kpis: { finished: finishedCount, scheduled: scheduledCount, activePatients: activeP, hospitalsVisited: visitedHospitalIds.size }, chartData: data };
   }, [state.visits, state.patients, state.routes]);
 
-  // ... (keep myUpcomingVisits, mySocialVisits, myEvents, handleDischarge, handleToggleGvp, handleRouteClick, handleOpenMyVisit, handleSlotSave, handleCancelVisit, handleFinishVisit, handleFinishSocialVisit) ...
   // --- MEUS AGENDAMENTOS (Visitas Regulares) ---
   const myUpcomingVisits = useMemo(() => {
       if (!state.currentUser) return [];
@@ -250,13 +253,12 @@ export const Dashboard: React.FC<any> = ({ state, onUpdateState, isPrivacyMode, 
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
-        {/* ... (Keep KPI, Charts, and My Schedule sections) ... */}
         {/* KPI DASHBOARD SECTION */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard title="Visitas (Mês)" value={kpis.finished} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} colorBg={isHospitalMode ? 'bg-green-900/30' : 'bg-green-100'} colorText={isHospitalMode ? 'text-green-400' : 'text-green-600'} isHospitalMode={isHospitalMode} />
             <KpiCard title="Pacientes Ativos" value={kpis.activePatients} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>} colorBg={isHospitalMode ? 'bg-blue-900/30' : 'bg-blue-100'} colorText={isHospitalMode ? 'text-blue-400' : 'text-blue-600'} isHospitalMode={isHospitalMode} />
             <KpiCard title="Hospitais (Mês)" value={kpis.hospitalsVisited} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>} colorBg={isHospitalMode ? 'bg-purple-900/30' : 'bg-purple-100'} colorText={isHospitalMode ? 'text-purple-400' : 'text-purple-600'} isHospitalMode={isHospitalMode} />
-            <KpiCard title="Agendamentos" value={kpis.scheduled} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} colorBg={isHospitalMode ? 'bg-orange-900/30' : 'bg-orange-100'} colorText={isHospitalMode ? 'text-orange-400' : 'text-orange-600'} isHospitalMode={isHospitalMode} />
+            <KpiCard title="Agendamentos" value={kpis.scheduled} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} colorBg={isHospitalMode ? 'bg-orange-900/30' : 'bg-orange-100'} colorText={isHospitalMode ? 'text-orange-400' : 'text-orange-600'} isHospitalMode={isHospitalMode} />
         </div>
 
         <ActivityChart data={chartData} isHospitalMode={isHospitalMode} />
@@ -288,7 +290,6 @@ export const Dashboard: React.FC<any> = ({ state, onUpdateState, isPrivacyMode, 
             </div>
         )}
 
-        {/* ... (Keep Social Visits and Events sections) ... */}
         {mySocialVisits.length > 0 && (
             <div className={`p-4 rounded-2xl border-2 border-indigo-500/30 ${isHospitalMode ? 'bg-indigo-900/10' : 'bg-indigo-50'}`}>
                 <h3 className="text-xs font-black uppercase text-indigo-600 tracking-widest mb-3">Designações de Assistência Social</h3>
@@ -298,7 +299,7 @@ export const Dashboard: React.FC<any> = ({ state, onUpdateState, isPrivacyMode, 
                         const partnerId = v.memberIds.find(id => id !== state.currentUser?.id);
                         const partner = state.members.find(m => m.id === partnerId);
                         return (
-                            <div key={v.id} className={`p-4 rounded-xl shadow-sm flex flex-col justify-between ${isHospitalMode ? 'bg-[#212327] border border-gray-700' : 'bg-white border border-gray-200'}`}>
+                            <div key={v.id} className={`p-4 rounded-xl shadow-sm flex flex-col justify-between ${isHospitalMode ? 'bg-[#212327] border border-gray-700' : 'bg-white border-gray-200'}`}>
                                 <div className="mb-3">
                                     <div className="flex justify-between items-start">
                                         <h4 className={`font-bold ${isHospitalMode ? 'text-white' : 'text-gray-900'}`}>{hospital?.name}</h4>
