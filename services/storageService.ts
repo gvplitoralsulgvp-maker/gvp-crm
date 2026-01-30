@@ -297,6 +297,14 @@ export const atomicUpdate = async (table: string, record: any) => {
     if (error) throw error;
 };
 
+// NEW: Specific insert function for public access to avoid upsert permissions issues
+export const atomicInsert = async (table: string, record: any) => {
+    if (!supabase) return;
+    const sanitized = sanitizeForDb(table, record);
+    const { error } = await supabase.from(table).insert(sanitized);
+    if (error) throw error;
+};
+
 export const atomicDelete = async (table: string, id: string) => {
     if (!supabase) return;
     const { error } = await supabase.from(table).delete().eq('id', id);

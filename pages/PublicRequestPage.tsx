@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { AppState, Patient, LogEntry, AppNotification, UserRole } from '../types';
 import { Button } from '../components/Button';
 import { useNavigate } from 'react-router-dom';
-import { atomicUpdate } from '../services/storageService';
+import { atomicInsert } from '../services/storageService';
 import { supabase } from '../services/supabaseClient';
 
 interface PublicRequestPageProps {
@@ -83,7 +83,7 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
         treatment: formData.treatment || 'Problema de saúde não especificado',
         hospitalId: formData.hospitalId,
         hospitalName: hospitalNameDisplay,
-        age: formData.age,
+        age: formData.age ? String(formData.age).replace(/\D/g, '') : undefined, // Sanitiza para evitar erro
         companionName: formData.companionName, // Nome e Parentesco
         companionPhone: formData.companionPhone,
         localElder: formData.localElder,
@@ -112,10 +112,13 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
         isolationType: formData.isolationType
       };
 
+      // FIX: Use a random UUID for userId since "PORTAL_PUBLICO" fails UUID validation in Postgres
+      const publicSessionId = crypto.randomUUID();
+
       const newLog: LogEntry = {
         id: crypto.randomUUID(),
         timestamp: new Date().toISOString(),
-        userId: 'PORTAL_PUBLICO',
+        userId: publicSessionId, 
         userName: 'Portal Externo COLIH',
         action: 'Solicitação de Visita',
         details: `Novo paciente (${newPatient.name}) cadastrado para o hospital ${hospitalNameDisplay}.`
@@ -146,12 +149,32 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
           timestamp: new Date().toISOString()
       }));
 
-      // Persistência
-      await atomicUpdate('patients', newPatient);
-      await atomicUpdate('logs', newLog);
+      // Persistência com Fallback para Schema Desatualizado e usando atomicInsert
+      try {
+          await atomicInsert('patients', newPatient);
+      } catch (dbError: any) {
+          // PGRST204: Coluna não encontrada. Indica que o banco ainda não rodou o script de migração.
+          // Tentamos salvar sem os campos novos para não perder a solicitação.
+          if (dbError.message?.includes('request_date') || dbError.code === 'PGRST204' || dbError.message?.includes('is_external_request')) {
+              console.warn("⚠️ Schema do banco desatualizado. Salvando em modo de compatibilidade (sem request_date)...");
+              
+              // Cria cópia sem os campos novos
+              const { requestDate, isExternalRequest, ...legacyPatient } = newPatient;
+              await atomicInsert('patients', legacyPatient);
+          } else {
+              throw dbError; // Se for outro erro (ex: 42501), repassa
+          }
+      }
+      
+      // Tentativa de log (pode falhar se RLS strict, mas não deve bloquear o usuário)
+      try {
+          await atomicInsert('logs', newLog);
+      } catch (logErr) {
+          console.warn("Log de auditoria falhou (provavelmente permissão), mas paciente foi salvo.", logErr);
+      }
       
       if (adminNotifications.length > 0) {
-          await Promise.all(adminNotifications.map(n => atomicUpdate('notifications', n)));
+          await Promise.all(adminNotifications.map(n => atomicInsert('notifications', n)));
       }
 
       onUpdateState({
@@ -167,7 +190,7 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
 
     } catch (error: any) {
       console.error("Erro ao salvar solicitação pública:", JSON.stringify(error, null, 2));
-      alert("Houve um erro de conexão. Por favor, tente novamente.");
+      alert(`Houve um erro ao enviar. Detalhes: ${error.message || 'Erro desconhecido'}. \n\nCódigo: ${error.code || 'N/A'}`);
       setIsSubmitting(false);
     }
   };

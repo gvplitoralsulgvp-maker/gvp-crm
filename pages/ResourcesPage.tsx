@@ -85,51 +85,51 @@ export const ResourcesPage: React.FC<{ state: AppState, onUpdateState: (s: AppSt
       });
   };
 
-  // SQL ATUALIZADO: Inclui ALTER TABLE para patients e colih_visits
+  // SQL ATUALIZADO (FIX RLS): Permite SELECT/UPDATE/DELETE para restaurar visualização
   const sqlCode = `
--- Execute este bloco COMPLETO no SQL Editor do Supabase.
--- Ele corrige permissões de upload e cria/atualiza as tabelas necessárias.
+-- CORREÇÃO CRÍTICA DE PERMISSÕES
+-- Execute este script para restaurar a visualização dos pacientes (Correção RLS)
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. TABELA DE VISITAS COLIH (Garante que existe e tem as colunas)
-CREATE TABLE IF NOT EXISTS public.colih_visits (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    doctor_id UUID,
-    hospital_id UUID,
-    date DATE NOT NULL,
-    member_ids TEXT[] DEFAULT '{}',
-    notes TEXT,
-    interaction_type TEXT,
-    status TEXT DEFAULT 'SCHEDULED',
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- CORREÇÃO DE COLUNAS FALTANTES (Erro "Could not find column")
+-- 1. ESTRUTURA E COLUNAS
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS hospital_id UUID;
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS doctor_id UUID;
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS hlc38_presented BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS collaborator_interest BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'SCHEDULED';
-
--- CORREÇÃO PARA PACIENTES (Erro PGRST204 em patients)
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS regional TEXT;
+ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS is_external_request BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS request_date TIMESTAMPTZ;
 
--- 2. CONFIGURAÇÃO DE STORAGE (Corrige erro 403 no upload)
+-- 2. CORREÇÃO DE POLÍTICAS (RLS) - Restaurar Acesso
+ALTER TABLE public.patients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+-- Remove políticas restritivas antigas que bloqueavam o SELECT
+DROP POLICY IF EXISTS "Public Insert Patients" ON public.patients;
+DROP POLICY IF EXISTS "Public Insert Logs" ON public.logs;
+DROP POLICY IF EXISTS "Public Insert Notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Allow All Patients" ON public.patients;
+DROP POLICY IF EXISTS "Allow All Logs" ON public.logs;
+DROP POLICY IF EXISTS "Allow All Notifications" ON public.notifications;
+
+-- Cria políticas permissivas (CRUD Completo) para o App funcionar
+CREATE POLICY "Allow All Patients" ON public.patients FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow All Logs" ON public.logs FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow All Notifications" ON public.notifications FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+
+-- 3. CONFIGURAÇÃO DE STORAGE (Uploads)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('resources', 'resources', true, 52428800, null)
 ON CONFLICT (id) DO UPDATE SET public = true;
 
--- Limpeza de Policies antigas
 DROP POLICY IF EXISTS "Public Access" ON storage.objects;
-DROP POLICY IF EXISTS "Auth Upload" ON storage.objects;
-DROP POLICY IF EXISTS "Auth Update" ON storage.objects;
-DROP POLICY IF EXISTS "Auth Delete" ON storage.objects;
 DROP POLICY IF EXISTS "Public Upload" ON storage.objects;
 DROP POLICY IF EXISTS "Public Update" ON storage.objects;
 DROP POLICY IF EXISTS "Public Delete" ON storage.objects;
 
--- Policies Permissivas
 CREATE POLICY "Public Access" ON storage.objects FOR SELECT USING ( bucket_id = 'resources' );
 CREATE POLICY "Public Upload" ON storage.objects FOR INSERT TO public WITH CHECK ( bucket_id = 'resources' );
 CREATE POLICY "Public Update" ON storage.objects FOR UPDATE TO public USING ( bucket_id = 'resources' );

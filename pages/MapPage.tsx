@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { AppState, Member, Hospital } from '../types';
+import { AppState, Member, Hospital, UserRole } from '../types';
 
 interface MapPageProps {
   state: AppState;
@@ -26,9 +26,19 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Inicia fechado no mobile por padrão
   const [searchMember, setSearchMember] = useState('');
 
+  const isCoordinator = state.currentUser?.role === UserRole.COORDINATOR;
+  const userRegional = state.currentUser?.regional;
+
   // Filtro robusto para membros com localização válida
   const membersWithLocation = useMemo(() => {
-    return state.members.filter(m => {
+    let list = state.members;
+    
+    // Regional Filtering
+    if (isCoordinator && userRegional) {
+        list = list.filter(m => !m.regional || m.regional === userRegional);
+    }
+
+    return list.filter(m => {
       const lat = parseFloat(String(m.lat));
       const lng = parseFloat(String(m.lng));
       const hasCoords = !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
@@ -40,16 +50,21 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
 
       return hasCoords && matchesSearch && isVisible;
     });
-  }, [state.members, searchMember, showGVP, showCOLIH]);
+  }, [state.members, searchMember, showGVP, showCOLIH, isCoordinator, userRegional]);
 
   // Filtro de hospitais com localização
   const hospitalsWithLocation = useMemo(() => {
-    return state.hospitals.filter(h => {
+    let list = state.hospitals;
+    if (isCoordinator && userRegional) {
+        list = list.filter(h => !h.regional || h.regional === userRegional);
+    }
+    
+    return list.filter(h => {
         const lat = parseFloat(String(h.lat));
         const lng = parseFloat(String(h.lng));
         return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
     });
-  }, [state.hospitals]);
+  }, [state.hospitals, isCoordinator, userRegional]);
 
   useEffect(() => {
     if (!mapContainerRef.current || !window.L) return;
@@ -84,21 +99,33 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
     // 1. Renderizar Hospitais (Controlado pelo Toggle)
     if (showHospitals) {
         hospitalsWithLocation.forEach(h => {
-          const hospitalVisits = state.visits.filter(v => {
-            const route = state.routes.find(r => r.id === v.routeId);
-            return route?.hospitals?.includes(h.name);
-          });
+          // Lógica Atualizada: Verifica visitas INSTITUCIONAIS (COLIH)
+          // Filter visits based on logic (optional: also filter by regional, but implicitly done by filtering hospitals)
+          const institutionalVisits = state.colihVisits.filter(v => 
+              v.hospitalId === h.id && v.status === 'COMPLETED'
+          );
           
-          const lastVisit = hospitalVisits.sort((a,b) => b.date.localeCompare(a.date))[0];
+          const lastVisit = institutionalVisits.sort((a,b) => b.date.localeCompare(a.date))[0];
           let color = 'blue'; 
-          let statusText = 'Sem registros recentes';
+          let statusText = 'Sem registros institucionais';
 
           if (lastVisit) {
             const lastDate = new Date(lastVisit.date + 'T12:00:00');
             const diffDays = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
-            if (diffDays > 5) { color = 'red'; statusText = `URGENTE: ${diffDays} dias sem visitas!`; }
-            else if (diffDays > 3) { color = 'orange'; statusText = `${diffDays} dias desde a última visita.`; }
-            else { color = 'green'; statusText = `Visitado há ${diffDays} dias.`; }
+            
+            // Regra Institucional: 3 meses (90 dias) e 6 meses (180 dias)
+            if (diffDays <= 90) { 
+                color = 'green'; 
+                statusText = `Em dia (${diffDays} dias).`; 
+            } else if (diffDays <= 180) { 
+                color = 'orange'; 
+                statusText = `Atenção: ${diffDays} dias sem contato.`; 
+            } else { 
+                color = 'red'; 
+                statusText = `URGENTE: ${diffDays} dias sem contato institucional!`; 
+            }
+          } else {
+              color = 'red'; // Nunca visitado é urgente
           }
 
           const icon = window.L.icon({
@@ -168,7 +195,7 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
         `);
     });
 
-  }, [hospitalsWithLocation, membersWithLocation, showHospitals, state.visits]);
+  }, [hospitalsWithLocation, membersWithLocation, showHospitals, state.colihVisits]);
 
   const flyToMember = (m: Member) => {
     if (!m.lat || !m.lng || !mapInstanceRef.current) return;
@@ -196,7 +223,7 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
       `}>
          <div className={`h-full w-full md:w-auto p-4 rounded-3xl border shadow-xl flex flex-col overflow-hidden ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
             <div className="flex justify-between items-center mb-4">
-                <h3 className={`font-black text-xs uppercase tracking-widest ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Voluntários</h3>
+                <h3 className={`font-black text-xs uppercase tracking-widest ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Voluntários {isCoordinator ? `(${userRegional})` : ''}</h3>
                 <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-2 bg-gray-100 rounded-full text-gray-600 hover:bg-gray-200">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
@@ -315,9 +342,20 @@ export const MapPage: React.FC<MapPageProps> = ({ state, isHospitalMode }) => {
             <div ref={mapContainerRef} className="absolute inset-0 w-full h-full z-0" />
             
             <div className={`absolute bottom-6 left-6 z-[400] p-4 rounded-2xl border backdrop-blur-xl shadow-2xl hidden sm:block ${isHospitalMode ? 'bg-black/60 border-white/10' : 'bg-white/90 border-gray-100'}`}>
-                <div className="flex items-center gap-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#d33d2a] animate-pulse"></span>
-                    <span className="text-[9px] font-bold text-red-500">HOSPITAL CRÍTICO</span>
+                <div className="flex flex-col gap-2">
+                    <p className="text-[10px] font-black uppercase tracking-widest mb-1 opacity-70">Status Institucional</p>
+                    <div className="flex items-center gap-3">
+                        <span className="w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                        <span className="text-[9px] font-bold">Em dia (3 meses)</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
+                        <span className="text-[9px] font-bold">Atenção (6 meses)</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse"></span>
+                        <span className="text-[9px] font-bold text-red-600">Crítico ({'>'} 6 meses)</span>
+                    </div>
                 </div>
             </div>
         </div>

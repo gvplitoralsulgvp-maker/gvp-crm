@@ -217,8 +217,15 @@ export interface AppState {
   events: AppEvent[];
 }
 
+// Configuração expandida de Regionais para validação automática
 export const REGIONAL_CONFIG: Record<string, string[]> = {
-  'Litoral Sul': ['Mongaguá', 'Itanhaém', 'Peruíbe']
+  'Litoral Sul': ['Mongaguá', 'Itanhaém', 'Peruíbe', 'Itariri', 'Pedro de Toledo', 'Ilha Comprida', 'Iguape'],
+  'Santos': ['Santos', 'Bertioga'],
+  'São Vicente': ['São Vicente'],
+  'Praia Grande': ['Praia Grande'],
+  'Guarujá': ['Guarujá'],
+  'Cubatão': ['Cubatão'],
+  'Vale do Ribeira': ['Registro', 'Juquiá', 'Miracatu', 'Cajati', 'Jacupiranga']
 };
 
 export const ALL_REGIONALS = Object.keys(REGIONAL_CONFIG);

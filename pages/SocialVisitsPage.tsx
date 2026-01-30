@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { AppState, UserRole, Hospital, SocialWorkerVisit, AppNotification, LogEntry } from '../types';
 import { Button } from '../components/Button';
@@ -13,6 +13,25 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
   const [viewHistoryHospitalId, setViewHistoryHospitalId] = useState<string | null>(null);
 
   const isAdmin = state.currentUser?.role === UserRole.ADMIN;
+  const isCoordinator = state.currentUser?.role === UserRole.COORDINATOR;
+  const userRegional = state.currentUser?.regional;
+
+  // --- FILTERING ---
+  const visibleHospitals = useMemo(() => {
+      if (isCoordinator && userRegional) {
+          return state.hospitals.filter(h => !h.regional || h.regional === userRegional);
+      }
+      return state.hospitals;
+  }, [state.hospitals, isCoordinator, userRegional]);
+
+  const visibleVisits = useMemo(() => {
+      if (isCoordinator && userRegional) {
+          // Filter visits that belong to visible hospitals
+          const visibleHospitalIds = visibleHospitals.map(h => h.id);
+          return state.socialWorkerVisits.filter(v => visibleHospitalIds.includes(v.hospitalId));
+      }
+      return state.socialWorkerVisits;
+  }, [state.socialWorkerVisits, visibleHospitals, isCoordinator, userRegional]);
 
   const handleDesignateSocial = () => {
     if (!designatingSocial || designationData.memberIds.length === 0) return;
@@ -46,7 +65,8 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
   };
 
   const getLastSocialVisit = (hospitalId: string) => {
-    const finished = state.socialWorkerVisits.filter(v => v.hospitalId === hospitalId && v.status === 'FINISHED');
+    // Use visibleVisits for consistency
+    const finished = visibleVisits.filter(v => v.hospitalId === hospitalId && v.status === 'FINISHED');
     return finished.sort((a,b) => b.date.localeCompare(a.date))[0];
   };
 
@@ -66,7 +86,10 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
       <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'} p-6 rounded-2xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4`}>
          <div>
             <h2 className={`text-xl font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Assistência Social</h2>
-            <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Relacionamento institucional e parcerias hospitalares.</p>
+            <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                Relacionamento institucional e parcerias hospitalares.
+                {isCoordinator && userRegional && <span className="ml-2 bg-indigo-100 text-indigo-700 px-2 rounded font-bold text-xs uppercase">{userRegional}</span>}
+            </p>
          </div>
          <div className="flex gap-2 p-1 bg-indigo-500/10 rounded-xl text-indigo-500 text-[10px] font-bold uppercase tracking-widest items-center px-4 py-2 border border-indigo-500/20">
             Frequência Alvo: 30 Dias
@@ -75,11 +98,11 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
 
       {/* Grid Geral de Instituições */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {state.hospitals.map(h => {
+        {visibleHospitals.map(h => {
           const days = getDaysSinceLastSocial(h.id);
           const isLate = days > 30;
           const lastVisit = getLastSocialVisit(h.id);
-          const hasPending = state.socialWorkerVisits.some(v => v.hospitalId === h.id && v.status !== 'FINISHED');
+          const hasPending = visibleVisits.some(v => v.hospitalId === h.id && v.status !== 'FINISHED');
 
           return (
             <div key={h.id} className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} p-5 rounded-2xl border shadow-sm transition-all hover:shadow-lg flex flex-col`}>
@@ -127,7 +150,7 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
                     >
                         Ver Histórico
                     </Button>
-                    {isAdmin && (
+                    {(isAdmin || isCoordinator) && (
                         <Button 
                             size="sm" 
                             variant={hasPending ? 'secondary' : 'primary'}
@@ -150,7 +173,7 @@ export const SocialVisitsPage: React.FC<{ state: AppState, onUpdateState: (newSt
               isOpen={true} 
               onClose={() => setViewHistoryHospitalId(null)} 
               hospital={state.hospitals.find(h => h.id === viewHistoryHospitalId)!}
-              visits={state.socialWorkerVisits.filter(v => v.hospitalId === viewHistoryHospitalId)}
+              visits={visibleVisits.filter(v => v.hospitalId === viewHistoryHospitalId)}
               members={state.members}
               isHospitalMode={isHospitalMode}
           />

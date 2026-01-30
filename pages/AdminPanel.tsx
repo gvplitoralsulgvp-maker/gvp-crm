@@ -1,8 +1,7 @@
 
-// ... keep imports ...
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { AppState, Member, VisitRoute, UserRole, Hospital, VisitSlot, CityMapping, ColihVisit, Doctor, ColihInteractionType, AppEvent } from '../types';
+import { AppState, Member, VisitRoute, UserRole, Hospital, VisitSlot, CityMapping, ColihVisit, Doctor, ColihInteractionType, AppEvent, ALL_REGIONALS } from '../types';
 import { Button } from '../components/Button';
 import { atomicUpdate, loadState, atomicDelete } from '../services/storageService';
 import { getCoordsFromCep, getRegionalByCity } from '../services/geoService';
@@ -93,9 +92,10 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       return state.cityMappings;
   }, [state.cityMappings, isRegionalCoord, userRegional]);
 
+  // Combina as regionais fixas com as dinâmicas para os dropdowns
   const availableRegionals = useMemo(() => {
-      const set = new Set(state.cityMappings.map(c => c.regional));
-      return Array.from(set).sort();
+      const dynamicRegs = state.cityMappings.map(c => c.regional);
+      return Array.from(new Set([...ALL_REGIONALS, ...dynamicRegs])).sort();
   }, [state.cityMappings]);
 
   const handleRefreshData = async () => {
@@ -443,8 +443,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         </div>
       )}
 
-      {/* ... (rest of modals: Hospital, Route) ... */}
-      
+      {/* --- ABA HOSPITAIS --- */}
       {activeTab === 'hospitals' && (
         <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
             <div className="overflow-x-auto custom-scrollbar">
@@ -500,229 +499,164 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         </div>
       )}
 
-      {/* --- ABA EVENTOS --- */}
-      {activeTab === 'events' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {state.events.sort((a,b) => b.date.localeCompare(a.date)).map(event => (
-                  <div key={event.id} className={`p-5 rounded-2xl border flex flex-col justify-between ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
-                      <div>
-                          <div className="flex justify-between items-start mb-2">
-                              <h3 className={`font-bold text-lg ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{event.title}</h3>
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
-                                  event.targetGroup === 'GVP' ? 'bg-blue-100 text-blue-700' : 
-                                  event.targetGroup === 'COLIH' ? 'bg-teal-100 text-teal-700' : 
-                                  'bg-gray-100 text-gray-700'
-                              }`}>{event.targetGroup}</span>
-                          </div>
-                          <p className={`text-xs font-medium mb-1 ${isHospitalMode ? 'text-gray-300' : 'text-gray-600'}`}>{new Date(event.date + 'T12:00:00').toLocaleDateString()} {event.time && `• ${event.time}`}</p>
-                          <p className={`text-xs italic mb-2 ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>{event.location}</p>
-                          <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-600'}`}>{event.description}</p>
-                      </div>
-                      <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-200/10">
-                          <button onClick={() => setEditingEvent(event)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border uppercase ${isHospitalMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-600'}`}>Editar</button>
-                          <button onClick={() => handleDeleteEvent(event.id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
-                      </div>
-                  </div>
-              ))}
-              {state.events.length === 0 && <p className="text-gray-500 col-span-full text-center py-10">Nenhum evento programado.</p>}
-          </div>
-      )}
-
       {/* --- ABA LOGÍSTICA (ROTAS) --- */}
       {activeTab === 'routes' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredRoutes.map(route => (
                 <div key={route.id} className={`p-5 rounded-2xl border flex flex-col justify-between ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
                     <div>
-                        <h3 className={`font-bold text-lg ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{route.name}</h3>
-                        <div className="mt-3 space-y-1">
-                            {route.hospitals && route.hospitals.length > 0 ? (
-                                route.hospitals.map(h => (
-                                    <div key={h} className="text-xs font-medium text-gray-500 flex items-center gap-2">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>{h}
-                                    </div>
-                                ))
-                            ) : (<p className="text-xs text-red-400 italic">Sem hospitais vinculados</p>)}
+                        <h4 className={`font-bold text-lg ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{route.name}</h4>
+                        <div className="mt-2 space-y-1">
+                            {route.hospitals?.map(h => (
+                                <div key={h} className="text-xs text-gray-500 font-medium flex items-center gap-2">
+                                    <div className="w-1 h-1 bg-blue-500 rounded-full"></div> {h}
+                                </div>
+                            ))}
+                            {(!route.hospitals || route.hospitals.length === 0) && <p className="text-xs text-gray-400 italic">Nenhum hospital vinculado.</p>}
                         </div>
                     </div>
-                    <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-200/10">
-                        <button onClick={() => setEditingRoute(route)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border uppercase ${isHospitalMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-600'}`}>Editar</button>
-                        <button onClick={() => handleDeleteRoute(route.id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                    <div className="mt-4 pt-4 border-t border-gray-800/10 flex justify-between items-center">
+                        <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${route.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {route.active ? 'ATIVA' : 'INATIVA'}
+                        </span>
+                        <div className="flex gap-2">
+                            <button onClick={() => setEditingRoute(route)} className="text-blue-500 font-bold text-xs uppercase hover:underline">Editar</button>
+                            <button onClick={() => handleDeleteRoute(route.id)} className="text-red-500 font-bold text-xs uppercase hover:underline">Excluir</button>
+                        </div>
                     </div>
                 </div>
             ))}
         </div>
       )}
 
+      {/* --- ABA EVENTOS --- */}
+      {activeTab === 'events' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {state.events.sort((a,b) => b.date.localeCompare(a.date)).map(event => (
+                <div key={event.id} className={`p-5 rounded-2xl border flex justify-between ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${event.targetGroup === 'COLIH' ? 'bg-teal-100 text-teal-700' : event.targetGroup === 'GVP' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{event.targetGroup}</span>
+                            <span className={`text-xs font-medium ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>{new Date(event.date + 'T12:00:00').toLocaleDateString()}</span>
+                        </div>
+                        <h4 className={`font-bold text-lg ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{event.title}</h4>
+                        <p className={`text-sm mt-1 ${isHospitalMode ? 'text-gray-400' : 'text-gray-600'}`}>{event.location} {event.time ? `• ${event.time}` : ''}</p>
+                    </div>
+                    <div className="flex flex-col justify-between items-end">
+                        <button onClick={() => setEditingEvent(event)} className="text-blue-500"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
+                        <button onClick={() => handleDeleteEvent(event.id)} className="text-red-500"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                    </div>
+                </div>
+            ))}
+            {state.events.length === 0 && <p className="col-span-full text-center py-10 text-gray-400 text-sm">Nenhum evento programado.</p>}
+        </div>
+      )}
+
       {/* --- ABA RELATÓRIOS (LOGS) --- */}
       {activeTab === 'reports' && (
-        <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
-            <div className="overflow-x-auto custom-scrollbar">
-                <table className="min-w-full divide-y divide-gray-200/10">
-                    <thead className={`${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'} text-[10px] font-black text-gray-400 uppercase tracking-widest`}>
-                        <tr><th className="px-6 py-4 text-left">Data</th><th className="px-6 py-4 text-left">Usuário</th><th className="px-6 py-4 text-left">Ação</th><th className="px-6 py-4 text-left">Detalhes</th></tr>
-                    </thead>
-                    <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-xs`}>
-                        {state.logs.slice(0, 50).map(log => (
-                            <tr key={log.id} className={isHospitalMode ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}>
-                                <td className="px-6 py-4 font-mono text-[10px]">{new Date(log.timestamp).toLocaleString()}</td>
-                                <td className="px-6 py-4 font-bold">{log.userName}</td>
-                                <td className="px-6 py-4"><span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700 font-bold border">{log.action}</span></td>
-                                <td className="px-6 py-4 text-gray-500 max-w-xs truncate">{log.details}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+          <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
+              <div className="overflow-x-auto custom-scrollbar">
+                  <table className="min-w-full divide-y divide-gray-200/10">
+                      <thead className={`${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'} text-[10px] font-black text-gray-400 uppercase tracking-widest`}>
+                          <tr><th className="px-6 py-4 text-left">Data</th><th className="px-6 py-4 text-left">Usuário</th><th className="px-6 py-4 text-left">Ação</th><th className="px-6 py-4 text-left">Detalhes</th></tr>
+                      </thead>
+                      <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-sm`}>
+                          {state.logs.slice().sort((a,b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 50).map(log => (
+                              <tr key={log.id} className={`${isHospitalMode ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}>
+                                  <td className="px-6 py-4 font-mono text-xs">{new Date(log.timestamp).toLocaleString()}</td>
+                                  <td className="px-6 py-4 font-bold">{log.userName}</td>
+                                  <td className="px-6 py-4"><span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-[10px] font-bold uppercase">{log.action}</span></td>
+                                  <td className="px-6 py-4 text-xs truncate max-w-xs" title={log.details}>{log.details}</td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+          </div>
       )}
 
-      {/* --- ABA BALANÇO (STATS) --- */}
+      {/* --- ABA BALANÇO --- */}
       {activeTab === 'balance' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className={`p-6 rounded-2xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
-                <h3 className="text-lg font-black text-blue-600 mb-4">Ranking GVP (Visitas)</h3>
-                <div className="space-y-3">
-                    {gvpStats.slice(0, 10).map((m, idx) => (
-                        <div key={m.id} className="flex justify-between items-center border-b border-gray-100 pb-2 last:border-0">
-                            <div className="flex items-center gap-3">
-                                <span className="font-mono text-gray-400 font-bold w-4">{idx+1}</span>
-                                <span className={`text-sm font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{m.name}</span>
-                            </div>
-                            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold">{m.visitCount}</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-            <div className={`p-6 rounded-2xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
-                <h3 className="text-lg font-black text-teal-600 mb-4">Ranking COLIH (Atividade)</h3>
-                <div className="space-y-3">
-                    {colihStats.slice(0, 10).map((m, idx) => (
-                        <div key={m.id} className="flex justify-between items-center border-b border-gray-100 pb-2 last:border-0">
-                            <div className="flex items-center gap-3">
-                                <span className="font-mono text-gray-400 font-bold w-4">{idx+1}</span>
-                                <span className={`text-sm font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{m.name}</span>
-                            </div>
-                            <span className="bg-teal-100 text-teal-700 px-2 py-0.5 rounded text-xs font-bold">{m.visitCount}</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className={`p-6 rounded-2xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                  <h3 className={`text-sm font-black uppercase mb-4 tracking-widest ${isHospitalMode ? 'text-blue-400' : 'text-blue-600'}`}>Top Visitantes GVP</h3>
+                  <div className="space-y-3">
+                      {gvpStats.slice(0, 10).map((m, idx) => (
+                          <div key={m.id} className="flex justify-between items-center">
+                              <div className="flex items-center gap-3">
+                                  <span className="font-mono text-xs text-gray-400 w-4">{idx + 1}</span>
+                                  <span className={`text-sm font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{m.name}</span>
+                              </div>
+                              <span className="font-black text-blue-500">{m.visitCount}</span>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+              <div className={`p-6 rounded-2xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                  <h3 className={`text-sm font-black uppercase mb-4 tracking-widest ${isHospitalMode ? 'text-teal-400' : 'text-teal-600'}`}>Atividade COLIH</h3>
+                  <div className="space-y-3">
+                      {colihStats.slice(0, 10).map((m, idx) => (
+                          <div key={m.id} className="flex justify-between items-center">
+                              <div className="flex items-center gap-3">
+                                  <span className="font-mono text-xs text-gray-400 w-4">{idx + 1}</span>
+                                  <span className={`text-sm font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{m.name}</span>
+                              </div>
+                              <span className="font-black text-teal-500">{m.visitCount}</span>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          </div>
       )}
-
-      {/* CONFIRM MODAL */}
-      {confirmConfig && (
-          <ConfirmModal 
-              isOpen={confirmConfig.isOpen}
-              onClose={() => setConfirmConfig(null)}
-              onConfirm={confirmConfig.onConfirm}
-              title={confirmConfig.title}
-              description={confirmConfig.description}
-              isDestructive={true}
-              isHospitalMode={isHospitalMode}
-          />
-      )}
-
+      
       {/* MODAL: EDITAR EVENTO */}
       {editingEvent && createPortal(
           <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
-              <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
-                  <div className="bg-blue-600 px-6 py-5 flex justify-between items-center shrink-0">
-                      <h3 className="text-white font-bold text-lg">{editingEvent.id ? 'Editar Evento' : 'Novo Evento'}</h3>
-                      <button onClick={() => setEditingEvent(null)} className="text-white hover:text-blue-200 text-2xl leading-none">&times;</button>
-                  </div>
-                  <form onSubmit={handleSaveEvent} className="p-6 space-y-4 flex-grow overflow-y-auto custom-scrollbar">
-                      <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Título</label><input required className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingEvent.title || ''} onChange={e => setEditingEvent({...editingEvent, title: e.target.value})} placeholder="Ex: Reunião GVP" /></div>
-                      <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Data</label><input required type="date" className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingEvent.date || ''} onChange={e => setEditingEvent({...editingEvent, date: e.target.value})} /></div>
-                          <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Horário</label><input type="time" className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingEvent.time || ''} onChange={e => setEditingEvent({...editingEvent, time: e.target.value})} /></div>
-                      </div>
-                      <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Local</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingEvent.location || ''} onChange={e => setEditingEvent({...editingEvent, location: e.target.value})} placeholder="Ex: Salão do Reino Central" /></div>
-                      <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Público Alvo</label><select className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingEvent.targetGroup || 'ALL'} onChange={e => setEditingEvent({...editingEvent, targetGroup: e.target.value as any})}><option value="ALL">Todos os Membros</option><option value="GVP">Apenas GVP</option><option value="COLIH">Apenas COLIH</option></select></div>
-                      <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Descrição</label><textarea rows={3} className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingEvent.description || ''} onChange={e => setEditingEvent({...editingEvent, description: e.target.value})} placeholder="Detalhes do evento..." /></div>
-                      <div className="pt-4 flex justify-end gap-3"><Button variant="secondary" onClick={() => setEditingEvent(null)}>Cancelar</Button><Button type="submit">Salvar</Button></div>
-                  </form>
-              </div>
-          </div>, document.body
-      )}
-
-      {/* MODAL: EDITAR MEMBRO (ATUALIZADO) */}
-      {editingMember && createPortal(
-          <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
-             <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
-                <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center shrink-0">
-                    <span className="text-lg">Configurar Voluntário</span>
-                    <button onClick={() => setEditingMember(null)} className="text-3xl leading-none">&times;</button>
-                </div>
-                <form onSubmit={handleSaveMember} className="p-8 space-y-4 flex-grow overflow-y-auto custom-scrollbar">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nome Completo</label>
-                      <input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.name || ''} onChange={e => setEditingMember({...editingMember, name: e.target.value})} />
-                    </div>
+             <div className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+                <div className="bg-purple-600 px-6 py-5 flex justify-between items-center shrink-0"><h3 className="text-white font-bold text-lg">{editingEvent.id ? 'Editar Evento' : 'Novo Evento'}</h3><button onClick={() => setEditingEvent(null)} className="text-white hover:text-purple-200 text-2xl leading-none">&times;</button></div>
+                <form onSubmit={handleSaveEvent} className="p-6 space-y-4">
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Título</label><input required className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingEvent.title || ''} onChange={e => setEditingEvent({...editingEvent, title: e.target.value})} /></div>
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Cidade</label><input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.city || ''} onChange={e => handleMemberCityChange(e.target.value)} /></div>
-                        <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Regional</label><select className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.regional || ''} onChange={e => setEditingMember({...editingMember, regional: e.target.value})}><option value="">Automática</option>{availableRegionals.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Data</label><input type="date" required className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingEvent.date || ''} onChange={e => setEditingEvent({...editingEvent, date: e.target.value})} /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Horário</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingEvent.time || ''} onChange={e => setEditingEvent({...editingEvent, time: e.target.value})} placeholder="Ex: 19:30" /></div>
                     </div>
-                    
-                    {/* Seção de Permissões e Funções (ATUALIZADA) */}
-                    <div className={`space-y-4 border p-4 rounded-xl ${isHospitalMode ? 'border-gray-800 bg-[#1a1c1e]' : 'border-gray-100 bg-gray-50'}`}>
-                        <h4 className="text-xs font-black uppercase text-gray-400 tracking-widest border-b border-gray-300/10 pb-2 mb-2">Permissões e Funções</h4>
-                        
-                        <div className="grid grid-cols-1 gap-4">
-                            <div>
-                                <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Nível de Acesso (GVP)</label>
-                                <select 
-                                    className={`w-full p-2.5 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#212327] border-gray-700 text-white' : 'bg-white border-gray-200'}`}
-                                    value={editingMember.role || UserRole.MEMBER}
-                                    onChange={e => setEditingMember({...editingMember, role: e.target.value as UserRole})}
-                                >
-                                    <option value={UserRole.MEMBER}>Membro (Acesso Padrão)</option>
-                                    {isGlobalAdmin && <option value={UserRole.COORDINATOR}>Coordenador Regional</option>}
-                                    {isGlobalAdmin && <option value={UserRole.ADMIN}>Administrador Global</option>}
-                                </select>
-                            </div>
-                            
-                            <div className="flex items-center justify-between p-2 rounded-lg border border-gray-200/50">
-                                 <label className="flex items-center gap-3 cursor-pointer select-none">
-                                    <input 
-                                        type="checkbox" 
-                                        className="w-5 h-5 text-blue-600 rounded"
-                                        checked={editingMember.isColih || false}
-                                        onChange={e => setEditingMember({...editingMember, isColih: e.target.checked})}
-                                    />
-                                    <span className={`text-sm font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Membro da COLIH?</span>
-                                 </label>
-                            </div>
-
-                            {editingMember.isColih && (
-                                <div className="animate-fade-in">
-                                    <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Classificação COLIH</label>
-                                    <select
-                                        className={`w-full p-2.5 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#212327] border-gray-700 text-white' : 'bg-white border-gray-200'}`}
-                                        value={editingMember.colihClassification || 'Member'}
-                                        onChange={e => setEditingMember({...editingMember, colihClassification: e.target.value as any})}
-                                    >
-                                        <option value="Member">Membro Regular</option>
-                                        <option value="Facilitator">Facilitador</option>
-                                        <option value="Assistant">Ajudante / Assistente</option>
-                                        <option value="Secretary">Secretário</option>
-                                        <option value="Coordinator">Coordenador (Comissão)</option>
-                                        <option value="President">Presidente</option>
-                                    </select>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="col-span-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Status da Conta</label><select className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.active ? 'true' : 'false'} onChange={e => setEditingMember({...editingMember, active: e.target.value === 'true'})}> <option value="true">Ativo</option> <option value="false">Bloqueado</option> </select></div>
-                    <div className="pt-4"><Button className="w-full rounded-xl py-4" type="submit">Salvar Alterações</Button></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Local</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingEvent.location || ''} onChange={e => setEditingEvent({...editingEvent, location: e.target.value})} /></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-gray-500 uppercase">Público Alvo</label><select className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingEvent.targetGroup || 'ALL'} onChange={e => setEditingEvent({...editingEvent, targetGroup: e.target.value as any})}><option value="ALL">Geral (Todos)</option><option value="GVP">Apenas GVP</option><option value="COLIH">Apenas COLIH</option></select></div>
+                    <div className="pt-2"><Button className="w-full bg-purple-600 hover:bg-purple-700" type="submit">Salvar Evento</Button></div>
                 </form>
              </div>
           </div>, document.body
       )}
 
-      {/* ... (rest of modals: Hospital, Route) ... */}
+      {/* MODAL: EDITAR MEMBRO */}
+      {editingMember && createPortal(
+        <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
+           <div className={`w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+              <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center shrink-0"><span className="text-lg">{editingMember.id ? 'Editar Membro' : 'Novo Membro'}</span><button onClick={() => setEditingMember(null)} className="text-3xl leading-none">&times;</button></div>
+              <form onSubmit={handleSaveMember} className="p-8 space-y-4 flex-grow overflow-y-auto custom-scrollbar">
+                  <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nome Completo</label><input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.name || ''} onChange={e => setEditingMember({...editingMember, name: e.target.value})} /></div>
+                  <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">E-mail Corporativo</label><input required type="email" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.email || ''} onChange={e => setEditingMember({...editingMember, email: e.target.value})} /></div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Cidade</label><input type="text" className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.city || ''} onChange={e => handleMemberCityChange(e.target.value)} /></div>
+                      <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Regional</label><select className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.regional || ''} onChange={e => setEditingMember({...editingMember, regional: e.target.value})}><option value="">Selecione...</option>{availableRegionals.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                  </div>
+
+                  <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nível de Acesso</label><select className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingMember.role} onChange={e => setEditingMember({...editingMember, role: e.target.value as any})}><option value="MEMBER">Voluntário (GVP)</option><option value="COORDINATOR">Coordenador Regional</option><option value="ADMIN">Administrador Global</option></select></div>
+                  
+                  <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 space-y-3">
+                      <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" className="w-5 h-5 text-blue-600 rounded" checked={editingMember.active || false} onChange={e => setEditingMember({...editingMember, active: e.target.checked})} /><span className="text-sm font-bold text-gray-700">Cadastro Ativo</span></label>
+                      <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" className="w-5 h-5 text-teal-600 rounded" checked={editingMember.isColih || false} onChange={e => setEditingMember({...editingMember, isColih: e.target.checked})} /><span className="text-sm font-bold text-gray-700">Membro da COLIH</span></label>
+                      {editingMember.isColih && (
+                          <div className="pl-8 animate-fade-in"><label className="text-[10px] font-bold text-gray-500 uppercase">Classificação COLIH</label><select className="w-full p-2 border rounded-lg text-sm mt-1" value={editingMember.colihClassification || 'Member'} onChange={e => setEditingMember({...editingMember, colihClassification: e.target.value as any})}><option value="Member">Membro Regular</option><option value="Facilitator">Facilitador (Ajudante)</option><option value="Assistant">Assistente</option><option value="Secretary">Secretário</option><option value="Coordinator">Coordenador</option><option value="President">Presidente</option></select></div>
+                      )}
+                  </div>
+                  <div className="pt-4"><Button className="w-full rounded-xl py-4" type="submit">Salvar Dados</Button></div>
+              </form>
+           </div>
+        </div>, document.body
+      )}
+
       {/* MODAL: EDITAR HOSPITAL */}
       {editingHospital && createPortal(
           <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -747,12 +681,47 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
              <div className={`w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
                 <div className="bg-blue-600 p-6 text-white font-black flex justify-between items-center shrink-0"><span className="text-lg">Configurar Rota</span><button onClick={() => setEditingRoute(null)} className="text-3xl leading-none">&times;</button></div>
                 <form onSubmit={handleSaveRoute} className="p-8 space-y-4 flex-grow overflow-y-auto custom-scrollbar">
-                    <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nome da Rota (Ex: Rota 1)</label><input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingRoute.name || ''} onChange={e => setEditingRoute({...editingRoute, name: e.target.value})} /></div>
-                    <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Hospitais na Rota</label><div className={`border-2 rounded-xl p-4 max-h-40 overflow-y-auto custom-scrollbar ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800' : 'bg-gray-50 border-gray-100'}`}>{filteredHospitals.map(h => (<label key={h.id} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer ${isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-white'}`}><input type="checkbox" className="w-4 h-4 text-blue-600 rounded" checked={editingRoute.hospitals?.includes(h.name)} onChange={e => { const current = editingRoute.hospitals || []; if (e.target.checked) setEditingRoute({...editingRoute, hospitals: [...current, h.name]}); else setEditingRoute({...editingRoute, hospitals: current.filter(name => name !== h.name)}); }} /><span className={`text-xs font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{h.name}</span></label>))}</div></div>
+                    <div className="space-y-1"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Nome da Rota</label><input required type="text" className={`w-full p-3 border-2 rounded-xl outline-none focus:border-blue-600 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-gray-50 border-gray-100'}`} value={editingRoute.name || ''} onChange={e => setEditingRoute({...editingRoute, name: e.target.value})} placeholder="Ex: Rota 1 - Litoral" /></div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Hospitais Incluídos</label>
+                        <div className={`border-2 rounded-xl p-3 max-h-48 overflow-y-auto custom-scrollbar space-y-2 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800' : 'bg-gray-50 border-gray-100'}`}>
+                            {filteredHospitals.map(h => (
+                                <label key={h.id} className="flex items-center gap-3 cursor-pointer p-2 hover:bg-black/5 rounded-lg transition-all">
+                                    <input 
+                                        type="checkbox" 
+                                        className="w-5 h-5 rounded border-2 text-blue-600 focus:ring-blue-500"
+                                        checked={editingRoute.hospitals?.includes(h.name) || false}
+                                        onChange={e => {
+                                            const current = editingRoute.hospitals || [];
+                                            if (e.target.checked) setEditingRoute({...editingRoute, hospitals: [...current, h.name]});
+                                            else setEditingRoute({...editingRoute, hospitals: current.filter(name => name !== h.name)});
+                                        }}
+                                    />
+                                    <span className={`text-sm font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{h.name}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="p-4 rounded-xl border border-gray-200 bg-gray-50">
+                        <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" className="w-5 h-5 text-blue-600 rounded" checked={editingRoute.active !== false} onChange={e => setEditingRoute({...editingRoute, active: e.target.checked})} /><span className="text-sm font-bold text-gray-700">Rota Ativa na Agenda</span></label>
+                    </div>
                     <div className="pt-4"><Button className="w-full rounded-xl py-4" type="submit">Salvar Rota</Button></div>
                 </form>
              </div>
           </div>, document.body
+      )}
+
+      {/* CONFIRMAÇÃO DE EXCLUSÃO */}
+      {confirmConfig && (
+          <ConfirmModal 
+              isOpen={confirmConfig.isOpen}
+              onClose={() => setConfirmConfig(null)}
+              onConfirm={confirmConfig.onConfirm}
+              title={confirmConfig.title}
+              description={confirmConfig.description}
+              isDestructive={true}
+              isHospitalMode={isHospitalMode}
+          />
       )}
     </div>
   );

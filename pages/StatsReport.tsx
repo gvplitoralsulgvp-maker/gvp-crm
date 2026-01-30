@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { AppState } from '../types';
+import { AppState, UserRole } from '../types';
 import { Button } from '../components/Button';
 
 // Componente Interno: Cartão de Métrica (Estilo da Imagem)
@@ -85,6 +85,54 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
   const [isPrintMode, setIsPrintMode] = useState(false);
 
   const todayStr = new Date().toISOString().split('T')[0];
+  const isCoordinator = state.currentUser?.role === UserRole.COORDINATOR;
+  const userRegional = state.currentUser?.regional;
+
+  // --- FILTERING DATA BASED ON REGION ---
+  
+  const filteredHospitals = useMemo(() => {
+      if (isCoordinator && userRegional) {
+          return state.hospitals.filter(h => !h.regional || h.regional === userRegional);
+      }
+      return state.hospitals;
+  }, [state.hospitals, isCoordinator, userRegional]);
+
+  const filteredRoutes = useMemo(() => {
+      if (isCoordinator && userRegional) {
+          // Routes are filtered if they contain hospitals from the region
+          return state.routes.filter(r => {
+              if (!r.hospitals) return false;
+              // Check if any hospital in the route belongs to visible hospitals
+              return r.hospitals.some(hName => filteredHospitals.some(fh => fh.name === hName));
+          });
+      }
+      return state.routes;
+  }, [state.routes, filteredHospitals, isCoordinator, userRegional]);
+
+  const filteredVisits = useMemo(() => {
+      if (isCoordinator && userRegional) {
+          const visibleRouteIds = filteredRoutes.map(r => r.id);
+          return state.visits.filter(v => visibleRouteIds.includes(v.routeId));
+      }
+      return state.visits;
+  }, [state.visits, filteredRoutes, isCoordinator, userRegional]);
+
+  const filteredSocialVisits = useMemo(() => {
+      if (isCoordinator && userRegional) {
+          const visibleHospitalIds = filteredHospitals.map(h => h.id);
+          return state.socialWorkerVisits.filter(v => visibleHospitalIds.includes(v.hospitalId));
+      }
+      return state.socialWorkerVisits;
+  }, [state.socialWorkerVisits, filteredHospitals, isCoordinator, userRegional]);
+
+  const filteredPatients = useMemo(() => {
+      if (isCoordinator && userRegional) {
+          return state.patients.filter(p => !p.regional || p.regional === userRegional);
+      }
+      return state.patients;
+  }, [state.patients, isCoordinator, userRegional]);
+
+  // --- CALCULATION LOGIC ---
 
   const cutoffDate = useMemo(() => {
       const d = new Date();
@@ -93,28 +141,28 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
   }, [activeRange]);
 
   const currentVisits = useMemo(() => {
-    return state.visits.filter(v => v.status === 'FINISHED' && new Date(v.date) >= cutoffDate);
-  }, [state.visits, cutoffDate]);
+    return filteredVisits.filter(v => v.status === 'FINISHED' && new Date(v.date) >= cutoffDate);
+  }, [filteredVisits, cutoffDate]);
 
   const currentSocialVisits = useMemo(() => {
-    return state.socialWorkerVisits.filter(v => v.status === 'FINISHED' && new Date(v.date) >= cutoffDate);
-  }, [state.socialWorkerVisits, cutoffDate]);
+    return filteredSocialVisits.filter(v => v.status === 'FINISHED' && new Date(v.date) >= cutoffDate);
+  }, [filteredSocialVisits, cutoffDate]);
 
   const missedVisits = useMemo(() => {
-    return state.visits.filter(v => 
+    return filteredVisits.filter(v => 
       v.date < todayStr && 
       (v.memberIds?.length || 0) > 0 && 
       v.status !== 'FINISHED' && 
       !v.report
     );
-  }, [state.visits, todayStr]);
+  }, [filteredVisits, todayStr]);
 
   // Lista de Cobertura Hospitalar
   const hospitalCoverage = useMemo(() => {
       const today = new Date();
-      return state.hospitals.map(h => {
-          const routeIds = state.routes.filter(r => r.hospitals && r.hospitals.includes(h.name)).map(r => r.id);
-          const visits = state.visits.filter(v => routeIds.includes(v.routeId) && v.status === 'FINISHED');
+      return filteredHospitals.map(h => {
+          const routeIds = filteredRoutes.filter(r => r.hospitals && r.hospitals.includes(h.name)).map(r => r.id);
+          const visits = filteredVisits.filter(v => routeIds.includes(v.routeId) && v.status === 'FINISHED');
           const lastVisit = visits.sort((a,b) => b.date.localeCompare(a.date))[0];
           let daysSince = 999;
           if (lastVisit) {
@@ -124,15 +172,14 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
           }
           return { ...h, daysSince, lastVisitDate: lastVisit?.date };
       }).sort((a,b) => b.daysSince - a.daysSince);
-  }, [state.hospitals, state.routes, state.visits]);
+  }, [filteredHospitals, filteredRoutes, filteredVisits]);
 
   // Dados para os Gráficos
   const visitsByHospital = useMemo(() => {
       const counts: Record<string, number> = {};
       currentVisits.forEach(v => {
-          const route = state.routes.find(r => r.id === v.routeId);
-          // Atribui a visita a todos os hospitais da rota (simplificação válida para rotas compartilhadas)
-          // ou se a rota tem um nome específico, usa o primeiro hospital
+          const route = filteredRoutes.find(r => r.id === v.routeId);
+          // Atribui a visita a todos os hospitais da rota
           route?.hospitals?.forEach(hName => {
               counts[hName] = (counts[hName] || 0) + 1;
           });
@@ -141,14 +188,14 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
         .map(([label, value]) => ({ label, value }))
         .sort((a, b) => b.value - a.value)
         .slice(0, 6); // Top 6
-  }, [currentVisits, state.routes]);
+  }, [currentVisits, filteredRoutes]);
 
   const newPatientsCount = useMemo(() => {
-      return state.patients.filter(p => new Date(p.admissionDate) >= cutoffDate).length;
-  }, [state.patients, cutoffDate]);
+      return filteredPatients.filter(p => new Date(p.admissionDate) >= cutoffDate).length;
+  }, [filteredPatients, cutoffDate]);
 
-  const activePatientsCount = state.patients.filter(p => p.active).length;
-  const totalPatientsCount = state.patients.length;
+  const activePatientsCount = filteredPatients.filter(p => p.active).length;
+  const totalPatientsCount = filteredPatients.length;
 
   const handlePrint = () => {
       setIsPrintMode(true);
@@ -159,7 +206,10 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
       return (
           <div className="p-10 bg-white min-h-screen text-black space-y-8">
               <div className="border-b-2 border-black pb-4 flex justify-between items-end">
-                  <div><h1 className="text-3xl font-bold uppercase">Relatório GVP Litoral Sul</h1><p>Período: Últimos {activeRange} dias</p></div>
+                  <div>
+                      <h1 className="text-3xl font-bold uppercase">Relatório GVP Litoral Sul</h1>
+                      <p>Período: Últimos {activeRange} dias {isCoordinator && userRegional ? `(${userRegional})` : ''}</p>
+                  </div>
                   <p className="text-xs">Gerado em: {new Date().toLocaleString()}</p>
               </div>
               <div className="grid grid-cols-2 gap-8">
@@ -187,7 +237,12 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
   return (
     <div className="space-y-8 pb-10 animate-fade-in">
       <div className={`p-6 rounded-xl shadow-sm border flex flex-col md:flex-row justify-between gap-4 ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
-          <div><h2 className={`text-xl font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Dashboard de Impacto</h2><p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Visão geral de métricas e produtividade.</p></div>
+          <div>
+              <h2 className={`text-xl font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Dashboard de Impacto</h2>
+              <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Visão geral de métricas. {isCoordinator && userRegional && <span className="ml-1 font-bold">({userRegional})</span>}
+              </p>
+          </div>
           <Button onClick={handlePrint} className="bg-blue-600 text-white">Exportar PDF</Button>
       </div>
       
@@ -216,7 +271,7 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
                 />
                 <MetricCard 
                     title="Hospitais Cadastrados" 
-                    value={state.hospitals.length} 
+                    value={filteredHospitals.length} 
                     colorClass="text-purple-600" 
                     isHospitalMode={isHospitalMode} 
                 />
@@ -327,7 +382,7 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
                         {missedVisits.sort((a,b) => b.date.localeCompare(a.date)).map(v => (
                           <tr key={v.id}>
                             <td className="px-6 py-4 font-bold text-red-500">{new Date(v.date + 'T12:00:00').toLocaleDateString()}</td>
-                            <td className="px-6 py-4 font-bold">{state.routes.find(r => r.id === v.routeId)?.name}</td>
+                            <td className="px-6 py-4 font-bold">{filteredRoutes.find(r => r.id === v.routeId)?.name}</td>
                             <td className="px-6 py-4 text-gray-500">{(v.memberIds || []).map(id => state.members.find(m => m.id === id)?.name).join(' & ')}</td>
                             <td className="px-6 py-4">
                                <span className="px-2 py-1 bg-red-100 text-red-600 rounded text-[10px] font-black uppercase">Visita não efetuada</span>
@@ -361,7 +416,7 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
                         {currentSocialVisits.sort((a,b) => b.date.localeCompare(a.date)).map(v => (
                           <tr key={v.id}>
                             <td className="px-6 py-4 font-bold">{new Date(v.date + 'T12:00:00').toLocaleDateString()}</td>
-                            <td className="px-6 py-4 text-indigo-500 font-bold">{state.hospitals.find(h => h.id === v.hospitalId)?.name}</td>
+                            <td className="px-6 py-4 text-indigo-500 font-bold">{filteredHospitals.find(h => h.id === v.hospitalId)?.name}</td>
                             <td className="px-6 py-4"><p className="text-xs italic text-gray-500 max-w-lg">"{v.report?.notes}"</p><p className="text-[10px] mt-1 text-gray-400">Por: {v.report?.doctorName}</p></td>
                           </tr>
                         ))}

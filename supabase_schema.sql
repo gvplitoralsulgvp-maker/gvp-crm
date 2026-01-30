@@ -63,6 +63,8 @@ ALTER TABLE public.members ADD COLUMN IF NOT EXISTS has_seen_onboarding BOOLEAN 
 
 -- CORREÇÃO: Adiciona coluna regional na tabela patients (Correção do erro atual)
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS regional TEXT;
+ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS is_external_request BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS request_date TIMESTAMPTZ;
 
 -- ==========================================
 -- CONFIGURAÇÃO DO STORAGE (Execute no SQL Editor do Supabase)
@@ -75,36 +77,29 @@ ON CONFLICT (id) DO UPDATE SET public = true;
 
 -- 2. Limpeza: Remove políticas antigas para evitar conflitos/duplicação
 DROP POLICY IF EXISTS "Public Access" ON storage.objects;
-DROP POLICY IF EXISTS "Auth Upload" ON storage.objects;
-DROP POLICY IF EXISTS "Auth Update" ON storage.objects;
-DROP POLICY IF EXISTS "Auth Delete" ON storage.objects;
-DROP POLICY IF EXISTS "Give me access" ON storage.objects;
 DROP POLICY IF EXISTS "Public Upload" ON storage.objects;
 DROP POLICY IF EXISTS "Public Update" ON storage.objects;
 DROP POLICY IF EXISTS "Public Delete" ON storage.objects;
 
--- 3. Cria Políticas de Segurança (RLS) Permissivas (TO public)
--- Necessário para o admin mestre (sem auth) fazer upload
+CREATE POLICY "Public Access" ON storage.objects FOR SELECT USING ( bucket_id = 'resources' );
+CREATE POLICY "Public Upload" ON storage.objects FOR INSERT TO public WITH CHECK ( bucket_id = 'resources' );
+CREATE POLICY "Public Update" ON storage.objects FOR UPDATE TO public USING ( bucket_id = 'resources' );
+CREATE POLICY "Public Delete" ON storage.objects FOR DELETE TO public USING ( bucket_id = 'resources' );
 
--- LEITURA: Qualquer pessoa pode baixar/ver arquivos (Bucket Público)
-CREATE POLICY "Public Access"
-ON storage.objects FOR SELECT
-USING ( bucket_id = 'resources' );
+-- 4. CORREÇÃO DE PERMISSÕES PARA TABELAS (RLS)
+-- Garante que o App consiga LER, EDITAR e EXCLUIR dados, não apenas INSERIR
+ALTER TABLE public.patients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
--- UPLOAD: Público (para permitir admin hardcoded)
-CREATE POLICY "Public Upload"
-ON storage.objects FOR INSERT
-TO public
-WITH CHECK ( bucket_id = 'resources' );
+DROP POLICY IF EXISTS "Public Insert Patients" ON public.patients;
+DROP POLICY IF EXISTS "Public Insert Logs" ON public.logs;
+DROP POLICY IF EXISTS "Public Insert Notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Allow All Patients" ON public.patients;
+DROP POLICY IF EXISTS "Allow All Logs" ON public.logs;
+DROP POLICY IF EXISTS "Allow All Notifications" ON public.notifications;
 
--- ATUALIZAÇÃO: Público
-CREATE POLICY "Public Update"
-ON storage.objects FOR UPDATE
-TO public
-USING ( bucket_id = 'resources' );
-
--- DELEÇÃO: Público
-CREATE POLICY "Public Delete"
-ON storage.objects FOR DELETE
-TO public
-USING ( bucket_id = 'resources' );
+-- Cria políticas permissivas (CRUD Completo)
+CREATE POLICY "Allow All Patients" ON public.patients FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow All Logs" ON public.logs FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow All Notifications" ON public.notifications FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
