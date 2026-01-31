@@ -1,336 +1,386 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { AppState, Patient, Member, AppNotification, UserRole, ALL_REGIONALS } from '../types';
-import { Button } from '../components/Button';
-import { PatientDetailModal } from '../components/PatientDetailModal';
-import { ConfirmModal } from '../components/ConfirmModal';
-import { atomicUpdate } from '../services/storageService';
 import { useLocation } from 'react-router-dom';
+import { createPortal } from 'react-dom';
+import { AppState, Patient, UserRole, Hospital } from '../types';
+import { Button } from '../components/Button';
+import { atomicUpdate, atomicDelete } from '../services/storageService';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { PatientDetailModal } from '../components/PatientDetailModal';
 
 interface PatientRegistryProps {
   state: AppState;
-  onUpdateState: (state: AppState) => void;
+  onUpdateState: (newState: AppState) => void;
   isPrivacyMode: boolean;
   isHospitalMode?: boolean;
 }
 
 export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdateState, isPrivacyMode, isHospitalMode }) => {
-  // ... (keep state logic same as original) ...
   const location = useLocation();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [viewingPatientId, setViewingPatientId] = useState<string | null>(null);
-  const [editingPatient, setEditingPatient] = useState<Partial<Patient> | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isHidWarningOpen, setIsHidWarningOpen] = useState(false);
-  const [optimisticArchived, setOptimisticArchived] = useState<Set<string>>(new Set());
-  const [closingIds, setClosingIds] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingPatient, setEditingPatient] = useState<Partial<Patient>>({});
+  const [viewingPatient, setViewingPatient] = useState<Patient | null>(null);
+  const [confirmConfig, setConfirmConfig] = useState<{isOpen: boolean, title: string, description: string, onConfirm: () => void} | null>(null);
 
-  const isCoordinator = state.currentUser?.role === UserRole.COORDINATOR;
-  const userRegional = state.currentUser?.regional;
-
+  // Initialize search from location state if available (from GlobalSearch)
   useEffect(() => {
-      if (location.state && location.state.searchQuery) {
-          setSearchQuery(location.state.searchQuery);
-      }
+    if (location.state && location.state.searchQuery) {
+        setSearchTerm(location.state.searchQuery);
+    }
   }, [location.state]);
 
   const activePatients = useMemo(() => {
-      let patients = state.patients
-        .filter(p => p.active && !optimisticArchived.has(p.id));
+    let list = state.patients.filter(p => p.active);
+    
+    // Filter by Regional for Coordinators
+    if (state.currentUser?.role === UserRole.COORDINATOR && state.currentUser.regional) {
+        list = list.filter(p => !p.regional || p.regional === state.currentUser?.regional);
+    }
 
-      if (isCoordinator && userRegional) {
-          patients = patients.filter(p => !p.regional || p.regional === userRegional);
-      }
-
-      return patients.sort((a,b) => a.name.localeCompare(b.name));
-  }, [state.patients, optimisticArchived, isCoordinator, userRegional]);
-
-  const filteredPatients = useMemo(() => {
-      if (!searchQuery) return activePatients;
-      const lower = searchQuery.toLowerCase();
-      return activePatients.filter(p => 
-          p.name.toLowerCase().includes(lower) || 
-          p.hospitalName?.toLowerCase().includes(lower) ||
-          p.treatment?.toLowerCase().includes(lower)
-      );
-  }, [activePatients, searchQuery]);
+    if (searchTerm) {
+        const lower = searchTerm.toLowerCase();
+        list = list.filter(p => p.name.toLowerCase().includes(lower) || p.hospitalName?.toLowerCase().includes(lower));
+    }
+    // Sort by name
+    return list.sort((a,b) => a.name.localeCompare(b.name));
+  }, [state.patients, searchTerm, state.currentUser]);
 
   const availableHospitals = useMemo(() => {
-      if (isCoordinator && userRegional) {
-          return state.hospitals.filter(h => !h.regional || h.regional === userRegional);
+      let list = state.hospitals;
+      if (state.currentUser?.role === UserRole.COORDINATOR && state.currentUser.regional) {
+          list = list.filter(h => !h.regional || h.regional === state.currentUser.regional);
       }
-      return state.hospitals;
-  }, [state.hospitals, isCoordinator, userRegional]);
+      return list.sort((a,b) => a.name.localeCompare(b.name));
+  }, [state.hospitals, state.currentUser]);
 
-  // ... (keep helper functions like handleDischarge, performSave, etc. exactly as before) ...
-  const animateAndArchive = (id: string, updatedPatients: Patient[]) => {
-      setClosingIds(prev => new Set(prev).add(id));
-      setTimeout(() => {
-          setOptimisticArchived(prev => new Set(prev).add(id));
-          onUpdateState({ ...state, patients: updatedPatients });
-      }, 500);
-  };
+  const handleSave = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!editingPatient.name || !editingPatient.hospitalId) {
+          alert("Nome e Hospital são obrigatórios.");
+          return;
+      }
 
-  const handleDischarge = async (id: string, name: string) => { 
-      const patient = state.patients.find(p => p.id === id);
-      if (!patient) return;
-      const isColihUser = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
-      try {
-          if (patient.isMedicalDischarge) {
-              if (!isColihUser) { alert("Apenas membros da COLIH podem realizar o arquivamento definitivo (HLC-7)."); return; }
-              if (window.confirm(`[PROTOCOLO COLIH]\n\nConfirma o envio do formulário HLC-7 para o caso de ${name}?\n\nIsso arquivará o paciente definitivamente.`)) {
-                  const archivedPatient = { ...patient, active: false, gvpRequestPending: false, isMedicalDischarge: true };
-                  const updatedPatients = state.patients.map(p => p.id === id ? archivedPatient : p);
-                  animateAndArchive(id, updatedPatients);
-                  setViewingPatientId(null);
-                  await atomicUpdate('patients', archivedPatient);
-              }
-              return;
-          }
-          if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA do hospital?\n\nIsso removerá a solicitação de visita, mas manterá o caso aberto para a COLIH (HLC-7).`)) {
-              const dischargedPatient = { ...patient, isMedicalDischarge: true, gvpRequestPending: false, active: true, estimatedDischargeDate: new Date().toISOString() };
-              const updatedPatients = state.patients.map(p => p.id === id ? dischargedPatient : p); 
-              onUpdateState({ ...state, patients: updatedPatients });
-              setViewingPatientId(null);
-              await atomicUpdate('patients', dischargedPatient);
-          }
-      } catch (err: any) { console.error("Erro no processo de alta:", err); alert(`Erro ao salvar status do paciente: ${err.message}. Verifique se todas as colunas do banco de dados estão atualizadas.`); }
-  };
-
-  const handleToggleGvpRequest = async (patient: Patient) => { 
-      const willEnable = !patient.gvpRequestPending; 
-      const confirmMessage = willEnable ? `Deseja marcar a BANDEIRA DE SOLICITAÇÃO para ${patient.name}?\n\nIsso alertará os coordenadores.` : `Deseja remover a solicitação de visita para ${patient.name}?`; 
-      if (!window.confirm(confirmMessage)) return; 
-      try { 
-          const updatedPatient = { ...patient, gvpRequestPending: willEnable }; 
-          const updatedList = state.patients.map(p => p.id === patient.id ? updatedPatient : p); 
-          let newNotifications: AppNotification[] = []; 
-          if (willEnable) { 
-              const adminIds = state.members.filter(m => m.role === UserRole.ADMIN || m.role === UserRole.COORDINATOR).map(m => m.id); 
-              newNotifications = adminIds.map(adminId => ({ id: crypto.randomUUID(), userId: adminId, message: `🆘 Solicitação COLIH: Paciente ${patient.name} precisa de visita.`, type: 'warning', read: false, timestamp: new Date().toISOString() })); 
-          } 
-          onUpdateState({ ...state, patients: updatedList, notifications: [...newNotifications, ...state.notifications] }); 
-          await atomicUpdate('patients', updatedPatient); 
-          if (willEnable) { await Promise.all(newNotifications.map(n => atomicUpdate('notifications', n))); } 
-      } catch (e) { console.error(e); alert("Erro ao atualizar solicitação. Verifique sua conexão."); } 
-  };
-
-  const toggleAssignedColih = (memberId: string) => { 
-      if (!editingPatient) return;
-      const current = editingPatient.assignedColihIds || []; 
-      if (current.includes(memberId)) { setEditingPatient({ ...editingPatient, assignedColihIds: current.filter(id => id !== memberId) }); } else { setEditingPatient({ ...editingPatient, assignedColihIds: [...current, memberId] }); } 
-  };
-
-  const performSave = async () => {
-      if (!editingPatient || !editingPatient.name) return;
+      const hospital = state.hospitals.find(h => h.id === editingPatient.hospitalId);
+      
       const newPatient: Patient = {
-          ...editingPatient,
           id: editingPatient.id || crypto.randomUUID(),
-          active: editingPatient.active !== undefined ? editingPatient.active : true,
-          hospitalId: editingPatient.hospitalId || '',
-          hospitalName: state.hospitals.find(h => h.id === editingPatient.hospitalId)?.name || 'Desconhecido',
+          name: editingPatient.name,
+          hospitalId: editingPatient.hospitalId,
+          hospitalName: hospital ? hospital.name : editingPatient.hospitalName || 'Desconhecido',
           admissionDate: editingPatient.admissionDate || new Date().toISOString().split('T')[0],
+          active: editingPatient.active !== undefined ? editingPatient.active : true,
+          
+          // Optional fields
+          room: editingPatient.room || '',
+          bed: editingPatient.bed || '',
+          floor: editingPatient.floor || '',
+          wing: editingPatient.wing || '',
           treatment: editingPatient.treatment || '',
-      } as Patient;
+          notes: editingPatient.notes || '',
+          
+          phone: editingPatient.phone || '',
+          email: editingPatient.email || '',
+          age: editingPatient.age || '',
+          gender: editingPatient.gender || '',
+          companionName: editingPatient.companionName || '',
+          companionPhone: editingPatient.companionPhone || '',
+          localElder: editingPatient.localElder || '',
+          elderPhone: editingPatient.elderPhone || '',
+          congregation: editingPatient.congregation || '',
+
+          spiritualStatus: editingPatient.spiritualStatus || 'Sim',
+          nonWitnessFamily: editingPatient.nonWitnessFamily || false,
+          hasDirectivesCard: editingPatient.hasDirectivesCard || false,
+          hasS55: editingPatient.hasS55 || false,
+          formsConsidered: editingPatient.formsConsidered || false,
+          agentsNotified: editingPatient.agentsNotified || false,
+          
+          visitTime: editingPatient.visitTime || '',
+          isSurgical: editingPatient.isSurgical || false,
+          surgeryDate: editingPatient.surgeryDate,
+          clinicalStatus: editingPatient.clinicalStatus || '',
+          
+          gvpRequestPending: editingPatient.gvpRequestPending || false,
+          isMedicalDischarge: editingPatient.isMedicalDischarge || false,
+          estimatedDischargeDate: editingPatient.estimatedDischargeDate,
+          needsAccommodation: editingPatient.needsAccommodation || false,
+          isExternalRequest: editingPatient.isExternalRequest || false,
+          requestDate: editingPatient.requestDate,
+          
+          isIsolation: editingPatient.isIsolation || false,
+          isolationType: editingPatient.isolationType || '',
+
+          assignedColihIds: editingPatient.assignedColihIds || [],
+          regional: editingPatient.regional || (hospital ? hospital.regional : undefined)
+      };
+
       try {
           await atomicUpdate('patients', newPatient);
-          const updatedPatients = state.patients.some(p => p.id === newPatient.id) ? state.patients.map(p => p.id === newPatient.id ? newPatient : p) : [...state.patients, newPatient];
-          onUpdateState({ ...state, patients: updatedPatients });
-          setIsEditModalOpen(false);
-          setEditingPatient(null);
-      } catch (err: any) { console.error(err); alert(`Erro ao salvar paciente: ${err.message || 'Verifique o banco de dados.'}`); }
+          const updatedList = editingPatient.id 
+            ? state.patients.map(p => p.id === newPatient.id ? newPatient : p)
+            : [newPatient, ...state.patients];
+          
+          onUpdateState({ ...state, patients: updatedList });
+          setIsModalOpen(false);
+          setEditingPatient({});
+      } catch (err: any) {
+          alert(`Erro ao salvar: ${err.message}`);
+      }
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      const ageStr = editingPatient?.age || '';
-      const ageNum = parseInt(ageStr.replace(/\D/g, '')); 
-      if (ageStr && !isNaN(ageNum) && ageNum > 0 && ageNum < 18) { setIsHidWarningOpen(true); } else { performSave(); }
+  const handleEdit = (p: Patient) => {
+      setEditingPatient(p);
+      setIsModalOpen(true);
   };
 
-  const viewingPatient = viewingPatientId ? state.patients.find(p => p.id === viewingPatientId) : null;
+  const handleDelete = (p: Patient) => {
+      setConfirmConfig({
+          isOpen: true,
+          title: 'Excluir Paciente',
+          description: `Tem certeza que deseja excluir ${p.name}? Para manter o histórico, use a opção de "Alta" dentro do prontuário. Excluir removerá todos os dados permanentemente.`,
+          onConfirm: async () => {
+              try {
+                  await atomicDelete('patients', p.id);
+                  onUpdateState({ ...state, patients: state.patients.filter(pat => pat.id !== p.id) });
+              } catch (e) {
+                  alert("Erro ao excluir.");
+              }
+          }
+      });
+  };
+
+  const handleDischarge = async (id: string, name: string) => {
+      const p = state.patients.find(pat => pat.id === id);
+      if (!p) return;
+      
+      const updated = { ...p, active: false, isMedicalDischarge: true, estimatedDischargeDate: new Date().toISOString() };
+      
+      try {
+          await atomicUpdate('patients', updated);
+          onUpdateState({ ...state, patients: state.patients.map(pat => pat.id === id ? updated : pat) });
+          setViewingPatient(null);
+      } catch (e) {
+          alert("Erro ao dar alta.");
+      }
+  };
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
-        <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'} p-6 rounded-2xl border flex flex-col gap-4`}>
-            {/* ... (Keep header and filter logic) ... */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className={`text-xl font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Pacientes Ativos</h2>
-                    <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Gestão de internados. {isCoordinator && userRegional && <span className="bg-purple-100 text-purple-700 px-2 rounded font-bold">{userRegional}</span>}
-                    </p>
-                </div>
-                <div className="flex gap-2 w-full md:w-auto">
-                    <input 
-                        type="text" 
-                        placeholder="Buscar paciente ou hospital..." 
-                        className={`flex-grow md:w-64 p-2.5 rounded-xl border-2 text-sm outline-none focus:border-blue-500 transition-all ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50 border-gray-100'}`} 
-                        value={searchQuery} 
-                        onChange={e => setSearchQuery(e.target.value)} 
-                    />
-                    <Button className="bg-blue-600 hover:bg-blue-700 rounded-xl" onClick={() => { setEditingPatient({ active: true, spiritualStatus: 'Sim', regional: userRegional || '' }); setIsEditModalOpen(true); }}>+ Novo</Button>
-                </div>
-            </div>
-        </div>
+      <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'} p-6 rounded-2xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4`}>
+         <div>
+            <h2 className={`text-xl font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Cadastro de Pacientes</h2>
+            <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                Pacientes ativos e internados.
+                {state.currentUser?.role === UserRole.COORDINATOR && state.currentUser.regional && (
+                    <span className="ml-2 bg-blue-100 text-blue-700 px-2 rounded font-bold text-xs uppercase">{state.currentUser.regional}</span>
+                )}
+            </p>
+         </div>
+         <div className="flex gap-2">
+            <Button onClick={() => { setEditingPatient({ active: true, spiritualStatus: 'Sim', admissionDate: new Date().toISOString().split('T')[0] }); setIsModalOpen(true); }} className="rounded-xl shadow-lg">
+                + Novo Paciente
+            </Button>
+         </div>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredPatients.map(patient => {
-                const isClosing = closingIds.has(patient.id);
-                const cardBorder = patient.isMedicalDischarge ? 'border-purple-300 ring-2 ring-purple-100' : (isHospitalMode ? 'border-gray-800 hover:border-gray-700' : 'border-gray-100 hover:border-blue-200');
-                const cardBg = patient.isMedicalDischarge ? (isHospitalMode ? 'bg-purple-900/10' : 'bg-purple-50') : (isHospitalMode ? 'bg-[#212327]' : 'bg-white');
+      <div className="relative">
+        <input
+          type="text"
+          placeholder="Buscar por nome ou hospital..."
+          className={`w-full border-2 rounded-2xl p-4 pl-12 text-sm outline-none transition-all ${
+              isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white focus:border-blue-600' : 'bg-white border-gray-100 focus:border-blue-500'
+          }`}
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        <svg className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+      </div>
 
-                return (
-                    <div key={patient.id} onClick={() => setViewingPatientId(patient.id)} className={`relative p-5 rounded-2xl border shadow-sm transition-all duration-500 cursor-pointer flex flex-col ${cardBorder} ${cardBg} ${isClosing ? 'scale-75 opacity-0' : 'scale-100 opacity-100'}`}>
-                        {patient.gvpRequestPending && !patient.isMedicalDischarge && (
-                            <div className="absolute top-4 right-4 animate-pulse">
-                                <span className="text-[9px] font-black uppercase bg-orange-100 text-orange-600 px-2 py-1 rounded border border-orange-200">Solicitação</span>
-                            </div>
-                        )}
-                        {patient.isMedicalDischarge && (
-                            <div className="absolute top-0 right-0 bg-purple-600 text-white px-3 py-1 rounded-bl-xl rounded-tr-xl">
-                                <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg> Alta Médica</span>
-                            </div>
-                        )}
-                        <div className="mb-4 pr-16 pt-2">
-                            <h3 className={`font-bold text-lg leading-tight ${isHospitalMode ? 'text-gray-100' : 'text-gray-800'} ${isPrivacyMode ? 'blur-sm select-none' : ''}`}>{patient.name}</h3>
-                            <p className="text-blue-500 font-bold text-xs uppercase tracking-widest mt-1">{patient.hospitalName}</p>
+      <div className={`rounded-2xl border overflow-hidden ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+          <div className="overflow-x-auto custom-scrollbar">
+              <table className="min-w-full divide-y divide-gray-800/10">
+                  <thead className={`text-[10px] font-black uppercase tracking-widest ${isHospitalMode ? 'bg-[#1a1c1e] text-gray-500' : 'bg-gray-50/50 text-gray-400'}`}>
+                      <tr>
+                          <th className="px-6 py-4 text-left">Paciente</th>
+                          <th className="px-6 py-4 text-left">Hospital / Local</th>
+                          <th className="px-6 py-4 text-left">Detalhes</th>
+                          <th className="px-6 py-4 text-right">Ações</th>
+                      </tr>
+                  </thead>
+                  <tbody className={`divide-y text-sm ${isHospitalMode ? 'divide-gray-800 text-gray-300' : 'divide-gray-100 text-gray-700'}`}>
+                      {activePatients.map(p => (
+                          <tr key={p.id} className={`${isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'} cursor-pointer`} onClick={() => setViewingPatient(p)}>
+                              <td className="px-6 py-4">
+                                  <div className="flex items-center gap-3">
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold ${p.isIsolation ? 'bg-red-500 text-white' : 'bg-blue-600 text-white'}`}>
+                                          {p.name.substring(0,2).toUpperCase()}
+                                      </div>
+                                      <div>
+                                          <p className={`font-bold ${isPrivacyMode ? 'blur-sm select-none' : ''}`}>{p.name}</p>
+                                          <p className="text-[10px] text-gray-500">{p.age ? `${p.age} • ` : ''}{p.congregation || 'Congr. não inf.'}</p>
+                                      </div>
+                                  </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                  <p className="font-bold text-xs">{p.hospitalName}</p>
+                                  <p className="text-[10px] text-gray-500 uppercase">
+                                      {p.floor && `Andar ${p.floor}`} {p.room && `• Quarto ${p.room}`} {p.bed && `• Leito ${p.bed}`}
+                                  </p>
+                              </td>
+                              <td className="px-6 py-4">
+                                  <div className="flex flex-wrap gap-1">
+                                      {p.isIsolation && <span className="px-2 py-0.5 rounded bg-red-100 text-red-600 text-[9px] font-black uppercase">Isolamento</span>}
+                                      {p.gvpRequestPending && <span className="px-2 py-0.5 rounded bg-orange-100 text-orange-600 text-[9px] font-black uppercase">Solicitação</span>}
+                                      {p.needsAccommodation && <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-600 text-[9px] font-black uppercase">Hospedagem</span>}
+                                      {(!p.isIsolation && !p.gvpRequestPending && !p.needsAccommodation) && <span className="text-[10px] text-gray-400">-</span>}
+                                  </div>
+                              </td>
+                              <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
+                                  <div className="flex justify-end gap-2">
+                                      <button onClick={() => handleEdit(p)} className="text-blue-500 hover:text-blue-600 font-bold text-xs uppercase p-2 hover:bg-blue-50 rounded">Editar</button>
+                                      {(state.currentUser?.role === UserRole.ADMIN || state.currentUser?.role === UserRole.COORDINATOR) && (
+                                          <button onClick={() => handleDelete(p)} className="text-red-500 hover:text-red-600 p-2 hover:bg-red-50 rounded">
+                                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                          </button>
+                                      )}
+                                  </div>
+                              </td>
+                          </tr>
+                      ))}
+                      {activePatients.length === 0 && (
+                          <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400 text-xs italic">Nenhum paciente encontrado.</td></tr>
+                      )}
+                  </tbody>
+              </table>
+          </div>
+      </div>
+
+      {/* VIEW DETAILS MODAL */}
+      {viewingPatient && (
+          <PatientDetailModal 
+              isOpen={true}
+              onClose={() => setViewingPatient(null)}
+              patient={viewingPatient}
+              lastVisit={null} // Can be improved to find last visit
+              members={state.members}
+              onDischarge={handleDischarge}
+              isHospitalMode={isHospitalMode}
+              canEdit={state.currentUser?.role === UserRole.ADMIN || state.currentUser?.role === UserRole.COORDINATOR || state.currentUser?.isColih}
+              canDischarge={true}
+              isColihUser={state.currentUser?.isColih}
+          />
+      )}
+
+      {/* CREATE / EDIT MODAL */}
+      {isModalOpen && createPortal(
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+             <div className={`w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+                <div className="bg-blue-600 px-6 py-5 flex justify-between items-center shrink-0">
+                    <h3 className="text-white font-bold text-lg">{editingPatient.id ? 'Editar Paciente' : 'Novo Paciente'}</h3>
+                    <button onClick={() => setIsModalOpen(false)} className="text-white hover:text-blue-200 text-2xl leading-none">&times;</button>
+                </div>
+                
+                <form onSubmit={handleSave} className="p-6 overflow-y-auto custom-scrollbar space-y-6 flex-grow">
+                    {/* Basic Info */}
+                    <div className="space-y-3">
+                        <h4 className="text-[10px] font-black uppercase text-blue-500 tracking-widest border-b border-gray-200/10 pb-1">Identificação & Local</h4>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold uppercase text-gray-500">Nome Completo</label>
+                            <input required className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.name || ''} onChange={e => setEditingPatient({...editingPatient, name: e.target.value})} />
                         </div>
-                        {patient.isMedicalDischarge ? (
-                            <div className={`p-3 rounded-xl mb-4 border border-dashed border-purple-300 ${isHospitalMode ? 'bg-purple-900/20' : 'bg-white'}`}>
-                                <p className={`text-[10px] font-black uppercase text-center ${isHospitalMode ? 'text-purple-300' : 'text-purple-600'}`}>⚠️ Pendente HLC-7 (COLIH)</p>
-                                <p className={`text-[9px] text-center mt-1 leading-tight ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Visitas encerradas. Aguardando fechamento administrativo.</p>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold uppercase text-gray-500">Hospital</label>
+                                <select required className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.hospitalId || ''} onChange={e => setEditingPatient({...editingPatient, hospitalId: e.target.value})}>
+                                    <option value="">Selecione...</option>
+                                    {availableHospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                                </select>
                             </div>
-                        ) : (
-                            <div className={`p-3 rounded-xl mb-4 space-y-2 ${isHospitalMode ? 'bg-black/20' : 'bg-gray-50'}`}>
-                                <div className="flex justify-between text-xs"><span className="text-gray-500 font-bold uppercase">Internação</span><span className={`font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{new Date(patient.admissionDate).toLocaleDateString()}</span></div>
-                                {patient.treatment && <div className="flex justify-between text-xs"><span className="text-gray-500 font-bold uppercase">Tratamento</span><span className={`font-bold truncate max-w-[120px] ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{patient.treatment}</span></div>}
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold uppercase text-gray-500">Data Internação</label>
+                                <input type="date" className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.admissionDate || ''} onChange={e => setEditingPatient({...editingPatient, admissionDate: e.target.value})} />
                             </div>
-                        )}
-                        <div className="mt-auto grid grid-cols-2 gap-2">
-                            <button onClick={(e) => { e.stopPropagation(); setEditingPatient(patient); setIsEditModalOpen(true); }} className={`py-2 rounded-lg text-xs font-bold uppercase border ${isHospitalMode ? 'border-gray-700 text-gray-400 hover:bg-white/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>Editar</button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDischarge(patient.id, patient.name); }} className={`py-2 rounded-lg text-xs font-bold uppercase text-white hover:opacity-90 shadow-md ${patient.isMedicalDischarge ? 'bg-purple-600 hover:bg-purple-700' : 'bg-green-600 hover:bg-green-700'}`}>{patient.isMedicalDischarge ? 'HLC-7' : 'Alta'}</button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                            <input placeholder="Andar" className={`p-3 border rounded-xl outline-none text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.floor || ''} onChange={e => setEditingPatient({...editingPatient, floor: e.target.value})} />
+                            <input placeholder="Quarto" className={`p-3 border rounded-xl outline-none text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.room || ''} onChange={e => setEditingPatient({...editingPatient, room: e.target.value})} />
+                            <input placeholder="Leito" className={`p-3 border rounded-xl outline-none text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.bed || ''} onChange={e => setEditingPatient({...editingPatient, bed: e.target.value})} />
                         </div>
                     </div>
-                );
-            })}
-            {filteredPatients.length === 0 && <div className="col-span-full py-12 text-center text-gray-400"><p className="text-sm font-bold uppercase tracking-widest">Nenhum paciente encontrado nesta regional.</p></div>}
-        </div>
 
-        {/* DETAILS MODAL UPDATED */}
-        {viewingPatient && (
-            <PatientDetailModal 
-                isOpen={true}
-                onClose={() => setViewingPatientId(null)}
-                patient={viewingPatient}
-                lastVisit={null}
-                members={state.members}
-                logs={state.logs} // PASSED LOGS HERE
-                onDischarge={handleDischarge}
-                onToggleGvp={handleToggleGvpRequest}
-                isHospitalMode={isHospitalMode}
-                canEdit={true}
-                canDischarge={true}
-                isColihUser={state.currentUser?.isColih}
-            />
-        )}
-
-        {/* EDIT MODAL and CONFIRM MODAL (Keep as is) */}
-        {isEditModalOpen && editingPatient && createPortal(
-            <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-                <div className={`w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
-                    <div className="bg-blue-600 px-6 py-5 flex justify-between items-center shrink-0">
-                        <h3 className="text-white font-bold text-lg">{editingPatient.id ? 'Editar Paciente' : 'Novo Paciente'}</h3>
-                        <button onClick={() => { setIsEditModalOpen(false); setEditingPatient(null); }} className="text-white hover:text-blue-200 text-2xl leading-none">&times;</button>
+                    {/* Clinical Info */}
+                    <div className="space-y-3">
+                        <h4 className="text-[10px] font-black uppercase text-blue-500 tracking-widest border-b border-gray-200/10 pb-1">Dados Clínicos</h4>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold uppercase text-gray-500">Diagnóstico / Tratamento</label>
+                            <input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.treatment || ''} onChange={e => setEditingPatient({...editingPatient, treatment: e.target.value})} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold uppercase text-gray-500">Isolamento?</label>
+                                <div className="flex items-center gap-2">
+                                    <input type="checkbox" className="w-5 h-5" checked={editingPatient.isIsolation || false} onChange={e => setEditingPatient({...editingPatient, isIsolation: e.target.checked})} />
+                                    <input placeholder="Tipo (ex: Covid, Bactéria)" className={`flex-grow p-2 border rounded-lg text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} disabled={!editingPatient.isIsolation} value={editingPatient.isolationType || ''} onChange={e => setEditingPatient({...editingPatient, isolationType: e.target.value})} />
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold uppercase text-gray-500">Precisa Hospedagem?</label>
+                                <label className="flex items-center gap-2 cursor-pointer p-2 border rounded-lg"><input type="checkbox" className="w-5 h-5" checked={editingPatient.needsAccommodation || false} onChange={e => setEditingPatient({...editingPatient, needsAccommodation: e.target.checked})} /><span className={`text-sm ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Sim, solicitar</span></label>
+                            </div>
+                        </div>
                     </div>
-                    <form onSubmit={handleFormSubmit} className="p-6 overflow-y-auto custom-scrollbar space-y-5">
-                        <div className="space-y-3">
-                            <h4 className="text-[10px] font-black uppercase text-blue-500 tracking-widest border-b border-gray-200/10 pb-1">Dados Pessoais</h4>
-                            <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Nome Completo</label><input required className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.name || ''} onChange={e => setEditingPatient({...editingPatient, name: e.target.value})} /></div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Idade (Ex: 45)</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.age || ''} onChange={e => setEditingPatient({...editingPatient, age: e.target.value})} placeholder="Ex: 45 anos" /></div>
-                                <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Telefone</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.phone || ''} onChange={e => setEditingPatient({...editingPatient, phone: e.target.value})} placeholder="(00) 00000-0000" /></div>
-                            </div>
-                            <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">E-mail</label><input type="email" className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.email || ''} onChange={e => setEditingPatient({...editingPatient, email: e.target.value})} /></div>
-                        </div>
-                        {/* ... (Rest of form sections: Internação, Espiritual, Acompanhante, COLIH - keeping identical) ... */}
-                        <div className="space-y-3">
-                            <h4 className="text-[10px] font-black uppercase text-blue-500 tracking-widest border-b border-gray-200/10 pb-1">Internação</h4>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-bold uppercase text-gray-500">Hospital</label>
-                                    <select required className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.hospitalId || ''} onChange={e => { const hId = e.target.value; const hospital = state.hospitals.find(h => h.id === hId); setEditingPatient({ ...editingPatient, hospitalId: hId, regional: hospital?.regional || editingPatient.regional }); }}>
-                                        <option value="">Selecione...</option>
-                                        {availableHospitals.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-bold uppercase text-gray-500">Regional</label>
-                                    <select className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.regional || ''} onChange={e => setEditingPatient({...editingPatient, regional: e.target.value})}>
-                                        <option value="">Automática</option>
-                                        {ALL_REGIONALS.map(r => <option key={r} value={r}>{r}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Quarto/Leito</label><div className="flex gap-2"><input placeholder="Quarto" className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.room || ''} onChange={e => setEditingPatient({...editingPatient, room: e.target.value})} /><input placeholder="Leito" className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.bed || ''} onChange={e => setEditingPatient({...editingPatient, bed: e.target.value})} /></div></div>
-                                <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Admissão</label><input type="date" required className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.admissionDate || ''} onChange={e => setEditingPatient({...editingPatient, admissionDate: e.target.value})} /></div>
-                            </div>
-                            <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Tratamento / Diagnóstico</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.treatment || ''} onChange={e => setEditingPatient({...editingPatient, treatment: e.target.value})} /></div>
-                        </div>
-                        <div className="space-y-3">
-                            <h4 className="text-[10px] font-black uppercase text-blue-500 tracking-widest border-b border-gray-200/10 pb-1">Espiritual & Contatos</h4>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Congregação</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.congregation || ''} onChange={e => setEditingPatient({...editingPatient, congregation: e.target.value})} /></div>
-                                <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Boa condição?</label><select className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.spiritualStatus || 'Sim'} onChange={e => setEditingPatient({...editingPatient, spiritualStatus: e.target.value})}><option value="Sim">Sim</option><option value="Não">Não</option><option value="Desconhecido">Não sei</option></select></div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Ancião</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.localElder || ''} onChange={e => setEditingPatient({...editingPatient, localElder: e.target.value})} placeholder="Nome" /></div>
-                                <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Tel Ancião</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.elderPhone || ''} onChange={e => setEditingPatient({...editingPatient, elderPhone: e.target.value})} placeholder="Tel" /></div>
-                            </div>
-                            <div className="flex flex-col sm:flex-row gap-4 pt-2">
-                                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="w-4 h-4 text-blue-600 rounded" checked={editingPatient.hasDirectivesCard || false} onChange={e => setEditingPatient({...editingPatient, hasDirectivesCard: e.target.checked})} /><span className={`text-xs font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Possui DPA?</span></label>
-                                <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="w-4 h-4 text-blue-600 rounded" checked={editingPatient.nonWitnessFamily || false} onChange={e => setEditingPatient({...editingPatient, nonWitnessFamily: e.target.checked})} /><span className={`text-xs font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Família não TJ envolvida?</span></label>
-                            </div>
-                        </div>
-                        <div className="space-y-3">
-                            <h4 className="text-[10px] font-black uppercase text-blue-500 tracking-widest border-b border-gray-200/10 pb-1">Acompanhante</h4>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Nome/Parentesco</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.companionName || ''} onChange={e => setEditingPatient({...editingPatient, companionName: e.target.value})} placeholder="Ex: Maria (Esposa)" /></div>
-                                <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Contato</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.companionPhone || ''} onChange={e => setEditingPatient({...editingPatient, companionPhone: e.target.value})} placeholder="Tel/WhatsApp" /></div>
-                            </div>
-                        </div>
-                        <div className="space-y-2 pt-2 border-t border-gray-200/20">
-                            <label className="text-[10px] font-bold uppercase text-gray-500">Designar Membros COLIH</label>
-                            <div className={`border rounded-xl max-h-40 overflow-y-auto custom-scrollbar p-2 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700' : 'bg-gray-50'}`}>
-                                {state.members.filter(m => m.isColih && m.active && m.colihClassification !== 'Facilitator').sort((a,b) => a.name.localeCompare(b.name)).map(m => (
-                                    <label key={m.id} className={`flex items-center gap-3 p-2 rounded-lg hover:bg-black/5 cursor-pointer transition-all ${editingPatient.assignedColihIds?.includes(m.id) ? 'bg-blue-100' : ''}`}>
-                                        <input type="checkbox" className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" checked={editingPatient.assignedColihIds?.includes(m.id) || false} onChange={() => toggleAssignedColih(m.id)} />
-                                        <div><span className={`text-xs font-bold block ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{m.name}</span><span className="text-[8px] font-bold uppercase text-gray-400 tracking-wider">{m.colihClassification || 'Membro'}</span></div>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" onClick={() => { setIsEditModalOpen(false); setEditingPatient(null); }}>Cancelar</Button><Button type="submit">Salvar Paciente</Button></div>
-                    </form>
-                </div>
-            </div>,
-            document.body
-        )}
 
-        {isHidWarningOpen && (
-            <ConfirmModal 
-                isOpen={isHidWarningOpen}
-                onClose={() => setIsHidWarningOpen(false)}
-                onConfirm={() => { setIsHidWarningOpen(false); performSave(); }}
-                title="Protocolo Pediátrico (HID)"
-                description="O paciente identificado é menor de 18 anos. Pelos protocolos da Colih, casos pediátricos exigem notificação imediata ao departamento de informações sobre hospitais (HID). Confirma que está ciente desta necessidade?"
-                confirmText="Sim, estou ciente"
-                isDestructive={false}
-                isHospitalMode={isHospitalMode}
-            />
-        )}
+                    {/* Spiritual & Contacts - Reusing the snippet logic */}
+                    <div className="space-y-3">
+                        <h4 className="text-[10px] font-black uppercase text-blue-500 tracking-widest border-b border-gray-200/10 pb-1">Espiritual & Contatos</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Congregação</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.congregation || ''} onChange={e => setEditingPatient({...editingPatient, congregation: e.target.value})} /></div>
+                            <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Boa condição?</label><select className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.spiritualStatus || 'Sim'} onChange={e => setEditingPatient({...editingPatient, spiritualStatus: e.target.value})}><option value="Sim">Sim</option><option value="Não">Não</option><option value="Desconhecido">Não sei</option></select></div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Ancião</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.localElder || ''} onChange={e => setEditingPatient({...editingPatient, localElder: e.target.value})} placeholder="Nome" /></div>
+                            <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Tel Ancião</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.elderPhone || ''} onChange={e => setEditingPatient({...editingPatient, elderPhone: e.target.value})} placeholder="Tel" /></div>
+                        </div>
+                        
+                        {/* Contacts */}
+                        <div className="grid grid-cols-2 gap-4 mt-2">
+                            <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Acompanhante</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.companionName || ''} onChange={e => setEditingPatient({...editingPatient, companionName: e.target.value})} placeholder="Nome (Parentesco)" /></div>
+                            <div className="space-y-1"><label className="text-[10px] font-bold uppercase text-gray-500">Tel Acompanhante</label><input className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingPatient.companionPhone || ''} onChange={e => setEditingPatient({...editingPatient, companionPhone: e.target.value})} /></div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="w-4 h-4 text-blue-600 rounded" checked={editingPatient.hasDirectivesCard || false} onChange={e => setEditingPatient({...editingPatient, hasDirectivesCard: e.target.checked})} /><span className={`text-xs font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Possui DPA?</span></label>
+                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="w-4 h-4 text-blue-600 rounded" checked={editingPatient.nonWitnessFamily || false} onChange={e => setEditingPatient({...editingPatient, nonWitnessFamily: e.target.checked})} /><span className={`text-xs font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Família não TJ envolvida?</span></label>
+                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="w-4 h-4 text-blue-600 rounded" checked={editingPatient.hasS55 || false} onChange={e => setEditingPatient({...editingPatient, hasS55: e.target.checked})} /><span className={`text-xs font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Considerou S-55?</span></label>
+                            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="w-4 h-4 text-blue-600 rounded" checked={editingPatient.formsConsidered || false} onChange={e => setEditingPatient({...editingPatient, formsConsidered: e.target.checked})} /><span className={`text-xs font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Considerou S-401/S-407?</span></label>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4 border-t border-gray-200/10">
+                        <Button variant="secondary" onClick={() => setIsModalOpen(false)} type="button">Cancelar</Button>
+                        <Button type="submit">Salvar Paciente</Button>
+                    </div>
+                </form>
+             </div>
+          </div>,
+          document.body
+      )}
+
+      {/* CONFIRMATION MODAL */}
+      {confirmConfig && (
+          <ConfirmModal 
+              isOpen={confirmConfig.isOpen}
+              onClose={() => setConfirmConfig(null)}
+              onConfirm={confirmConfig.onConfirm}
+              title={confirmConfig.title}
+              description={confirmConfig.description}
+              isDestructive={true}
+              isHospitalMode={isHospitalMode}
+          />
+      )}
     </div>
   );
 };

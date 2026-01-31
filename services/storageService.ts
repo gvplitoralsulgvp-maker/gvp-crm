@@ -64,6 +64,7 @@ export const loadState = async (): Promise<AppState> => {
           isColih: m.is_colih ?? m.isColih ?? false,
           colihClassification: m.colih_classification ?? m.colihClassification,
           hasSeenOnboarding: m.has_seen_onboarding ?? m.hasSeenOnboarding ?? false,
+          isTrainer: m.is_trainer ?? m.isTrainer ?? false
       }) as Member),
 
       // Mapeamento para Hospitais
@@ -135,10 +136,16 @@ export const loadState = async (): Promise<AppState> => {
           userId: n.user_id ?? n.userId
       }) as AppNotification),
       
-      doctors: mapFromDb<Doctor>(fetchAll[8].data).map(d => ({
+      // Mapeamento DOCTORS (Snake -> Camel)
+      doctors: mapFromDb<any>(fetchAll[8].data).map(d => ({
           ...d,
-          hospitalIds: ensureArray(d.hospitalIds, (d as any).hospital_ids)
-      })),
+          hospitalIds: ensureArray(d.hospitalIds, d.hospital_ids),
+          cooperationLevel: d.cooperation_level ?? d.cooperationLevel,
+          isConsultant: d.is_consultant ?? d.isConsultant,
+          treatsPediatric: d.treats_pediatric ?? d.treatsPediatric,
+          responsibleMemberName: d.responsible_member_name ?? d.responsibleMemberName,
+          lastVisitDate: d.last_visit_date ?? d.lastVisitDate
+      }) as Doctor),
 
       colihVisits: mapFromDb<any>(fetchAll[9].data).map(v => ({
           ...v,
@@ -166,7 +173,8 @@ export const loadState = async (): Promise<AppState> => {
       events: mapFromDb<any>(fetchAll[12].data).map(e => ({
           ...e,
           targetGroup: e.target_group ?? e.targetGroup ?? 'ALL',
-          createdAt: e.created_at ?? e.createdAt
+          createdAt: e.created_at ?? e.createdAt,
+          attendees: ensureArray(e.attendees)
       }) as AppEvent)
     };
 
@@ -189,6 +197,7 @@ const sanitizeForDb = (table: string, data: any) => {
         if (copy.isColih !== undefined) { copy.is_colih = copy.isColih; delete copy.isColih; }
         if (copy.colihClassification !== undefined) { copy.colih_classification = copy.colihClassification; delete copy.colihClassification; }
         if (copy.hasSeenOnboarding !== undefined) { copy.has_seen_onboarding = copy.hasSeenOnboarding; delete copy.hasSeenOnboarding; }
+        if (copy.isTrainer !== undefined) { copy.is_trainer = copy.isTrainer; delete copy.isTrainer; }
     }
 
     if (table === 'patients') {
@@ -258,6 +267,11 @@ const sanitizeForDb = (table: string, data: any) => {
 
     if (table === 'doctors') {
         if (copy.hospitalIds !== undefined) { copy.hospital_ids = copy.hospitalIds; delete copy.hospitalIds; }
+        if (copy.cooperationLevel !== undefined) { copy.cooperation_level = copy.cooperationLevel; delete copy.cooperationLevel; }
+        if (copy.isConsultant !== undefined) { copy.is_consultant = copy.isConsultant; delete copy.isConsultant; }
+        if (copy.treatsPediatric !== undefined) { copy.treats_pediatric = copy.treatsPediatric; delete copy.treatsPediatric; }
+        if (copy.responsibleMemberName !== undefined) { copy.responsible_member_name = copy.responsibleMemberName; delete copy.responsibleMemberName; }
+        if (copy.lastVisitDate !== undefined) { copy.last_visit_date = copy.lastVisitDate; delete copy.lastVisitDate; }
     }
 
     // Mapeamento LOGS (Camel -> Snake)

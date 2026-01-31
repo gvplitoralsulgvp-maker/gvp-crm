@@ -2,13 +2,17 @@
 import React, { useState, useMemo } from 'react';
 import { AppState, UserRole } from '../types';
 import { Button } from '../components/Button';
+import { KpiDetailModal } from '../components/KpiDetailModal';
 
-// Componente Interno: Cartão de Métrica (Estilo da Imagem)
-const MetricCard: React.FC<{ title: string; value: number | string; colorClass: string; isHospitalMode?: boolean }> = ({ title, value, colorClass, isHospitalMode }) => (
-    <div className={`p-5 rounded-2xl border shadow-sm flex flex-col justify-between h-32 transition-all hover:shadow-md ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-200'}`}>
+// Componente Interno: Cartão de Métrica Interativo
+const MetricCard: React.FC<{ title: string; value: number | string; colorClass: string; isHospitalMode?: boolean; onClick?: () => void }> = ({ title, value, colorClass, isHospitalMode, onClick }) => (
+    <button 
+        onClick={onClick}
+        className={`w-full p-5 rounded-2xl border shadow-sm flex flex-col justify-between h-32 transition-all hover:shadow-md active:scale-95 text-left ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-200 hover:border-blue-200'}`}
+    >
         <span className={`text-[10px] font-bold uppercase tracking-widest ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>{title}</span>
         <span className={`text-4xl font-bold ${colorClass}`}>{value}</span>
-    </div>
+    </button>
 );
 
 // Componente Interno: Gráfico de Barras Simples (CSS)
@@ -83,6 +87,9 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
   const [activeTab, setActiveTab] = useState<'kpis' | 'socialWorkers' | 'missed' | 'coverage'>('kpis');
   const [activeRange, setActiveRange] = useState<number>(30);
   const [isPrintMode, setIsPrintMode] = useState(false);
+  
+  // Estado do Modal de Detalhes
+  const [selectedKpiType, setSelectedKpiType] = useState<'visits' | 'new_patients' | 'hospitals' | 'active_patients' | null>(null);
 
   const todayStr = new Date().toISOString().split('T')[0];
   const isCoordinator = state.currentUser?.role === UserRole.COORDINATOR;
@@ -157,6 +164,15 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
     );
   }, [filteredVisits, todayStr]);
 
+  // Listas detalhadas para os cards
+  const newPatientsList = useMemo(() => {
+      return filteredPatients.filter(p => new Date(p.admissionDate) >= cutoffDate);
+  }, [filteredPatients, cutoffDate]);
+
+  const activePatientsList = useMemo(() => {
+      return filteredPatients.filter(p => p.active);
+  }, [filteredPatients]);
+
   // Lista de Cobertura Hospitalar
   const hospitalCoverage = useMemo(() => {
       const today = new Date();
@@ -190,17 +206,62 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
         .slice(0, 6); // Top 6
   }, [currentVisits, filteredRoutes]);
 
-  const newPatientsCount = useMemo(() => {
-      return filteredPatients.filter(p => new Date(p.admissionDate) >= cutoffDate).length;
-  }, [filteredPatients, cutoffDate]);
-
-  const activePatientsCount = filteredPatients.filter(p => p.active).length;
   const totalPatientsCount = filteredPatients.length;
 
   const handlePrint = () => {
       setIsPrintMode(true);
       setTimeout(() => { window.print(); setIsPrintMode(false); }, 500);
   };
+
+  // Preparação de dados para o Modal
+  const detailedKpiData = useMemo(() => {
+      const visitsItems = currentVisits.map(v => {
+          const route = filteredRoutes.find(r => r.id === v.routeId);
+          const members = v.memberIds.map(id => state.members.find(m => m.id === id)?.name).filter(Boolean).join(', ');
+          return {
+              id: v.id,
+              primaryText: new Date(v.date + 'T12:00:00').toLocaleDateString(),
+              secondaryText: route?.name || 'Rota Desconhecida',
+              tertiaryText: members,
+              tag: 'Realizada',
+              tagColor: 'bg-blue-100 text-blue-700'
+          };
+      });
+
+      const newPatientsItems = newPatientsList.map(p => ({
+          id: p.id,
+          primaryText: p.name,
+          secondaryText: p.hospitalName || 'Hospital não inf.',
+          tertiaryText: `Entrada: ${new Date(p.admissionDate).toLocaleDateString()}`,
+          tag: 'Novo Caso',
+          tagColor: 'bg-green-100 text-green-700'
+      }));
+
+      const hospitalItems = filteredHospitals.map(h => ({
+          id: h.id,
+          primaryText: h.name,
+          secondaryText: h.city,
+          tertiaryText: h.regional,
+          tag: 'Ativo',
+          tagColor: 'bg-purple-100 text-purple-700'
+      }));
+
+      const activePatientsItems = activePatientsList.map(p => ({
+          id: p.id,
+          primaryText: p.name,
+          secondaryText: p.hospitalName || 'Hospital não inf.',
+          tertiaryText: p.congregation,
+          tag: 'Em Aberto',
+          tagColor: 'bg-orange-100 text-orange-700'
+      }));
+
+      return {
+          visits: visitsItems,
+          new_patients: newPatientsItems,
+          hospitals: hospitalItems,
+          active_patients: activePatientsItems
+      };
+  }, [currentVisits, newPatientsList, filteredHospitals, activePatientsList, filteredRoutes, state.members]);
 
   if (isPrintMode) {
       return (
@@ -214,7 +275,7 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
               </div>
               <div className="grid grid-cols-2 gap-8">
                 <div className="border p-4"><b>Visitas Realizadas:</b> {currentVisits.length}</div>
-                <div className="border p-4"><b>Casos Recebidos:</b> {newPatientsCount}</div>
+                <div className="border p-4"><b>Casos Recebidos:</b> {newPatientsList.length}</div>
               </div>
               <h2 className="text-xl font-bold border-b mt-10">Cobertura Hospitalar</h2>
               <table className="w-full border-collapse">
@@ -261,25 +322,29 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
                     title="Total de Atendimentos" 
                     value={currentVisits.length} 
                     colorClass="text-blue-600" 
-                    isHospitalMode={isHospitalMode} 
+                    isHospitalMode={isHospitalMode}
+                    onClick={() => setSelectedKpiType('visits')}
                 />
                 <MetricCard 
                     title="Casos Recebidos" 
-                    value={newPatientsCount} 
+                    value={newPatientsList.length} 
                     colorClass="text-green-600" 
                     isHospitalMode={isHospitalMode} 
+                    onClick={() => setSelectedKpiType('new_patients')}
                 />
                 <MetricCard 
                     title="Hospitais Cadastrados" 
                     value={filteredHospitals.length} 
                     colorClass="text-purple-600" 
                     isHospitalMode={isHospitalMode} 
+                    onClick={() => setSelectedKpiType('hospitals')}
                 />
                 <MetricCard 
                     title="Casos em Aberto" 
-                    value={activePatientsCount} 
+                    value={activePatientsList.length} 
                     colorClass="text-orange-600" 
                     isHospitalMode={isHospitalMode} 
+                    onClick={() => setSelectedKpiType('active_patients')}
                 />
             </div>
 
@@ -294,19 +359,19 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
                 {/* Gráfico de Rosca (Ocupa 1 coluna) */}
                 <div className={`p-6 rounded-2xl border shadow-sm flex flex-col items-center justify-center ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-200'}`}>
                     <h3 className={`text-base font-bold mb-6 w-full text-left ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Status dos Casos</h3>
-                    <DonutChart active={activePatientsCount} total={totalPatientsCount} isHospitalMode={isHospitalMode} />
+                    <DonutChart active={activePatientsList.length} total={totalPatientsCount} isHospitalMode={isHospitalMode} />
                     <div className="mt-6 w-full space-y-2">
                         <div className="flex justify-between text-xs">
                             <span className="text-gray-500 font-bold uppercase flex items-center gap-2">
                                 <div className="w-2 h-2 rounded-full bg-green-500"></div> Em Aberto
                             </span>
-                            <span className={`font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{activePatientsCount}</span>
+                            <span className={`font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{activePatientsList.length}</span>
                         </div>
                         <div className="flex justify-between text-xs">
                             <span className="text-gray-500 font-bold uppercase flex items-center gap-2">
                                 <div className={`w-2 h-2 rounded-full ${isHospitalMode ? 'bg-gray-700' : 'bg-gray-200'}`}></div> Arquivados
                             </span>
-                            <span className={`font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{totalPatientsCount - activePatientsCount}</span>
+                            <span className={`font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{totalPatientsCount - activePatientsList.length}</span>
                         </div>
                     </div>
                 </div>
@@ -425,6 +490,21 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
               </div>
            </div>
         </div>
+      )}
+
+      {/* MODAL DETALHES KPI */}
+      {selectedKpiType && (
+          <KpiDetailModal
+              isOpen={true}
+              onClose={() => setSelectedKpiType(null)}
+              title={
+                  selectedKpiType === 'visits' ? 'Visitas Realizadas (Mês)' :
+                  selectedKpiType === 'new_patients' ? 'Casos Recebidos (Mês)' :
+                  selectedKpiType === 'hospitals' ? 'Hospitais Cadastrados' : 'Casos em Aberto'
+              }
+              items={detailedKpiData[selectedKpiType] || []}
+              isHospitalMode={isHospitalMode}
+          />
       )}
     </div>
   );

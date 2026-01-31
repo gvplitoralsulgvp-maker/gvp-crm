@@ -85,42 +85,66 @@ export const ResourcesPage: React.FC<{ state: AppState, onUpdateState: (s: AppSt
       });
   };
 
-  // SQL ATUALIZADO (FIX RLS): Permite SELECT/UPDATE/DELETE para restaurar visualização
+  // SQL ATUALIZADO: Inclui correção da tabela doctors (hospital_ids)
   const sqlCode = `
--- CORREÇÃO CRÍTICA DE PERMISSÕES
--- Execute este script para restaurar a visualização dos pacientes (Correção RLS)
+-- =======================================================
+-- SCRIPT DE CORREÇÃO ESTRUTURAL (V3)
+-- Execute para corrigir erros "Column not found"
+-- =======================================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. ESTRUTURA E COLUNAS
+-- 1. TABELA DE MÉDICOS (Correção do erro PGRST204)
+CREATE TABLE IF NOT EXISTS public.doctors (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    specialty TEXT,
+    city TEXT,
+    regional TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Adiciona colunas que podem estar faltando
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS hospital_ids TEXT[] DEFAULT '{}';
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS last_visit_date DATE;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS cooperation_level TEXT;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS is_consultant BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS treats_pediatric BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS responsible_member_name TEXT;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS email TEXT;
+
+-- 2. TABELAS AUXILIARES
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS hospital_id UUID;
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS doctor_id UUID;
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS hlc38_presented BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS collaborator_interest BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'SCHEDULED';
+
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS regional TEXT;
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS is_external_request BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS request_date TIMESTAMPTZ;
 
--- 2. CORREÇÃO DE POLÍTICAS (RLS) - Restaurar Acesso
+-- 3. PERMISSÕES (RLS) - Crucial para o App funcionar sem erro 401/403
+ALTER TABLE public.doctors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.patients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
--- Remove políticas restritivas antigas que bloqueavam o SELECT
-DROP POLICY IF EXISTS "Public Insert Patients" ON public.patients;
-DROP POLICY IF EXISTS "Public Insert Logs" ON public.logs;
-DROP POLICY IF EXISTS "Public Insert Notifications" ON public.notifications;
+-- Remove políticas antigas para evitar conflito
+DROP POLICY IF EXISTS "Allow All Doctors" ON public.doctors;
 DROP POLICY IF EXISTS "Allow All Patients" ON public.patients;
 DROP POLICY IF EXISTS "Allow All Logs" ON public.logs;
 DROP POLICY IF EXISTS "Allow All Notifications" ON public.notifications;
 
--- Cria políticas permissivas (CRUD Completo) para o App funcionar
+-- Recria políticas permissivas
+CREATE POLICY "Allow All Doctors" ON public.doctors FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow All Patients" ON public.patients FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow All Logs" ON public.logs FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow All Notifications" ON public.notifications FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
 
--- 3. CONFIGURAÇÃO DE STORAGE (Uploads)
+-- 4. STORAGE (Uploads)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('resources', 'resources', true, 52428800, null)
 ON CONFLICT (id) DO UPDATE SET public = true;

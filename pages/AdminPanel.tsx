@@ -9,13 +9,16 @@ import { supabase } from '../services/supabaseClient';
 import { ConfirmModal } from '../components/ConfirmModal';
 
 export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
-  const [activeTab, setActiveTab] = useState<'members' | 'hospitals' | 'cities' | 'routes' | 'reports' | 'balance' | 'events'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'hospitals' | 'cities' | 'routes' | 'reports' | 'balance' | 'events' | 'training'>('members');
   const [editingHospital, setEditingHospital] = useState<Partial<Hospital> | null>(null);
   const [editingRoute, setEditingRoute] = useState<Partial<VisitRoute> | null>(null);
   const [editingMember, setEditingMember] = useState<Partial<Member> | null>(null);
   const [editingEvent, setEditingEvent] = useState<Partial<AppEvent> | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
+  
+  // States for Training Tab
+  const [selectedEventForAttendance, setSelectedEventForAttendance] = useState<string>('');
   
   // Modal de Confirmação Genérico
   const [confirmConfig, setConfirmConfig] = useState<{isOpen: boolean, title: string, description: string, onConfirm: () => void} | null>(null);
@@ -98,6 +101,97 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       return Array.from(new Set([...ALL_REGIONALS, ...dynamicRegs])).sort();
   }, [state.cityMappings]);
 
+  // --- LOGICA TREINADORES & PRESENÇA ---
+  
+  const handleToggleTrainer = async (member: Member) => {
+      const updated = { ...member, isTrainer: !member.isTrainer };
+      
+      // Otimistic UI Update
+      onUpdateState({ ...state, members: state.members.map(m => m.id === member.id ? updated : m) });
+
+      try {
+          await atomicUpdate('members', updated);
+      } catch (err) { 
+          alert("Erro ao atualizar status de treinador."); 
+          // Revert on error
+          onUpdateState({ ...state, members: state.members.map(m => m.id === member.id ? member : m) });
+      }
+  };
+
+  const handleUpdateAttendance = async (eventId: string, memberId: string, isPresent: boolean) => {
+      const event = state.events.find(e => e.id === eventId);
+      if (!event) return;
+      
+      let newAttendees = event.attendees || [];
+      if (isPresent) {
+          if (!newAttendees.includes(memberId)) newAttendees = [...newAttendees, memberId];
+      } else {
+          newAttendees = newAttendees.filter(id => id !== memberId);
+      }
+      
+      const updatedEvent = { ...event, attendees: newAttendees };
+      
+      // Otimistic UI Update
+      onUpdateState({ ...state, events: state.events.map(e => e.id === eventId ? updatedEvent : e) });
+      
+      // Background Update
+      await atomicUpdate('events', updatedEvent);
+  };
+
+  const trainingMatrix = useMemo(() => {
+      // 1. Filtrar estritamente Membros COLIH Ativos, EXCLUINDO Facilitadores (Ajudantes)
+      // Garantir que isColih === true e classificação não seja 'Facilitator'
+      let targets = state.members.filter(m => m.active && m.isColih === true && m.colihClassification !== 'Facilitator');
+      
+      if (isRegionalCoord && userRegional) {
+          targets = targets.filter(m => m.regional === userRegional);
+      }
+
+      // 2. Calcular Métricas
+      return targets.map(m => {
+          // A. Visitas Médicas (Últimos 6 meses)
+          const sixMonthsAgo = new Date();
+          sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+          const visitsCount = state.colihVisits.filter(v => 
+              v.memberIds.includes(m.id) && 
+              v.status === 'COMPLETED' && 
+              new Date(v.date) >= sixMonthsAgo
+          ).length;
+
+          // B. Casos Atendidos (Pacientes designados ativos ou recentes)
+          const casesCount = state.patients.filter(p => 
+              p.assignedColihIds?.includes(m.id) && 
+              (p.active || (p.estimatedDischargeDate && new Date(p.estimatedDischargeDate) >= sixMonthsAgo))
+          ).length;
+
+          // C. Presença em Reuniões
+          // Considera apenas eventos "COLIH" ou "ALL" passados
+          const pastEvents = state.events.filter(e => 
+              (e.targetGroup === 'COLIH' || e.targetGroup === 'ALL') &&
+              new Date(e.date) < new Date()
+          );
+          const attendedCount = pastEvents.filter(e => e.attendees?.includes(m.id)).length;
+          const attendanceRate = pastEvents.length > 0 ? Math.round((attendedCount / pastEvents.length) * 100) : 0;
+
+          // Score Simples (0-3) para identificar quem precisa de ajuda
+          // Critérios arbitrários: < 2 visitas, < 1 caso, < 50% presença
+          let needsHelpScore = 0;
+          if (visitsCount < 2) needsHelpScore++;
+          if (casesCount < 1) needsHelpScore++;
+          if (attendanceRate < 50) needsHelpScore++;
+
+          return { ...m, visitsCount, casesCount, attendanceRate, needsHelpScore };
+      }).sort((a,b) => b.needsHelpScore - a.needsHelpScore); // Quem precisa de mais ajuda no topo
+  }, [state.members, state.colihVisits, state.patients, state.events, isRegionalCoord, userRegional]);
+
+  // Lista ordenada alfabeticamente para seleção de treinadores (Filtro Duplo de Segurança)
+  const sortedColihMembers = useMemo(() => {
+      return trainingMatrix
+        .filter(m => m.isColih === true) 
+        .sort((a,b) => a.name.localeCompare(b.name));
+  }, [trainingMatrix]);
+
+
   const handleRefreshData = async () => {
     setIsSyncing(true);
     try {
@@ -161,7 +255,8 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       lng: editingMember.lng,
       isColih: editingMember.isColih || false, 
       colihClassification: editingMember.isColih ? (editingMember.colihClassification || 'Member') : null,
-      regional: editingMember.regional
+      regional: editingMember.regional,
+      isTrainer: editingMember.isTrainer || false
     };
 
     try {
@@ -295,7 +390,8 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
           time: editingEvent.time || '',
           location: editingEvent.location || '',
           targetGroup: editingEvent.targetGroup || 'ALL',
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          attendees: editingEvent.attendees || []
       };
 
       try {
@@ -383,6 +479,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
           { id: 'cities', label: 'Cidades' },
           { id: 'routes', label: 'Logística' },
           { id: 'events', label: 'Eventos' },
+          { id: 'training', label: 'Treinamento' },
           { id: 'reports', label: 'Relatórios' },
           { id: 'balance', label: 'Balanço' }
         ].map(tab => (
@@ -413,7 +510,15 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                         <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-sm`}>
                             {filteredMembers.map(m => (
                                 <tr key={m.id} className={`${isHospitalMode ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}>
-                                    <td className="px-6 py-4"><p className="font-bold">{m.name}</p><p className="text-[10px] text-gray-500">{m.email}</p></td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-2">
+                                            <div>
+                                                <p className="font-bold">{m.name}</p>
+                                                <p className="text-[10px] text-gray-500">{m.email}</p>
+                                            </div>
+                                            {m.isTrainer && <span className="bg-orange-100 text-orange-700 text-[9px] font-black uppercase px-2 py-0.5 rounded border border-orange-200">Treinador</span>}
+                                        </div>
+                                    </td>
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col items-start gap-1">
                                             {m.role === UserRole.ADMIN ? (<span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-purple-100 text-purple-700">ADMIN GLOBAL</span>) : 
@@ -443,7 +548,146 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         </div>
       )}
 
-      {/* --- ABA HOSPITAIS --- */}
+      {/* --- ABA TREINAMENTO (NOVA) --- */}
+      {activeTab === 'training' && (
+          <div className="space-y-8">
+              {/* 1. SEÇÃO DE GESTÃO DE TREINADORES */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className={`p-6 rounded-2xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                      <h3 className={`text-sm font-black uppercase mb-4 ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Designar Treinadores</h3>
+                      <p className="text-xs text-gray-500 mb-4">Selecione membros experientes (apenas COLIH) para atuar no programa.</p>
+                      <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-2">
+                          {sortedColihMembers.length === 0 ? (
+                              <p className="text-xs text-gray-400 italic">Nenhum membro COLIH ativo encontrado.</p>
+                          ) : (
+                              sortedColihMembers.map(m => (
+                                  <label key={m.id} className={`flex items-center justify-between p-2 rounded-lg cursor-pointer ${isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                                      <div className="flex items-center gap-3">
+                                          <input 
+                                              type="checkbox" 
+                                              checked={m.isTrainer || false} 
+                                              onChange={() => handleToggleTrainer(m)}
+                                              className="w-4 h-4 text-orange-500 rounded focus:ring-orange-500"
+                                          />
+                                          <span className={`text-sm font-bold ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{m.name}</span>
+                                      </div>
+                                      {m.isTrainer && <span className="text-[9px] font-black uppercase text-orange-500">Treinador</span>}
+                                  </label>
+                              ))
+                          )}
+                      </div>
+                  </div>
+
+                  {/* 2. SEÇÃO DE LISTA DE PRESENÇA */}
+                  <div className={`col-span-2 p-6 rounded-2xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                      <h3 className={`text-sm font-black uppercase mb-4 ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Registro de Presença em Reuniões</h3>
+                      <div className="mb-4">
+                          <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Selecione o Evento</label>
+                          <select 
+                              className={`w-full p-3 border rounded-xl text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`}
+                              value={selectedEventForAttendance}
+                              onChange={e => setSelectedEventForAttendance(e.target.value)}
+                          >
+                              <option value="">Selecione um evento para registrar presença...</option>
+                              {state.events
+                                  .filter(e => e.targetGroup === 'COLIH' || e.targetGroup === 'ALL')
+                                  .sort((a,b) => b.date.localeCompare(a.date))
+                                  .map(e => (
+                                      <option key={e.id} value={e.id}>{new Date(e.date + 'T12:00:00').toLocaleDateString()} - {e.title}</option>
+                                  ))}
+                          </select>
+                      </div>
+
+                      {selectedEventForAttendance ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-60 overflow-y-auto custom-scrollbar">
+                              {sortedColihMembers.map(m => {
+                                  const evt = state.events.find(e => e.id === selectedEventForAttendance);
+                                  const isPresent = evt?.attendees?.includes(m.id) || false;
+                                  return (
+                                      <label key={m.id} className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${isPresent ? 'bg-green-500/10 border-green-500/30' : 'border-transparent hover:bg-gray-100/10'}`}>
+                                          <input 
+                                              type="checkbox" 
+                                              checked={isPresent} 
+                                              onChange={(e) => handleUpdateAttendance(selectedEventForAttendance, m.id, e.target.checked)}
+                                              className="w-4 h-4 text-green-600 rounded"
+                                          />
+                                          <span className={`text-xs font-medium truncate ${isPresent ? 'text-green-600 font-bold' : (isHospitalMode ? 'text-gray-400' : 'text-gray-600')}`}>
+                                              {m.name.split(' ')[0]} {m.name.split(' ').pop()?.[0]}.
+                                          </span>
+                                      </label>
+                                  );
+                              })}
+                          </div>
+                      ) : (
+                          <p className="text-xs text-gray-400 italic">Selecione um evento acima para marcar presença.</p>
+                      )}
+                  </div>
+              </div>
+
+              {/* 3. MATRIZ DE DESEMPENHO */}
+              <div className={`rounded-2xl border overflow-hidden ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                  <div className="p-6 border-b border-gray-800/10 flex justify-between items-center">
+                      <h3 className={`text-lg font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Matriz de Acompanhamento (Exclusivo COLIH)</h3>
+                      <div className="flex gap-4 text-xs font-bold uppercase text-gray-500">
+                          <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-red-500"></div> Requer Atenção</span>
+                          <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500"></div> Bom Desempenho</span>
+                      </div>
+                  </div>
+                  <div className="overflow-x-auto custom-scrollbar">
+                      <table className="min-w-full divide-y divide-gray-200/10">
+                          <thead className={`${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'} text-[10px] font-black text-gray-400 uppercase tracking-widest`}>
+                              <tr>
+                                  <th className="px-6 py-4 text-left">Membro COLIH</th>
+                                  <th className="px-6 py-4 text-center">Visitas Médicas (6m)</th>
+                                  <th className="px-6 py-4 text-center">Casos Ativos</th>
+                                  <th className="px-6 py-4 text-center">Frequência Reuniões</th>
+                                  <th className="px-6 py-4 text-center">Status</th>
+                              </tr>
+                          </thead>
+                          <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-sm`}>
+                              {trainingMatrix.length === 0 ? (
+                                  <tr><td colSpan={5} className="px-6 py-8 text-center text-xs opacity-50">Nenhum dado disponível.</td></tr>
+                              ) : (
+                                  trainingMatrix.map(m => (
+                                      <tr key={m.id} className={`${isHospitalMode ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}>
+                                          <td className="px-6 py-4 font-bold">
+                                              {m.name}
+                                              {m.isTrainer && <span className="ml-2 text-[8px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-200 uppercase font-black">Treinador</span>}
+                                          </td>
+                                          <td className="px-6 py-4 text-center">
+                                              <span className={`font-bold ${m.visitsCount < 2 ? 'text-red-500' : 'text-green-500'}`}>{m.visitsCount}</span>
+                                          </td>
+                                          <td className="px-6 py-4 text-center">
+                                              <span className={`font-bold ${m.casesCount < 1 ? 'text-red-500' : 'text-green-500'}`}>{m.casesCount}</span>
+                                          </td>
+                                          <td className="px-6 py-4 text-center">
+                                              <div className="flex flex-col items-center">
+                                                  <span className={`font-bold ${m.attendanceRate < 50 ? 'text-red-500' : 'text-green-500'}`}>{m.attendanceRate}%</span>
+                                                  <div className={`w-16 h-1 rounded-full mt-1 ${isHospitalMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                                      <div className={`h-full rounded-full ${m.attendanceRate < 50 ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${m.attendanceRate}%` }}></div>
+                                                  </div>
+                                              </div>
+                                          </td>
+                                          <td className="px-6 py-4 text-center">
+                                              {m.needsHelpScore >= 2 ? (
+                                                  <span className="px-2 py-1 bg-red-100 text-red-600 rounded text-[10px] font-black uppercase">Prioridade</span>
+                                              ) : m.needsHelpScore === 1 ? (
+                                                  <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-[10px] font-black uppercase">Observar</span>
+                                              ) : (
+                                                  <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-black uppercase">OK</span>
+                                              )}
+                                          </td>
+                                      </tr>
+                                  ))
+                              )}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* --- ABA HOSPITAIS (Conteúdo inalterado, apenas re-renderizado para garantir integridade do arquivo) --- */}
       {activeTab === 'hospitals' && (
         <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
             <div className="overflow-x-auto custom-scrollbar">
@@ -541,6 +785,14 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                         </div>
                         <h4 className={`font-bold text-lg ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{event.title}</h4>
                         <p className={`text-sm mt-1 ${isHospitalMode ? 'text-gray-400' : 'text-gray-600'}`}>{event.location} {event.time ? `• ${event.time}` : ''}</p>
+                        
+                        {/* Attendance Summary */}
+                        {event.attendees && event.attendees.length > 0 && (
+                            <p className="text-[10px] text-green-600 font-bold mt-2 flex items-center gap-1">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                {event.attendees.length} presentes confirmados
+                            </p>
+                        )}
                     </div>
                     <div className="flex flex-col justify-between items-end">
                         <button onClick={() => setEditingEvent(event)} className="text-blue-500"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
@@ -646,10 +898,22 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
                   
                   <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 space-y-3">
                       <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" className="w-5 h-5 text-blue-600 rounded" checked={editingMember.active || false} onChange={e => setEditingMember({...editingMember, active: e.target.checked})} /><span className="text-sm font-bold text-gray-700">Cadastro Ativo</span></label>
-                      <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" className="w-5 h-5 text-teal-600 rounded" checked={editingMember.isColih || false} onChange={e => setEditingMember({...editingMember, isColih: e.target.checked})} /><span className="text-sm font-bold text-gray-700">Membro da COLIH</span></label>
-                      {editingMember.isColih && (
-                          <div className="pl-8 animate-fade-in"><label className="text-[10px] font-bold text-gray-500 uppercase">Classificação COLIH</label><select className="w-full p-2 border rounded-lg text-sm mt-1" value={editingMember.colihClassification || 'Member'} onChange={e => setEditingMember({...editingMember, colihClassification: e.target.value as any})}><option value="Member">Membro Regular</option><option value="Facilitator">Facilitador (Ajudante)</option><option value="Assistant">Assistente</option><option value="Secretary">Secretário</option><option value="Coordinator">Coordenador</option><option value="President">Presidente</option></select></div>
-                      )}
+                      
+                      <div className="pt-2 border-t border-gray-200">
+                          <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" className="w-5 h-5 text-teal-600 rounded" checked={editingMember.isColih || false} onChange={e => setEditingMember({...editingMember, isColih: e.target.checked})} /><span className="text-sm font-bold text-gray-700">Membro da COLIH</span></label>
+                          {editingMember.isColih && (
+                              <div className="pl-8 pt-2 animate-fade-in space-y-2">
+                                  <div>
+                                      <label className="text-[10px] font-bold text-gray-500 uppercase">Classificação COLIH</label>
+                                      <select className="w-full p-2 border rounded-lg text-sm mt-1" value={editingMember.colihClassification || 'Member'} onChange={e => setEditingMember({...editingMember, colihClassification: e.target.value as any})}><option value="Member">Membro Regular</option><option value="Facilitator">Facilitador (Ajudante)</option><option value="Assistant">Assistente</option><option value="Secretary">Secretário</option><option value="Coordinator">Coordenador</option><option value="President">Presidente</option></select>
+                                  </div>
+                                  <label className="flex items-center gap-2 cursor-pointer mt-2">
+                                      <input type="checkbox" className="w-4 h-4 text-orange-500 rounded" checked={editingMember.isTrainer || false} onChange={e => setEditingMember({...editingMember, isTrainer: e.target.checked})} />
+                                      <span className="text-xs font-bold text-orange-700 uppercase">Designar como Treinador</span>
+                                  </label>
+                              </div>
+                          )}
+                      </div>
                   </div>
                   <div className="pt-4"><Button className="w-full rounded-xl py-4" type="submit">Salvar Dados</Button></div>
               </form>

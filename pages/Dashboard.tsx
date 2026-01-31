@@ -11,10 +11,17 @@ import { FinishVisitModal } from '../components/FinishVisitModal';
 import { FinishSocialVisitModal } from '../components/FinishSocialVisitModal';
 import { CancelVisitModal } from '../components/CancelVisitModal';
 import { SwapRequestModal } from '../components/SwapRequestModal';
+import { AttendanceModal } from '../components/AttendanceModal';
+import { EventDetailModal } from '../components/EventDetailModal';
+import { KpiDetailModal } from '../components/KpiDetailModal';
 import { atomicUpdate } from '../services/storageService';
 
-const KpiCard: React.FC<{ title: string; value: number | string; icon: React.ReactNode; colorBg: string; colorText: string; isHospitalMode?: boolean }> = ({ title, value, icon, colorBg, colorText, isHospitalMode }) => (
-  <div className={`p-4 rounded-2xl border shadow-sm flex items-center gap-4 transition-all hover:shadow-md ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+// Componente KpiCard atualizado com onClick
+const KpiCard: React.FC<{ title: string; value: number | string; icon: React.ReactNode; colorBg: string; colorText: string; isHospitalMode?: boolean; onClick?: () => void }> = ({ title, value, icon, colorBg, colorText, isHospitalMode, onClick }) => (
+  <button 
+    onClick={onClick}
+    className={`w-full p-4 rounded-2xl border shadow-sm flex items-center gap-4 transition-all hover:shadow-md active:scale-95 text-left ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 hover:border-blue-200'}`}
+  >
     <div className={`p-3 rounded-xl ${colorBg} ${colorText}`}>
       {icon}
     </div>
@@ -22,7 +29,7 @@ const KpiCard: React.FC<{ title: string; value: number | string; icon: React.Rea
       <p className={`text-[10px] font-bold uppercase tracking-widest ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>{title}</p>
       <p className={`text-2xl font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{value}</p>
     </div>
-  </div>
+  </button>
 );
 
 const ActivityChart: React.FC<{ data: number[]; isHospitalMode?: boolean }> = ({ data, isHospitalMode }) => {
@@ -75,11 +82,97 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
 
+  // New Details Modals
+  const [selectedEventDetails, setSelectedEventDetails] = useState<AppEvent | null>(null);
+  const [selectedKpiType, setSelectedKpiType] = useState<'visits' | 'patients' | 'hospitals' | 'schedule' | null>(null);
+
+  // Attendance Modal State
+  const [attendanceEvent, setAttendanceEvent] = useState<AppEvent | null>(null);
+
   // Optimistic tracking
   const [optimisticArchived, setOptimisticArchived] = useState<Set<string>>(new Set());
 
   const isCoordinator = state.currentUser?.role === UserRole.COORDINATOR;
   const userRegional = state.currentUser?.regional;
+
+  // --- ATTENDANCE CHECK LOGIC (COM JANELA DE HORÁRIO 1h antes até 8h depois) ---
+  useEffect(() => {
+      if (!state.currentUser || !state.currentUser.isColih) return;
+
+      const now = new Date();
+      // Ajuste para garantir comparação correta com string YYYY-MM-DD local
+      const offset = now.getTimezoneOffset() * 60000;
+      const localTodayStr = new Date(now.getTime() - offset).toISOString().split('T')[0];
+      
+      // Find events for TODAY that are for COLIH or ALL
+      const relevantEvent = state.events.find(e => 
+          e.date === localTodayStr && 
+          (e.targetGroup === 'COLIH' || e.targetGroup === 'ALL')
+      );
+
+      if (relevantEvent) {
+          const hasAlreadyAttended = relevantEvent.attendees?.includes(state.currentUser.id);
+          const hasDismissed = localStorage.getItem(`attendance_dismissed_${relevantEvent.id}`) === 'true';
+
+          if (!hasAlreadyAttended && !hasDismissed) {
+              // Lógica de Janela de Tempo
+              let shouldShow = true;
+
+              if (relevantEvent.time) {
+                  try {
+                      const [hours, minutes] = relevantEvent.time.split(':').map(Number);
+                      
+                      const eventTime = new Date(now);
+                      eventTime.setHours(hours, minutes, 0, 0);
+
+                      const windowStart = new Date(eventTime.getTime() - 60 * 60 * 1000); // 1h antes
+                      const windowEnd = new Date(eventTime.getTime() + 8 * 60 * 60 * 1000); // 8h depois
+
+                      if (now < windowStart || now > windowEnd) {
+                          shouldShow = false;
+                      }
+                  } catch (e) {
+                      console.warn("Erro ao processar horário do evento para janela de presença", e);
+                      // Se der erro no parse ou não tiver horário, assume que é o dia todo, então true
+                      shouldShow = true;
+                  }
+              }
+
+              if (shouldShow) {
+                  setAttendanceEvent(relevantEvent);
+              }
+          }
+      }
+  }, [state.events, state.currentUser]);
+
+  const handleAttendanceResponse = async (present: boolean) => {
+      if (!attendanceEvent || !state.currentUser) return;
+
+      if (present) {
+          // Add user to attendees
+          const currentAttendees = attendanceEvent.attendees || [];
+          if (!currentAttendees.includes(state.currentUser.id)) {
+              const updatedEvent = { 
+                  ...attendanceEvent, 
+                  attendees: [...currentAttendees, state.currentUser.id] 
+              };
+              
+              // Optimistic Update
+              onUpdateState({
+                  ...state,
+                  events: state.events.map(e => e.id === attendanceEvent.id ? updatedEvent : e)
+              });
+
+              // Persist
+              await atomicUpdate('events', updatedEvent);
+          }
+      } else {
+          // User said No, just dismiss locally for today
+          localStorage.setItem(`attendance_dismissed_${attendanceEvent.id}`, 'true');
+      }
+      
+      setAttendanceEvent(null);
+  };
 
   // --- FILTERING ---
   const filteredHospitals = useMemo(() => {
@@ -112,7 +205,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const activePatients = filteredPatients.filter((p: Patient) => p.active);
 
   // --- CÁLCULO DE KPIS (useMemo) ...
-  const { kpis, chartData } = useMemo(() => {
+  const { kpis, chartData, detailedKpiData } = useMemo(() => {
       const now = new Date();
       const currentMonthStr = now.toISOString().slice(0, 7); // YYYY-MM
       const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -122,25 +215,72 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       const relevantVisits = state.visits.filter(v => visibleRouteIds.includes(v.routeId));
 
       const monthVisits = relevantVisits.filter((v: VisitSlot) => v.date.startsWith(currentMonthStr));
-      const finishedCount = monthVisits.filter((v: VisitSlot) => v.status === 'FINISHED').length;
-      const scheduledCount = monthVisits.filter((v: VisitSlot) => v.status !== 'FINISHED' && v.memberIds.length > 0).length;
+      const finishedVisits = monthVisits.filter((v: VisitSlot) => v.status === 'FINISHED');
+      const scheduledVisits = monthVisits.filter((v: VisitSlot) => v.status !== 'FINISHED' && v.memberIds.length > 0);
       
-      const activeP = activePatients.filter((p: Patient) => p.active && !p.isMedicalDischarge).length;
+      const activeP = activePatients.filter((p: Patient) => p.active && !p.isMedicalDischarge);
       
-      const visitedHospitalIds = new Set();
-      monthVisits.filter((v: VisitSlot) => v.status === 'FINISHED').forEach((v: VisitSlot) => {
+      const visitedHospitalIds = new Set<string>();
+      finishedVisits.forEach((v: VisitSlot) => {
           const route = filteredRoutes.find((r: VisitRoute) => r.id === v.routeId);
           route?.hospitals?.forEach((h: string) => visitedHospitalIds.add(h));
       });
 
       const data = new Array(daysInMonth).fill(0);
-      monthVisits.filter((v: VisitSlot) => v.status === 'FINISHED').forEach((v: VisitSlot) => {
+      finishedVisits.forEach((v: VisitSlot) => {
           const day = parseInt(v.date.split('-')[2]);
           if(day >= 1 && day <= daysInMonth) data[day-1]++;
       });
+
+      // Prepare detailed items for KPI Modal
+      const details = {
+          visits: finishedVisits.map(v => {
+              const route = filteredRoutes.find(r => r.id === v.routeId);
+              const members = v.memberIds.map(id => state.members.find(m => m.id === id)?.name).filter(Boolean).join(', ');
+              return { 
+                  id: v.id, 
+                  primaryText: new Date(v.date + 'T12:00:00').toLocaleDateString(), 
+                  secondaryText: route?.name || 'Rota', 
+                  tertiaryText: members,
+                  tag: 'Realizada',
+                  tagColor: 'bg-green-100 text-green-700'
+              };
+          }),
+          schedule: scheduledVisits.map(v => {
+              const route = filteredRoutes.find(r => r.id === v.routeId);
+              const members = v.memberIds.map(id => state.members.find(m => m.id === id)?.name).filter(Boolean).join(', ');
+              return { 
+                  id: v.id, 
+                  primaryText: new Date(v.date + 'T12:00:00').toLocaleDateString(), 
+                  secondaryText: route?.name || 'Rota', 
+                  tertiaryText: members,
+                  tag: 'Agendada',
+                  tagColor: 'bg-orange-100 text-orange-700'
+              };
+          }),
+          patients: activeP.map(p => ({
+              id: p.id,
+              primaryText: p.name,
+              secondaryText: p.hospitalName || 'Hospital não inf.',
+              tertiaryText: p.congregation,
+              tag: 'Ativo',
+              tagColor: 'bg-blue-100 text-blue-700'
+          })),
+          hospitals: Array.from(visitedHospitalIds).map((hName, idx) => ({
+              id: `h-${idx}`,
+              primaryText: hName,
+              secondaryText: 'Visitado este mês',
+              tag: 'Coberto',
+              tagColor: 'bg-purple-100 text-purple-700'
+          }))
+      };
       
-      return { kpis: { finished: finishedCount, scheduled: scheduledCount, activePatients: activeP, hospitalsVisited: visitedHospitalIds.size }, chartData: data };
-  }, [state.visits, activePatients, filteredRoutes]);
+      return { 
+          kpis: { finished: finishedVisits.length, scheduled: scheduledVisits.length, activePatients: activeP.length, hospitalsVisited: visitedHospitalIds.size }, 
+          chartData: data,
+          detailedKpiData: details
+      };
+  }, [state.visits, activePatients, filteredRoutes, state.members]);
 
   // --- MEUS AGENDAMENTOS (Visitas Regulares) ---
   const myUpcomingVisits = useMemo(() => {
@@ -160,8 +300,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       const today = new Date().toISOString().split('T')[0];
       const isColih = state.currentUser?.isColih;
       const isAdmin = state.currentUser?.role === UserRole.ADMIN;
-      // Coordinators see all events for now, or filter if events have region field (currently they don't)
-      // Assuming global events for now
       
       return state.events.filter((e: AppEvent) => e.date >= today).filter((e: AppEvent) => {
           if (isAdmin || isCoordinator) return true;
@@ -291,14 +429,47 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
     <div className="space-y-6 pb-20 animate-fade-in">
         {/* KPI DASHBOARD SECTION */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard title="Visitas (Mês)" value={kpis.finished} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} colorBg={isHospitalMode ? 'bg-green-900/30' : 'bg-green-100'} colorText={isHospitalMode ? 'text-green-400' : 'text-green-600'} isHospitalMode={isHospitalMode} />
-            <KpiCard title="Pacientes Ativos" value={kpis.activePatients} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>} colorBg={isHospitalMode ? 'bg-blue-900/30' : 'bg-blue-100'} colorText={isHospitalMode ? 'text-blue-400' : 'text-blue-600'} isHospitalMode={isHospitalMode} />
-            <KpiCard title="Hospitais (Mês)" value={kpis.hospitalsVisited} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>} colorBg={isHospitalMode ? 'bg-purple-900/30' : 'bg-purple-100'} colorText={isHospitalMode ? 'text-purple-400' : 'text-purple-600'} isHospitalMode={isHospitalMode} />
-            <KpiCard title="Agendamentos" value={kpis.scheduled} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} colorBg={isHospitalMode ? 'bg-orange-900/30' : 'bg-orange-100'} colorText={isHospitalMode ? 'text-orange-400' : 'text-orange-600'} isHospitalMode={isHospitalMode} />
+            <KpiCard 
+                title="Visitas (Mês)" 
+                value={kpis.finished} 
+                icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} 
+                colorBg={isHospitalMode ? 'bg-green-900/30' : 'bg-green-100'} 
+                colorText={isHospitalMode ? 'text-green-400' : 'text-green-600'} 
+                isHospitalMode={isHospitalMode}
+                onClick={() => setSelectedKpiType('visits')}
+            />
+            <KpiCard 
+                title="Pacientes Ativos" 
+                value={kpis.activePatients} 
+                icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>} 
+                colorBg={isHospitalMode ? 'bg-blue-900/30' : 'bg-blue-100'} 
+                colorText={isHospitalMode ? 'text-blue-400' : 'text-blue-600'} 
+                isHospitalMode={isHospitalMode}
+                onClick={() => setSelectedKpiType('patients')}
+            />
+            <KpiCard 
+                title="Hospitais (Mês)" 
+                value={kpis.hospitalsVisited} 
+                icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>} 
+                colorBg={isHospitalMode ? 'bg-purple-900/30' : 'bg-purple-100'} 
+                colorText={isHospitalMode ? 'text-purple-400' : 'text-purple-600'} 
+                isHospitalMode={isHospitalMode}
+                onClick={() => setSelectedKpiType('hospitals')}
+            />
+            <KpiCard 
+                title="Agendamentos" 
+                value={kpis.scheduled} 
+                icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} 
+                colorBg={isHospitalMode ? 'bg-orange-900/30' : 'bg-orange-100'} 
+                colorText={isHospitalMode ? 'text-orange-400' : 'text-orange-600'} 
+                isHospitalMode={isHospitalMode}
+                onClick={() => setSelectedKpiType('schedule')}
+            />
         </div>
 
         <ActivityChart data={chartData} isHospitalMode={isHospitalMode} />
 
+        {/* ... (MEUS AGENDAMENTOS E VISITAS SOCIAIS MANTIDOS) ... */}
         {myUpcomingVisits.length > 0 && (
             <div className={`p-6 rounded-2xl shadow-lg relative overflow-hidden ${isHospitalMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white'}`}>
                 <div className={`absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 rounded-full blur-3xl opacity-20 ${isHospitalMode ? 'bg-blue-500' : 'bg-white'}`}></div>
@@ -318,7 +489,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                                     <div><p className={`font-bold text-lg ${isHospitalMode ? 'text-white' : 'text-white'}`}>{route?.name}</p><p className={`text-xs mt-1 ${isHospitalMode ? 'text-gray-300' : 'text-blue-100'}`}>{route?.hospitals?.join(', ')}</p></div>
                                     <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${isToday ? 'bg-white text-blue-700 shadow-sm' : (isHospitalMode ? 'bg-gray-700 text-gray-300' : 'bg-blue-800/50 text-blue-100')}`}>{new Date(visit.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
                                 </div>
-                                <div className="mt-3 flex items-center gap-2 text-xs font-medium opacity-80 group-hover:opacity-100 transition-opacity"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0z" /></svg> Dupla: {partner ? partner.name : 'Aguardando parceiro'}</div>
+                                <div className="mt-3 flex items-center gap-2 text-xs font-medium opacity-80 group-hover:opacity-100 transition-opacity"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg> Dupla: {partner ? partner.name : 'Aguardando parceiro'}</div>
                             </button>
                         );
                     })}
@@ -356,7 +527,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 <h3 className={`text-xs font-black uppercase tracking-widest mb-3 ${isHospitalMode ? 'text-gray-400' : 'text-blue-600'}`}>Próximos Eventos</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {myEvents.map((event: AppEvent) => (
-                        <div key={event.id} className={`p-3 rounded-xl border flex flex-col justify-between ${isHospitalMode ? 'bg-black/20 border-gray-700' : 'bg-white border-blue-100 shadow-sm'}`}>
+                        <button 
+                            key={event.id} 
+                            onClick={() => setSelectedEventDetails(event)}
+                            className={`p-3 rounded-xl border flex flex-col justify-between text-left transition-all active:scale-95 ${isHospitalMode ? 'bg-black/20 border-gray-700 hover:bg-white/5' : 'bg-white border-blue-100 shadow-sm hover:bg-white/80'}`}
+                        >
                             <div>
                                 <div className="flex justify-between items-start">
                                     <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${event.targetGroup === 'GVP' ? 'bg-blue-100 text-blue-700' : event.targetGroup === 'COLIH' ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-700'}`}>{event.targetGroup === 'ALL' ? 'Geral' : event.targetGroup}</span>
@@ -365,7 +540,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                                 <h4 className={`font-bold mt-1 ${isHospitalMode ? 'text-gray-200' : 'text-gray-900'}`}>{event.title}</h4>
                                 <p className={`text-xs mt-1 truncate ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>{event.location} {event.time ? `• ${event.time}` : ''}</p>
                             </div>
-                        </div>
+                        </button>
                     ))}
                 </div>
             </div>
@@ -450,7 +625,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 patient={viewingPatient}
                 lastVisit={null} 
                 members={state.members}
-                logs={state.logs} // PASSED LOGS HERE
+                logs={state.logs} 
                 isHospitalMode={isHospitalMode}
                 onDischarge={handleDischarge}
                 onToggleGvp={handleToggleGvp}
@@ -492,6 +667,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             onConfirm={(newDate, note) => { alert("Solicitação enviada ao coordenador."); setIsSwapModalOpen(false); }}
             isHospitalMode={isHospitalMode}
         />
+
+        {attendanceEvent && (
+            <AttendanceModal
+                isOpen={true}
+                onClose={handleAttendanceResponse}
+                event={attendanceEvent}
+                isHospitalMode={isHospitalMode}
+            />
+        )}
+
+        {/* MODAL DETALHES DE EVENTO */}
+        <EventDetailModal
+            isOpen={!!selectedEventDetails}
+            onClose={() => setSelectedEventDetails(null)}
+            event={selectedEventDetails}
+            isHospitalMode={isHospitalMode}
+        />
+
+        {/* MODAL DETALHES KPI */}
+        {selectedKpiType && (
+            <KpiDetailModal
+                isOpen={true}
+                onClose={() => setSelectedKpiType(null)}
+                title={
+                    selectedKpiType === 'visits' ? 'Visitas Realizadas (Mês)' :
+                    selectedKpiType === 'patients' ? 'Pacientes Ativos' :
+                    selectedKpiType === 'hospitals' ? 'Hospitais Cobertos (Mês)' : 'Próximos Agendamentos'
+                }
+                items={detailedKpiData[selectedKpiType] || []}
+                isHospitalMode={isHospitalMode}
+            />
+        )}
     </div>
   );
 };

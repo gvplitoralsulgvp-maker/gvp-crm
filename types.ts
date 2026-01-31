@@ -26,6 +26,7 @@ export interface AppEvent {
   location?: string;
   targetGroup: 'GVP' | 'COLIH' | 'ALL';
   createdAt?: string;
+  attendees?: string[]; // Lista de IDs dos membros presentes
 }
 
 export interface Member {
@@ -45,6 +46,7 @@ export interface Member {
   isColih?: boolean;
   colihClassification?: 'President' | 'Coordinator' | 'Secretary' | 'Assistant' | 'Facilitator' | 'Member' | null;
   regional?: string;
+  isTrainer?: boolean; // Identifica se é um Treinador
 }
 
 export interface Hospital {

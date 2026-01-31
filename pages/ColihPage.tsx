@@ -124,7 +124,12 @@ const HospitalStats: React.FC<{ hospitals: Hospital[], visits: ColihVisit[], isH
     );
 };
 
-const DoctorStats: React.FC<{ doctors: Doctor[], isHospitalMode?: boolean }> = ({ doctors, isHospitalMode }) => {
+const DoctorStats: React.FC<{ 
+    doctors: Doctor[], 
+    isHospitalMode?: boolean, 
+    activeFilter: string, 
+    onFilterSelect: (filter: string) => void 
+}> = ({ doctors, isHospitalMode, activeFilter, onFilterSelect }) => {
     const total = doctors.length;
     const now = new Date();
     
@@ -138,15 +143,21 @@ const DoctorStats: React.FC<{ doctors: Doctor[], isHospitalMode?: boolean }> = (
     const v6m = getCount(180);
     const v12m = getCount(365);
     
-    // Porcentagem para o gráfico de donut (Cobertura Anual)
     const activePct = total > 0 ? Math.round((v12m / total) * 100) : 0;
     const dashArray = `${activePct}, 100`;
 
     return (
         <div className="flex flex-col md:flex-row gap-4 mb-6">
             {/* Gráfico de Cobertura */}
-            <div className={`flex-shrink-0 p-6 rounded-3xl border flex flex-col items-center justify-center w-full md:w-64 ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'}`}>
-                <div className="relative w-32 h-32">
+            <div 
+                onClick={() => onFilterSelect(activeFilter === 'VISITED' ? 'ALL' : 'VISITED')}
+                className={`flex-shrink-0 p-6 rounded-3xl border flex flex-col items-center justify-center w-full md:w-64 cursor-pointer transition-all active:scale-95 hover:shadow-md ${
+                    activeFilter === 'VISITED' 
+                    ? (isHospitalMode ? 'bg-teal-900/20 border-teal-500/50' : 'bg-teal-50 border-teal-200 ring-2 ring-teal-500 ring-opacity-50')
+                    : (isHospitalMode ? 'bg-[#212327] border-gray-800 hover:bg-[#2a2d32]' : 'bg-white border-gray-100 shadow-sm hover:bg-gray-50')
+                }`}
+            >
+                <div className="relative w-32 h-32 pointer-events-none">
                     <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
                         <path className={isHospitalMode ? 'text-gray-800' : 'text-gray-100'} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" />
                         <path className="text-teal-500 transition-all duration-1000 ease-out" strokeDasharray={dashArray} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
@@ -159,44 +170,66 @@ const DoctorStats: React.FC<{ doctors: Doctor[], isHospitalMode?: boolean }> = (
                 <p className={`mt-4 text-xs font-bold text-center ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>
                     {v12m} de {total} médicos<br/>visitados no ano
                 </p>
+                <p className="text-[9px] font-black uppercase text-teal-500 mt-2">Clique para filtrar</p>
             </div>
 
             {/* Cards de Métricas */}
             <div className="flex-grow grid grid-cols-1 sm:grid-cols-3 gap-4">
-                 <div className={`p-5 rounded-3xl border flex flex-col justify-between ${isHospitalMode ? 'bg-teal-900/10 border-teal-900/30' : 'bg-teal-50 border-teal-100'}`}>
-                    <div className="flex justify-between items-start">
+                 <div 
+                    onClick={() => onFilterSelect(activeFilter === '3M' ? 'ALL' : '3M')}
+                    className={`p-5 rounded-3xl border flex flex-col justify-between cursor-pointer transition-all active:scale-95 hover:shadow-md ${
+                        activeFilter === '3M' 
+                        ? (isHospitalMode ? 'bg-teal-900/30 border-teal-500 ring-1 ring-teal-500' : 'bg-teal-50 border-teal-300 ring-2 ring-teal-200')
+                        : (isHospitalMode ? 'bg-teal-900/10 border-teal-900/30 hover:bg-teal-900/20' : 'bg-teal-50 border-teal-100 hover:bg-teal-100')
+                    }`}
+                 >
+                    <div className="flex justify-between items-start pointer-events-none">
                         <span className={`p-2 rounded-xl ${isHospitalMode ? 'bg-teal-500/20 text-teal-400' : 'bg-teal-100 text-teal-600'}`}>
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         </span>
                         <span className={`text-[10px] font-black uppercase tracking-wider ${isHospitalMode ? 'text-teal-400' : 'text-teal-700'}`}>3 Meses</span>
                     </div>
-                    <div>
+                    <div className="pointer-events-none">
                         <p className={`text-3xl font-black ${isHospitalMode ? 'text-white' : 'text-teal-900'}`}>{v3m}</p>
                         <p className={`text-xs font-medium ${isHospitalMode ? 'text-teal-400/70' : 'text-teal-700/70'}`}>Médicos Recentes</p>
                     </div>
                  </div>
 
-                 <div className={`p-5 rounded-3xl border flex flex-col justify-between ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'}`}>
-                    <div className="flex justify-between items-start">
+                 <div 
+                    onClick={() => onFilterSelect(activeFilter === '6M' ? 'ALL' : '6M')}
+                    className={`p-5 rounded-3xl border flex flex-col justify-between cursor-pointer transition-all active:scale-95 hover:shadow-md ${
+                        activeFilter === '6M'
+                        ? (isHospitalMode ? 'bg-blue-900/30 border-blue-500 ring-1 ring-blue-500' : 'bg-blue-50 border-blue-300 ring-2 ring-blue-200')
+                        : (isHospitalMode ? 'bg-[#212327] border-gray-800 hover:bg-[#2a2d32]' : 'bg-white border-gray-100 shadow-sm hover:bg-blue-50')
+                    }`}
+                 >
+                    <div className="flex justify-between items-start pointer-events-none">
                         <span className={`p-2 rounded-xl ${isHospitalMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         </span>
                         <span className={`text-[10px] font-black uppercase tracking-wider ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>6 Meses</span>
                     </div>
-                    <div>
+                    <div className="pointer-events-none">
                         <p className={`text-3xl font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{v6m}</p>
                         <p className={`text-xs font-medium ${isHospitalMode ? 'text-gray-500' : 'text-gray-500'}`}>Total Semestral</p>
                     </div>
                  </div>
 
-                 <div className={`p-5 rounded-3xl border flex flex-col justify-between ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'}`}>
-                    <div className="flex justify-between items-start">
+                 <div 
+                    onClick={() => onFilterSelect(activeFilter === '12M' ? 'ALL' : '12M')}
+                    className={`p-5 rounded-3xl border flex flex-col justify-between cursor-pointer transition-all active:scale-95 hover:shadow-md ${
+                        activeFilter === '12M'
+                        ? (isHospitalMode ? 'bg-purple-900/30 border-purple-500 ring-1 ring-purple-500' : 'bg-purple-50 border-purple-300 ring-2 ring-purple-200')
+                        : (isHospitalMode ? 'bg-[#212327] border-gray-800 hover:bg-[#2a2d32]' : 'bg-white border-gray-100 shadow-sm hover:bg-purple-50')
+                    }`}
+                 >
+                    <div className="flex justify-between items-start pointer-events-none">
                         <span className={`p-2 rounded-xl ${isHospitalMode ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                         </span>
                         <span className={`text-[10px] font-black uppercase tracking-wider ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>12 Meses</span>
                     </div>
-                    <div>
+                    <div className="pointer-events-none">
                         <p className={`text-3xl font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{v12m}</p>
                         <p className={`text-xs font-medium ${isHospitalMode ? 'text-gray-500' : 'text-gray-500'}`}>Total Anual</p>
                     </div>
@@ -206,9 +239,9 @@ const DoctorStats: React.FC<{ doctors: Doctor[], isHospitalMode?: boolean }> = (
     )
 };
 
-// ... MODAIS AUXILIARES ...
+// ... MODAIS AUXILIARES ... (DoctorModal, FacilitatorModal, HospitalRegionalModal, VisitModal, PresentationModal - Mantidos iguais)
 const DoctorModal: React.FC<{ isOpen: boolean; onClose: () => void; doctor?: Doctor; hospitals: Hospital[]; cityMappings: CityMapping[]; onSave: (d: Doctor) => void; isHospitalMode?: boolean }> = ({ isOpen, onClose, doctor, hospitals, cityMappings, onSave, isHospitalMode }) => {
-    // ... same as before
+    // ... (Código do DoctorModal mantido igual)
     const [formData, setFormData] = useState<Partial<Doctor>>({});
     const availableRegionals = useMemo(() => {
         const dynamicRegs = cityMappings.map(m => m.regional);
@@ -242,8 +275,9 @@ const DoctorModal: React.FC<{ isOpen: boolean; onClose: () => void; doctor?: Doc
     );
 };
 
+// ... (Outros modais mantidos: FacilitatorModal, HospitalRegionalModal, VisitModal, PresentationModal, PresentationsTab)
 const FacilitatorModal: React.FC<{ isOpen: boolean; onClose: () => void; member?: Member; cityMappings: CityMapping[]; onSave: (m: Member) => void; isHospitalMode?: boolean }> = ({ isOpen, onClose, member, cityMappings, onSave, isHospitalMode }) => {
-    // ... same as before
+    // ... (conteúdo do modal igual ao original)
     const [formData, setFormData] = useState<Partial<Member>>({});
     const availableRegionals = useMemo(() => {
         const dynamicRegs = cityMappings.map(m => m.regional);
@@ -279,7 +313,7 @@ const FacilitatorModal: React.FC<{ isOpen: boolean; onClose: () => void; member?
 };
 
 const HospitalRegionalModal: React.FC<{ isOpen: boolean; onClose: () => void; hospital?: Hospital; members: Member[]; cityMappings: CityMapping[]; onSave: (h: Hospital) => void; isHospitalMode?: boolean }> = ({ isOpen, onClose, hospital, members, cityMappings, onSave, isHospitalMode }) => {
-    // ... same as before
+    // ... (conteúdo do modal igual ao original)
     const [formData, setFormData] = useState<Partial<Hospital>>({});
     const availableRegionals = useMemo(() => {
         const dynamicRegs = cityMappings.map(m => m.regional);
@@ -309,7 +343,7 @@ const HospitalRegionalModal: React.FC<{ isOpen: boolean; onClose: () => void; ho
 };
 
 const VisitModal: React.FC<{ isOpen: boolean; onClose: () => void; doctor: Doctor; currentUserId?: string; onSave: (notes: string, date: string, memberIds: string[], type: ColihInteractionType, level: Doctor['cooperationLevel']) => void; isHospitalMode?: boolean }> = ({ isOpen, onClose, doctor, currentUserId, onSave, isHospitalMode }) => {
-    // ... same as before
+    // ... (conteúdo do modal igual ao original)
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [notes, setNotes] = useState('');
     const [type, setType] = useState<ColihInteractionType>('visit');
@@ -355,7 +389,7 @@ const VisitModal: React.FC<{ isOpen: boolean; onClose: () => void; doctor: Docto
 };
 
 const PresentationModal: React.FC<{ isOpen: boolean; onClose: () => void; presentationToEdit?: ColihVisit; doctors: Doctor[]; hospitals: Hospital[]; members: Member[]; onSave: (data: Partial<ColihVisit>) => void; onAddNew: (type: 'hospital' | 'doctor') => void; isHospitalMode?: boolean; autoSelectId?: string | null; onClearAutoSelect?: () => void; }> = ({ isOpen, onClose, presentationToEdit, doctors, hospitals, members, onSave, onAddNew, isHospitalMode, autoSelectId, onClearAutoSelect }) => {
-    // ... same as before
+    // ... (conteúdo do modal igual ao original)
     const [targetType, setTargetType] = useState<'hospital' | 'doctor'>('hospital');
     const [selectedId, setSelectedId] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -476,7 +510,7 @@ const PresentationModal: React.FC<{ isOpen: boolean; onClose: () => void; presen
 };
 
 const PresentationsTab: React.FC<{ visits: ColihVisit[]; doctors: Doctor[]; hospitals: Hospital[]; members: Member[]; goal: number; isHospitalMode?: boolean; onEdit: (v: ColihVisit) => void; onDelete: (id: string) => void; onUpdateGoal: (newGoal: number) => void; }> = ({ visits, doctors, hospitals, members, goal, isHospitalMode, onEdit, onDelete, onUpdateGoal }) => {
-    // ... same as before
+    // ... (conteúdo da aba mantido igual)
     const currentYear = new Date().getFullYear();
     const thisYearVisits = visits.filter(v => new Date(v.date).getFullYear() === currentYear && v.status === 'COMPLETED');
     const progress = Math.min((thisYearVisits.length / (goal || 1)) * 100, 100);
@@ -568,8 +602,12 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
     const [isPresentationModalOpen, setIsPresentationModalOpen] = useState(false);
     const [editingPresentation, setEditingPresentation] = useState<ColihVisit | undefined>(undefined);
     
-    // Filters
+    // Filters & Sorting for Doctors
     const [selectedSpecialty, setSelectedSpecialty] = useState<string>('ALL');
+    const [doctorSearchText, setDoctorSearchText] = useState('');
+    const [doctorTimeFilter, setDoctorTimeFilter] = useState<'ALL' | 'VISITED' | '3M' | '6M' | '12M' | 'NEVER'>('ALL');
+    const [doctorSort, setDoctorSort] = useState<'NAME' | 'DATE_DESC' | 'DATE_ASC'>('NAME');
+
     const [roleFilter, setRoleFilter] = useState<string>('Facilitator'); // Default strictly to Facilitator for that tab
 
     // Auto-select for presentation from doctor/hospital list
@@ -579,7 +617,6 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
     const [confirmConfig, setConfirmConfig] = useState<{isOpen: boolean, title: string, description: string, onConfirm: () => void} | null>(null);
 
     // Handlers
-    // ... (Keep ALL handlers identical: handleSaveDoctor, handleDeleteDoctor, handleSaveFacilitator, handleSaveHospital, handleSaveVisit, handleSavePresentation, handleDeleteVisit, handleUpdateGoal)
     const handleSaveDoctor = async (doc: Doctor) => {
         try {
             await atomicUpdate('doctors', doc);
@@ -600,6 +637,7 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
         });
     };
 
+    // ... (Outros handlers mantidos: handleSaveFacilitator, handleSaveHospital, handleSaveVisit, handleSavePresentation, handleDeleteVisit, handleUpdateGoal)
     const handleSaveFacilitator = async (member: Member) => {
         try {
             await atomicUpdate('members', member);
@@ -649,7 +687,10 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
             }
             setIsVisitModalOpen(false);
             setVisitDoctor(undefined);
-        } catch (e) { alert("Erro ao registrar visita."); }
+        } catch (e: any) { 
+            console.error("Erro visita:", e);
+            alert(`Erro ao registrar visita: ${e.message || "Erro desconhecido"}`); 
+        }
     };
 
     const handleSavePresentation = async (data: Partial<ColihVisit>) => {
@@ -758,13 +799,60 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
         return Array.from(specs).sort();
     }, [filteredDoctors]);
 
-    const sortedDoctors = useMemo(() => {
+    const processedDoctors = useMemo(() => {
         let list = [...filteredDoctors];
+        
+        // 1. Specialty Filter
         if (selectedSpecialty !== 'ALL') {
             list = list.filter(d => d.specialty === selectedSpecialty);
         }
-        return list.sort((a,b) => a.name.localeCompare(b.name));
-    }, [filteredDoctors, selectedSpecialty]);
+
+        // 2. Name Search
+        if (doctorSearchText.trim()) {
+            const lower = doctorSearchText.toLowerCase();
+            list = list.filter(d => d.name.toLowerCase().includes(lower));
+        }
+
+        // 3. Time / Status Filter
+        const now = new Date();
+        if (doctorTimeFilter !== 'ALL') {
+            list = list.filter(d => {
+                if (doctorTimeFilter === 'NEVER') return !d.lastVisitDate;
+                if (doctorTimeFilter === 'VISITED') return !!d.lastVisitDate;
+                
+                if (!d.lastVisitDate) return false;
+                const visitDate = new Date(d.lastVisitDate + 'T12:00:00');
+                const diffTime = Math.abs(now.getTime() - visitDate.getTime());
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                if (doctorTimeFilter === '3M') return diffDays <= 90;
+                if (doctorTimeFilter === '6M') return diffDays <= 180;
+                if (doctorTimeFilter === '12M') return diffDays <= 365;
+                
+                return true;
+            });
+        }
+
+        // 4. Sorting
+        list.sort((a, b) => {
+            if (doctorSort === 'NAME') return a.name.localeCompare(b.name);
+            
+            const dateA = a.lastVisitDate ? new Date(a.lastVisitDate).getTime() : 0;
+            const dateB = b.lastVisitDate ? new Date(b.lastVisitDate).getTime() : 0;
+
+            if (doctorSort === 'DATE_DESC') return dateB - dateA; // Newest first
+            if (doctorSort === 'DATE_ASC') {
+                // If never visited (0), put first? or last? Usually "oldest visit" implies finding who needs visit.
+                // So: Never visited (0) -> Oldest Date -> Newest Date
+                if (dateA === 0 && dateB !== 0) return -1;
+                if (dateB === 0 && dateA !== 0) return 1;
+                return dateA - dateB;
+            }
+            return 0;
+        });
+
+        return list;
+    }, [filteredDoctors, selectedSpecialty, doctorSearchText, doctorTimeFilter, doctorSort]);
 
     const sortedHospitals = useMemo(() => {
         return [...filteredHospitals].sort((a,b) => a.name.localeCompare(b.name));
@@ -789,14 +877,6 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
                 <div>
                     {view === 'doctors' && (
                         <div className="flex gap-2">
-                            <select 
-                                className={`p-2.5 rounded-xl text-xs font-bold border outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50 border-gray-200 text-gray-700'}`}
-                                value={selectedSpecialty}
-                                onChange={e => setSelectedSpecialty(e.target.value)}
-                            >
-                                <option value="ALL">Todas Especialidades</option>
-                                {availableSpecialties.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
                             <Button onClick={() => { setEditingDoctor(undefined); setIsDoctorModalOpen(true); }} className="rounded-xl shadow-lg bg-teal-600 hover:bg-teal-700 text-white">+ Novo Médico</Button>
                         </div>
                     )}
@@ -820,28 +900,113 @@ export const ColihPage: React.FC<{ state: AppState, onUpdateState: (s: AppState)
 
             {view === 'doctors' && (
                 <>
-                    <DoctorStats doctors={filteredDoctors} isHospitalMode={isHospitalMode} />
+                    <DoctorStats 
+                        doctors={filteredDoctors} 
+                        isHospitalMode={isHospitalMode} 
+                        activeFilter={doctorTimeFilter}
+                        onFilterSelect={(f) => setDoctorTimeFilter(f as any)}
+                    />
+                    
+                    {/* Barra de Ferramentas de Filtro */}
+                    <div className="flex flex-col md:flex-row gap-3 mb-4">
+                        <div className="flex-grow relative">
+                            <input 
+                                type="text" 
+                                placeholder="Buscar médico..." 
+                                className={`w-full p-3 pl-10 rounded-xl border outline-none text-sm ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200'}`}
+                                value={doctorSearchText}
+                                onChange={e => setDoctorSearchText(e.target.value)}
+                            />
+                            <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        </div>
+                        
+                        <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0 custom-scrollbar">
+                            <select 
+                                className={`p-3 rounded-xl text-xs font-bold border outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-700'}`}
+                                value={selectedSpecialty}
+                                onChange={e => setSelectedSpecialty(e.target.value)}
+                            >
+                                <option value="ALL">Todas Especialidades</option>
+                                {availableSpecialties.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+
+                            <select 
+                                className={`p-3 rounded-xl text-xs font-bold border outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-700'}`}
+                                value={doctorTimeFilter}
+                                onChange={e => setDoctorTimeFilter(e.target.value as any)}
+                            >
+                                <option value="ALL">Todos os Status</option>
+                                <option value="VISITED">Visitados (Geral)</option>
+                                <option value="NEVER">Nunca Visitados</option>
+                                <option value="3M">Visitados em 3 meses</option>
+                                <option value="6M">Visitados em 6 meses</option>
+                                <option value="12M">Visitados em 12 meses</option>
+                            </select>
+
+                            <select 
+                                className={`p-3 rounded-xl text-xs font-bold border outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-700'}`}
+                                value={doctorSort}
+                                onChange={e => setDoctorSort(e.target.value as any)}
+                            >
+                                <option value="NAME">Nome (A-Z)</option>
+                                <option value="DATE_DESC">Visita Mais Recente</option>
+                                <option value="DATE_ASC">Visita Mais Antiga</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {sortedDoctors.map(doc => (
-                            <div key={doc.id} className={`p-5 rounded-2xl border flex flex-col justify-between group ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'}`}>
-                                <div>
-                                    <div className="flex justify-between items-start">
-                                        <h3 className={`font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{doc.name}</h3>
-                                        <button onClick={() => { setEditingDoctor(doc); setIsDoctorModalOpen(true); }} className="text-teal-500 hover:text-teal-600"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
+                        {processedDoctors.map(doc => {
+                            // Cálculo de dias desde a última visita
+                            const lastVisitDate = doc.lastVisitDate ? new Date(doc.lastVisitDate + 'T12:00:00') : null;
+                            const diffDays = lastVisitDate 
+                                ? Math.floor((new Date().getTime() - lastVisitDate.getTime()) / (1000 * 3600 * 24)) 
+                                : 999;
+                            
+                            let visitStatusColor = isHospitalMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500';
+                            if (diffDays <= 90) visitStatusColor = 'bg-green-100 text-green-700 border-green-200';
+                            else if (diffDays <= 180) visitStatusColor = 'bg-yellow-100 text-yellow-700 border-yellow-200';
+                            else visitStatusColor = 'bg-red-100 text-red-700 border-red-200';
+
+                            return (
+                                <div key={doc.id} className={`p-5 rounded-2xl border flex flex-col justify-between group ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'}`}>
+                                    <div>
+                                        <div className="flex justify-between items-start">
+                                            <h3 className={`font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{doc.name}</h3>
+                                            <button onClick={() => { setEditingDoctor(doc); setIsDoctorModalOpen(true); }} className="text-teal-500 hover:text-teal-600"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
+                                        </div>
+                                        <p className="text-xs text-teal-600 font-bold uppercase tracking-wider mb-2">{doc.specialty || 'Clínico Geral'}</p>
+                                        
+                                        {/* Informações de Contato */}
+                                        <div className="space-y-1 text-xs text-gray-500 mb-3">
+                                            <p>{doc.hospitalIds ? filteredHospitals.filter(h => doc.hospitalIds?.includes(h.id)).map(h => h.name).join(', ') : ''}</p>
+                                            <p>{doc.city} {doc.regional ? `(${doc.regional})` : ''}</p>
+                                            {doc.phone && <p>📞 {doc.phone}</p>}
+                                        </div>
+
+                                        {/* Badge de Última Visita */}
+                                        <div className={`flex items-center gap-2 p-2 rounded-lg border ${visitStatusColor} ${isHospitalMode && diffDays > 180 ? 'bg-red-900/20 text-red-400 border-red-900/50' : ''}`}>
+                                            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                            <div className="flex flex-col">
+                                                <span className="text-[9px] font-black uppercase tracking-widest opacity-70">Última Visita</span>
+                                                <span className="text-[10px] font-bold">
+                                                    {lastVisitDate ? lastVisitDate.toLocaleDateString() : 'NUNCA VISITADO'}
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <p className="text-xs text-teal-600 font-bold uppercase tracking-wider mb-2">{doc.specialty || 'Clínico Geral'}</p>
-                                    <div className="space-y-1 text-xs text-gray-500">
-                                        <p>{doc.hospitalIds ? filteredHospitals.filter(h => doc.hospitalIds?.includes(h.id)).map(h => h.name).join(', ') : ''}</p>
-                                        <p>{doc.city} {doc.regional ? `(${doc.regional})` : ''}</p>
-                                        {doc.phone && <p>📞 {doc.phone}</p>}
+                                    <div className="mt-4 pt-4 border-t border-gray-200/10 flex justify-between items-center">
+                                        <button onClick={() => { setVisitDoctor(doc); setIsVisitModalOpen(true); }} className={`text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg border transition-all ${isHospitalMode ? 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-teal-50 hover:text-teal-600'}`}>Registrar Visita</button>
+                                        <button onClick={() => { setAutoSelectForPresentation(doc.id); setIsPresentationModalOpen(true); }} className={`text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg border transition-all ${isHospitalMode ? 'bg-purple-900/20 border-purple-800 text-purple-300' : 'bg-purple-50 border-purple-100 text-purple-600'}`}>Apresentação</button>
                                     </div>
                                 </div>
-                                <div className="mt-4 pt-4 border-t border-gray-200/10 flex justify-between items-center">
-                                    <button onClick={() => { setVisitDoctor(doc); setIsVisitModalOpen(true); }} className={`text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg border transition-all ${isHospitalMode ? 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-teal-50 hover:text-teal-600'}`}>Registrar Visita</button>
-                                    <button onClick={() => { setAutoSelectForPresentation(doc.id); setIsPresentationModalOpen(true); }} className={`text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg border transition-all ${isHospitalMode ? 'bg-purple-900/20 border-purple-800 text-purple-300' : 'bg-purple-50 border-purple-100 text-purple-600'}`}>Apresentação</button>
-                                </div>
+                            );
+                        })}
+                        {processedDoctors.length === 0 && (
+                            <div className="col-span-full py-12 text-center text-gray-400">
+                                <p className="text-sm font-bold uppercase tracking-widest">Nenhum médico encontrado com os filtros atuais.</p>
                             </div>
-                        ))}
+                        )}
                     </div>
                 </>
             )}

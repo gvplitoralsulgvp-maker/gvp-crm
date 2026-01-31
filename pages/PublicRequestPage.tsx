@@ -22,6 +22,8 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
     spiritualStatus: 'Sim', // Boa condição espiritual?
     nonWitnessFamily: false, // Família que não serve a Jeová envolvida?
     hasDirectivesCard: false, // Tem cartão diretivas (DPA) preenchido?
+    hasS55: false, // Considerou S-55 (Menores)?
+    formsConsidered: false, // Considerou S-401/S-407?
     treatment: '', // Problema de saúde (modo simples)
     hospitalId: '', // Hospital
     email: '', // Endereço de e-mail
@@ -30,7 +32,7 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
     companionPhone: '', // Contato do Acompanhante (Telefone)
     localElder: '', // Nome do Ancião de Congregação
     elderPhone: '', // Contato do Ancião de Congregação
-    requestDate: new Date().toLocaleString('sv').slice(0, 16).replace(' ', 'T'), // Data/Hora do Contato (Formato ISO local para input)
+    requestDate: new Date().toLocaleString('sv').slice(0, 16).replace(' ', 'T'), // Data/Hora do Contato
     
     // Campos Extras (mantidos hidden ou default para compatibilidade)
     gender: '',
@@ -45,7 +47,6 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
     notes: '',
     needsAccommodation: false,
     agentsNotified: false,
-    hasS55: false,
     isIsolation: false,
     isolationType: ''
   });
@@ -80,6 +81,8 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
         spiritualStatus: formData.spiritualStatus,
         nonWitnessFamily: formData.nonWitnessFamily,
         hasDirectivesCard: formData.hasDirectivesCard,
+        hasS55: formData.hasS55,
+        formsConsidered: formData.formsConsidered,
         treatment: formData.treatment || 'Problema de saúde não especificado',
         hospitalId: formData.hospitalId,
         hospitalName: hospitalNameDisplay,
@@ -106,8 +109,6 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
         isExternalRequest: true,
         needsAccommodation: formData.needsAccommodation,
         agentsNotified: formData.agentsNotified,
-        formsConsidered: false, 
-        hasS55: formData.hasS55,
         isIsolation: formData.isIsolation,
         isolationType: formData.isolationType
       };
@@ -315,6 +316,36 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
                         <label className="flex items-center gap-2 cursor-pointer">
                             <input type="radio" name="dpa" checked={formData.hasDirectivesCard === false} onChange={() => setFormData({...formData, hasDirectivesCard: false})} className="w-5 h-5 text-blue-600" />
                             <span className="text-sm font-bold text-gray-700">Não / Não sei</span>
+                        </label>
+                    </div>
+                </div>
+
+                {/* NOVO: Considerou S-55? */}
+                <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Considerou o formulário S-55 (Menores)?</label>
+                    <div className="flex gap-6 p-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="s55" checked={formData.hasS55 === true} onChange={() => setFormData({...formData, hasS55: true})} className="w-5 h-5 text-blue-600" />
+                            <span className="text-sm font-bold text-gray-700">Sim</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="s55" checked={formData.hasS55 === false} onChange={() => setFormData({...formData, hasS55: false})} className="w-5 h-5 text-blue-600" />
+                            <span className="text-sm font-bold text-gray-700">Não / Não se aplica</span>
+                        </label>
+                    </div>
+                </div>
+
+                {/* NOVO: Considerou S-401, S-407? */}
+                <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Considerou S-401 ou S-407 (Grávidas)?</label>
+                    <div className="flex gap-6 p-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="s401" checked={formData.formsConsidered === true} onChange={() => setFormData({...formData, formsConsidered: true})} className="w-5 h-5 text-blue-600" />
+                            <span className="text-sm font-bold text-gray-700">Sim</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="s401" checked={formData.formsConsidered === false} onChange={() => setFormData({...formData, formsConsidered: false})} className="w-5 h-5 text-blue-600" />
+                            <span className="text-sm font-bold text-gray-700">Não / Não se aplica</span>
                         </label>
                     </div>
                 </div>
