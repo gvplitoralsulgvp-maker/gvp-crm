@@ -97,17 +97,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
 
   // --- ATTENDANCE CHECK LOGIC (COM JANELA DE HORÁRIO 1h antes até 8h depois) ---
   useEffect(() => {
-      if (!state.currentUser || !state.currentUser.isColih) return;
+      if (!state.currentUser) return;
 
       const now = new Date();
       // Ajuste para garantir comparação correta com string YYYY-MM-DD local
       const offset = now.getTimezoneOffset() * 60000;
       const localTodayStr = new Date(now.getTime() - offset).toISOString().split('T')[0];
       
-      // Find events for TODAY that are for COLIH or ALL
+      // Find events for TODAY that target the user
       const relevantEvent = state.events.find(e => 
           e.date === localTodayStr && 
-          (e.targetGroup === 'COLIH' || e.targetGroup === 'ALL')
+          (e.targetGroup === 'ALL' || 
+           (e.targetGroup === 'COLIH' && state.currentUser?.isColih) || 
+           (e.targetGroup === 'GVP' && !state.currentUser?.isColih))
       );
 
       if (relevantEvent) {
@@ -295,19 +297,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       return state.socialWorkerVisits.filter((v: SocialWorkerVisit) => v.memberIds.includes(state.currentUser!.id) && v.status !== 'FINISHED').sort((a: SocialWorkerVisit, b: SocialWorkerVisit) => a.date.localeCompare(b.date));
   }, [state.socialWorkerVisits, state.currentUser]);
 
-  // --- FILTRO DE EVENTOS ---
+  // --- FILTRO DE EVENTOS (Fixed) ---
   const myEvents = useMemo(() => {
-      const today = new Date().toISOString().split('T')[0];
-      const isColih = state.currentUser?.isColih;
-      const isAdmin = state.currentUser?.role === UserRole.ADMIN;
+      if (!state.currentUser) return [];
+
+      // Ajuste de Fuso Horário para 'Hoje' (Local)
+      const now = new Date();
+      const offset = now.getTimezoneOffset() * 60000;
+      const localTodayStr = new Date(now.getTime() - offset).toISOString().split('T')[0];
       
-      return state.events.filter((e: AppEvent) => e.date >= today).filter((e: AppEvent) => {
-          if (isAdmin || isCoordinator) return true;
-          if (e.targetGroup === 'ALL') return true;
-          if (isColih && e.targetGroup === 'COLIH') return true;
-          if (!isColih && e.targetGroup === 'GVP') return true;
-          return false;
-      }).sort((a: AppEvent, b: AppEvent) => a.date.localeCompare(b.date)).slice(0, 3);
+      const isColih = state.currentUser.isColih;
+      const isAdmin = state.currentUser.role === UserRole.ADMIN;
+      
+      return state.events
+          .filter((e: AppEvent) => e.date >= localTodayStr) // Mostra eventos de hoje em diante (Local Time)
+          .filter((e: AppEvent) => {
+              if (isAdmin || isCoordinator) return true;
+              if (e.targetGroup === 'ALL' || e.targetGroup === 'GVP') return true; // Todos veem GVP e ALL
+              if (isColih && e.targetGroup === 'COLIH') return true; // Só COLIH vê COLIH
+              return false;
+          })
+          .sort((a: AppEvent, b: AppEvent) => a.date.localeCompare(b.date))
+          .slice(0, 3);
   }, [state.events, state.currentUser, isCoordinator]);
 
   // Lógica refatorada: Separação Alta Médica vs Arquivamento HLC-7

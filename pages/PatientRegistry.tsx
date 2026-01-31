@@ -33,9 +33,10 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
   const activePatients = useMemo(() => {
     let list = state.patients.filter(p => p.active);
     
-    // Filter by Regional for Coordinators
-    if (state.currentUser?.role === UserRole.COORDINATOR && state.currentUser.regional) {
-        list = list.filter(p => !p.regional || p.regional === state.currentUser?.regional);
+    // Filter by Regional for Coordinators (Safely check currentUser existence)
+    if (state.currentUser && state.currentUser.role === UserRole.COORDINATOR && state.currentUser.regional) {
+        const userRegion = state.currentUser.regional;
+        list = list.filter(p => !p.regional || p.regional === userRegion);
     }
 
     if (searchTerm) {
@@ -48,8 +49,9 @@ export const PatientRegistry: React.FC<PatientRegistryProps> = ({ state, onUpdat
 
   const availableHospitals = useMemo(() => {
       let list = state.hospitals;
-      if (state.currentUser?.role === UserRole.COORDINATOR && state.currentUser.regional) {
-          list = list.filter(h => !h.regional || h.regional === state.currentUser.regional);
+      if (state.currentUser && state.currentUser.role === UserRole.COORDINATOR && state.currentUser.regional) {
+          const userRegion = state.currentUser.regional;
+          list = list.filter(h => !h.regional || h.regional === userRegion);
       }
       return list.sort((a,b) => a.name.localeCompare(b.name));
   }, [state.hospitals, state.currentUser]);
