@@ -85,66 +85,70 @@ export const ResourcesPage: React.FC<{ state: AppState, onUpdateState: (s: AppSt
       });
   };
 
-  // SQL ATUALIZADO: Inclui correção da tabela doctors (hospital_ids)
+  // SQL ATUALIZADO V5 (Includes is_trainer explicitly and fix RLS)
   const sqlCode = `
 -- =======================================================
--- SCRIPT DE CORREÇÃO ESTRUTURAL (V3)
--- Execute para corrigir erros "Column not found"
+-- SCRIPT DE CORREÇÃO GERAL (V5)
 -- =======================================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. TABELA DE MÉDICOS (Correção do erro PGRST204)
-CREATE TABLE IF NOT EXISTS public.doctors (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL,
-    specialty TEXT,
-    city TEXT,
-    regional TEXT,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
+-- 1. CORREÇÃO TABELA MEMBERS
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS is_trainer BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS has_seen_onboarding BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS colih_classification TEXT;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS is_colih BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS regional TEXT;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS city TEXT;
 
--- Adiciona colunas que podem estar faltando
+-- 2. CORREÇÃO TABELA DOCTORS
 ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS hospital_ids TEXT[] DEFAULT '{}';
 ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS last_visit_date DATE;
 ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS cooperation_level TEXT;
 ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS is_consultant BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS treats_pediatric BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS responsible_member_name TEXT;
-ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS address TEXT;
-ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS phone TEXT;
-ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS email TEXT;
 
--- 2. TABELAS AUXILIARES
+-- 3. CORREÇÃO OUTRAS TABELAS
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS hospital_id UUID;
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS doctor_id UUID;
-ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS hlc38_presented BOOLEAN DEFAULT FALSE;
-ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS collaborator_interest BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'SCHEDULED';
 
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS regional TEXT;
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS is_external_request BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS request_date TIMESTAMPTZ;
 
--- 3. PERMISSÕES (RLS) - Crucial para o App funcionar sem erro 401/403
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS attendees TEXT[] DEFAULT '{}';
+
+-- 4. HABILITAR RLS E CRIAR POLÍTICAS PERMISSIVAS
+-- (Isso corrige erros 401/403 de permissão)
+
+-- Members
+ALTER TABLE public.members ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow All Members" ON public.members;
+CREATE POLICY "Allow All Members" ON public.members FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+
+-- Events
+ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow All Events" ON public.events;
+CREATE POLICY "Allow All Events" ON public.events FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+
+-- Doctors
 ALTER TABLE public.doctors ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.patients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
-
--- Remove políticas antigas para evitar conflito
 DROP POLICY IF EXISTS "Allow All Doctors" ON public.doctors;
-DROP POLICY IF EXISTS "Allow All Patients" ON public.patients;
-DROP POLICY IF EXISTS "Allow All Logs" ON public.logs;
-DROP POLICY IF EXISTS "Allow All Notifications" ON public.notifications;
-
--- Recria políticas permissivas
 CREATE POLICY "Allow All Doctors" ON public.doctors FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Allow All Patients" ON public.patients FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Allow All Logs" ON public.logs FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Allow All Notifications" ON public.notifications FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
 
--- 4. STORAGE (Uploads)
+-- Patients
+ALTER TABLE public.patients ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow All Patients" ON public.patients;
+CREATE POLICY "Allow All Patients" ON public.patients FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+
+-- Visits
+ALTER TABLE public.visits ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow All Visits" ON public.visits;
+CREATE POLICY "Allow All Visits" ON public.visits FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+
+-- 5. STORAGE
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('resources', 'resources', true, 52428800, null)
 ON CONFLICT (id) DO UPDATE SET public = true;

@@ -60,7 +60,7 @@ export const FinishVisitModal: React.FC<FinishVisitModalProps> = ({ isOpen, onCl
   const isFormValid = generalNote.trim().length >= 3;
 
   return createPortal(
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-fade-in flex flex-col max-h-[95vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className="bg-green-600 px-6 py-4 flex justify-between items-center shrink-0">
           <div>
@@ -126,20 +126,32 @@ export const FinishVisitModal: React.FC<FinishVisitModalProps> = ({ isOpen, onCl
                       {outcome.performed ? (
                         <div className="space-y-4 animate-fade-in">
                           <div className="grid grid-cols-2 gap-3">
-                             <label className={`flex items-center gap-2 p-2 rounded-lg border text-[10px] font-bold uppercase transition-all ${outcome.hasDirectivesCard ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
+                             <label className={`flex items-center gap-2 p-2 rounded-lg border text-[10px] font-bold uppercase transition-all cursor-pointer ${outcome.hasDirectivesCard ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
                                 <input type="checkbox" className="hidden" checked={outcome.hasDirectivesCard} onChange={e => updateOutcome(patient.id, { hasDirectivesCard: e.target.checked })} />
+                                <div className={`w-3 h-3 border rounded-sm flex items-center justify-center ${outcome.hasDirectivesCard ? 'bg-white' : 'bg-white'}`}>
+                                    {outcome.hasDirectivesCard && <div className="w-1.5 h-1.5 bg-blue-600 rounded-[1px]"></div>}
+                                </div>
                                 Diretivas
                              </label>
-                             <label className={`flex items-center gap-2 p-2 rounded-lg border text-[10px] font-bold uppercase transition-all ${outcome.agentsNotified ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
+                             <label className={`flex items-center gap-2 p-2 rounded-lg border text-[10px] font-bold uppercase transition-all cursor-pointer ${outcome.agentsNotified ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
                                 <input type="checkbox" className="hidden" checked={outcome.agentsNotified} onChange={e => updateOutcome(patient.id, { agentsNotified: e.target.checked })} />
+                                <div className={`w-3 h-3 border rounded-sm flex items-center justify-center ${outcome.agentsNotified ? 'bg-white' : 'bg-white'}`}>
+                                    {outcome.agentsNotified && <div className="w-1.5 h-1.5 bg-blue-600 rounded-[1px]"></div>}
+                                </div>
                                 Procurador
                              </label>
-                             <label className={`flex items-center gap-2 p-2 rounded-lg border text-[10px] font-bold uppercase transition-all ${outcome.hasS55 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
+                             <label className={`flex items-center gap-2 p-2 rounded-lg border text-[10px] font-bold uppercase transition-all cursor-pointer ${outcome.hasS55 ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
                                 <input type="checkbox" className="hidden" checked={outcome.hasS55} onChange={e => updateOutcome(patient.id, { hasS55: e.target.checked })} />
+                                <div className={`w-3 h-3 border rounded-sm flex items-center justify-center ${outcome.hasS55 ? 'bg-white' : 'bg-white'}`}>
+                                    {outcome.hasS55 && <div className="w-1.5 h-1.5 bg-blue-600 rounded-[1px]"></div>}
+                                </div>
                                 S-55
                              </label>
-                             <label className={`flex items-center gap-2 p-2 rounded-lg border text-[10px] font-bold uppercase transition-all ${outcome.formsConsidered ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
+                             <label className={`flex items-center gap-2 p-2 rounded-lg border text-[10px] font-bold uppercase transition-all cursor-pointer ${outcome.formsConsidered ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
                                 <input type="checkbox" className="hidden" checked={outcome.formsConsidered} onChange={e => updateOutcome(patient.id, { formsConsidered: e.target.checked })} />
+                                <div className={`w-3 h-3 border rounded-sm flex items-center justify-center ${outcome.formsConsidered ? 'bg-white' : 'bg-white'}`}>
+                                    {outcome.formsConsidered && <div className="w-1.5 h-1.5 bg-blue-600 rounded-[1px]"></div>}
+                                </div>
                                 S-401/407
                              </label>
                           </div>

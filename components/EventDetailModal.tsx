@@ -1,17 +1,19 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { AppEvent } from '../types';
+import { AppEvent, Member } from '../types';
 import { Button } from './Button';
 
 interface EventDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   event: AppEvent | null;
+  currentUser?: Member | null;
+  onRegisterAttendance?: (event: AppEvent) => void;
   isHospitalMode?: boolean;
 }
 
-export const EventDetailModal: React.FC<EventDetailModalProps> = ({ isOpen, onClose, event, isHospitalMode }) => {
+export const EventDetailModal: React.FC<EventDetailModalProps> = ({ isOpen, onClose, event, currentUser, onRegisterAttendance, isHospitalMode }) => {
   if (!isOpen || !event) return null;
 
   const handleOpenMap = (service: 'google' | 'waze') => {
@@ -22,6 +24,18 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ isOpen, onCl
       : `https://waze.com/ul?q=${query}`;
     window.open(url, '_blank');
   };
+
+  // Verificação de Data Local para o botão de presença
+  const checkIsToday = () => {
+      const now = new Date();
+      // Ajuste de fuso horário simples para garantir comparação com YYYY-MM-DD
+      const offset = now.getTimezoneOffset() * 60000;
+      const localTodayStr = new Date(now.getTime() - offset).toISOString().split('T')[0];
+      return event.date === localTodayStr;
+  };
+
+  const isToday = checkIsToday();
+  const hasAttended = currentUser && event.attendees?.includes(currentUser.id);
 
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-fade-in">
@@ -51,6 +65,26 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ isOpen, onCl
                     </p>
                 )}
             </div>
+
+            {/* AÇÃO DE PRESENÇA */}
+            {isToday && onRegisterAttendance && !hasAttended && (
+                <div className={`p-4 rounded-xl border-2 flex flex-col items-center gap-2 animate-pulse ${isHospitalMode ? 'bg-teal-900/20 border-teal-500/50' : 'bg-teal-50 border-teal-200'}`}>
+                    <p className={`text-xs font-bold uppercase ${isHospitalMode ? 'text-teal-400' : 'text-teal-700'}`}>Este evento é hoje!</p>
+                    <Button 
+                        onClick={() => onRegisterAttendance(event)}
+                        className="w-full bg-teal-600 hover:bg-teal-700 text-white shadow-lg"
+                    >
+                        Registrar Presença Agora
+                    </Button>
+                </div>
+            )}
+
+            {hasAttended && (
+                <div className={`p-3 rounded-xl border flex items-center justify-center gap-2 ${isHospitalMode ? 'bg-green-900/20 border-green-800 text-green-400' : 'bg-green-50 border-green-200 text-green-700'}`}>
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                    <span className="text-xs font-bold uppercase">Presença Confirmada</span>
+                </div>
+            )}
 
             {event.description && (
                 <div className={`p-4 rounded-xl border ${isHospitalMode ? 'bg-black/20 border-gray-700 text-gray-300' : 'bg-gray-50 border-gray-100 text-gray-600'}`}>

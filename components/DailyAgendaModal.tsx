@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { VisitRoute, VisitSlot, Member, Patient, UserRole, Hospital } from '../types';
+import { VisitRoute, VisitSlot, Member, Patient, UserRole, Hospital, AppEvent } from '../types';
 import { Button } from './Button';
 
 interface DailyAgendaModalProps {
@@ -19,10 +19,11 @@ interface DailyAgendaModalProps {
   onReportClick: (slot: VisitSlot) => void;
   onPatientClick: (patient: Patient) => void;
   hospitals?: Hospital[];
+  events?: AppEvent[]; // Nova prop para receber eventos
 }
 
 export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
-  isOpen, onClose, date, routes, visits, members, patients, currentUser, isPrivacyMode, isHospitalMode, onRouteClick, onReportClick, onPatientClick, hospitals
+  isOpen, onClose, date, routes, visits, members, patients, currentUser, isPrivacyMode, isHospitalMode, onRouteClick, onReportClick, onPatientClick, hospitals, events = []
 }) => {
   if (!isOpen) return null;
 
@@ -48,6 +49,9 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
+  // Filtrar eventos para este dia
+  const dayEvents = events.filter(e => e.date === date);
+
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
@@ -60,6 +64,29 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
         </div>
 
         <div className={`flex-grow overflow-y-auto p-4 md:p-6 space-y-4 custom-scrollbar ${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'}`}>
+          
+          {/* SEÇÃO DE EVENTOS DO DIA */}
+          {dayEvents.length > 0 && (
+              <div className="mb-4 space-y-2">
+                  <h4 className={`text-[10px] font-black uppercase tracking-widest ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>Eventos Agendados</h4>
+                  {dayEvents.map(e => (
+                     <div key={e.id} className={`p-4 rounded-xl border flex justify-between items-center shadow-sm ${isHospitalMode ? 'bg-indigo-900/10 border-indigo-900/30' : 'bg-indigo-50 border-indigo-100'}`}>
+                        <div>
+                           <div className="flex items-center gap-2">
+                               <h4 className={`text-sm font-bold ${isHospitalMode ? 'text-indigo-300' : 'text-indigo-900'}`}>{e.title}</h4>
+                               {e.time && <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${isHospitalMode ? 'bg-indigo-900/50 text-indigo-300' : 'bg-indigo-100 text-indigo-700'}`}>{e.time}</span>}
+                           </div>
+                           <p className={`text-xs mt-1 ${isHospitalMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{e.location || 'Local não informado'}</p>
+                        </div>
+                        <div className={`px-2 py-1 rounded text-[9px] font-black uppercase ${isHospitalMode ? 'bg-indigo-900/50 text-indigo-400' : 'bg-white text-indigo-600 shadow-sm'}`}>
+                            {e.targetGroup === 'ALL' ? 'Geral' : e.targetGroup}
+                        </div>
+                     </div>
+                  ))}
+              </div>
+          )}
+
+          {/* SEÇÃO DE ROTAS */}
           {routes.filter(r => r.active).map(route => {
             const slot = visits.find(v => v.routeId === route.id && v.date === date);
             const memberIds = slot?.memberIds || [];

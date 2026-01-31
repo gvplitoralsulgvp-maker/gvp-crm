@@ -75,7 +75,9 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
               <div className="bg-purple-100 border border-purple-200 p-4 rounded-xl text-purple-800 flex flex-col gap-2">
                   <p className="font-bold text-sm">🏥 Paciente com Alta Médica Informada</p>
                   <p className="text-xs">O paciente já saiu do hospital. A solicitação GVP foi encerrada automaticamente.</p>
-                  <p className="text-xs font-bold mt-1">{isColihUser ? 'Ação Pendente: Confirmar HLC-7' : 'Aguardando fechamento administrativo pela COLIH.'}</p>
+                  <p className="text-xs font-bold mt-1 text-red-600 bg-red-100 p-1 rounded border border-red-200 text-center">
+                      {isColihUser ? 'AÇÃO NECESSÁRIA: Enviar HLC-7 e Arquivar' : 'Pendente: Envio de HLC-7 pela COLIH.'}
+                  </p>
               </div>
           )}
 
@@ -101,7 +103,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                     onClick={() => { onDischarge(patient.id, patient.name); onClose(); }}
                     className="bg-green-600 hover:bg-green-700 text-white text-[9px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg shadow-sm"
                 >
-                    Informar Alta
+                    Informar Alta Hospitalar
                 </button>
             )}
           </div>

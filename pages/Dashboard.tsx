@@ -95,7 +95,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const isCoordinator = state.currentUser?.role === UserRole.COORDINATOR;
   const userRegional = state.currentUser?.regional;
 
-  // --- ATTENDANCE CHECK LOGIC (COM JANELA DE HORÁRIO 1h antes até 8h depois) ---
+  // --- ATTENDANCE CHECK LOGIC ---
   useEffect(() => {
       if (!state.currentUser) return;
 
@@ -104,45 +104,48 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       const offset = now.getTimezoneOffset() * 60000;
       const localTodayStr = new Date(now.getTime() - offset).toISOString().split('T')[0];
       
-      // Find events for TODAY that target the user
-      const relevantEvent = state.events.find(e => 
-          e.date === localTodayStr && 
-          (e.targetGroup === 'ALL' || 
-           (e.targetGroup === 'COLIH' && state.currentUser?.isColih) || 
-           (e.targetGroup === 'GVP' && !state.currentUser?.isColih))
-      );
+      // Encontra o primeiro evento relevante que AINDA NÃO foi respondido
+      const relevantEvent = state.events.find(e => {
+          // 1. Verifica data e público alvo
+          const isTarget = e.date === localTodayStr && 
+                           (e.targetGroup === 'ALL' || 
+                           (e.targetGroup === 'COLIH' && state.currentUser?.isColih) || 
+                           (e.targetGroup === 'GVP' && !state.currentUser?.isColih));
+          if (!isTarget) return false;
+
+          // 2. Verifica se já respondeu ou dispensou
+          const hasAlreadyAttended = e.attendees?.includes(state.currentUser!.id);
+          const hasDismissed = localStorage.getItem(`attendance_dismissed_${e.id}`) === 'true';
+
+          return !hasAlreadyAttended && !hasDismissed;
+      });
 
       if (relevantEvent) {
-          const hasAlreadyAttended = relevantEvent.attendees?.includes(state.currentUser.id);
-          const hasDismissed = localStorage.getItem(`attendance_dismissed_${relevantEvent.id}`) === 'true';
+          // Lógica de Janela de Tempo
+          let shouldShow = true;
 
-          if (!hasAlreadyAttended && !hasDismissed) {
-              // Lógica de Janela de Tempo
-              let shouldShow = true;
+          if (relevantEvent.time) {
+              try {
+                  const [hours, minutes] = relevantEvent.time.split(':').map(Number);
+                  
+                  const eventTime = new Date(now);
+                  eventTime.setHours(hours, minutes, 0, 0);
 
-              if (relevantEvent.time) {
-                  try {
-                      const [hours, minutes] = relevantEvent.time.split(':').map(Number);
-                      
-                      const eventTime = new Date(now);
-                      eventTime.setHours(hours, minutes, 0, 0);
+                  // Janela: Mostra o dia todo até 8 horas DEPOIS do início
+                  const windowEnd = new Date(eventTime.getTime() + 8 * 60 * 60 * 1000); 
 
-                      const windowStart = new Date(eventTime.getTime() - 60 * 60 * 1000); // 1h antes
-                      const windowEnd = new Date(eventTime.getTime() + 8 * 60 * 60 * 1000); // 8h depois
-
-                      if (now < windowStart || now > windowEnd) {
-                          shouldShow = false;
-                      }
-                  } catch (e) {
-                      console.warn("Erro ao processar horário do evento para janela de presença", e);
-                      // Se der erro no parse ou não tiver horário, assume que é o dia todo, então true
-                      shouldShow = true;
+                  // Se já passou muito do horário (8h), não mostra mais
+                  if (now > windowEnd) {
+                      shouldShow = false;
                   }
+              } catch (e) {
+                  console.warn("Erro ao processar horário do evento", e);
+                  shouldShow = true;
               }
+          }
 
-              if (shouldShow) {
-                  setAttendanceEvent(relevantEvent);
-              }
+          if (shouldShow) {
+              setAttendanceEvent(relevantEvent);
           }
       }
   }, [state.events, state.currentUser]);
@@ -297,28 +300,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       return state.socialWorkerVisits.filter((v: SocialWorkerVisit) => v.memberIds.includes(state.currentUser!.id) && v.status !== 'FINISHED').sort((a: SocialWorkerVisit, b: SocialWorkerVisit) => a.date.localeCompare(b.date));
   }, [state.socialWorkerVisits, state.currentUser]);
 
-  // --- FILTRO DE EVENTOS (Fixed) ---
+  // --- FILTRO DE EVENTOS ---
   const myEvents = useMemo(() => {
       if (!state.currentUser) return [];
 
-      // Ajuste de Fuso Horário para 'Hoje' (Local)
-      const now = new Date();
-      const offset = now.getTimezoneOffset() * 60000;
-      const localTodayStr = new Date(now.getTime() - offset).toISOString().split('T')[0];
+      // FIX: Gerar data local baseada no navegador, independente do fuso horário UTC do servidor/ISO
+      // Garante que eventos de "hoje" apareçam até o último minuto do dia local
+      const d = new Date();
+      const localTodayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       
       const isColih = state.currentUser.isColih;
       const isAdmin = state.currentUser.role === UserRole.ADMIN;
       
       return state.events
-          .filter((e: AppEvent) => e.date >= localTodayStr) // Mostra eventos de hoje em diante (Local Time)
+          .filter((e: AppEvent) => e.date >= localTodayStr) // Comparação correta de string YYYY-MM-DD
           .filter((e: AppEvent) => {
               if (isAdmin || isCoordinator) return true;
-              if (e.targetGroup === 'ALL' || e.targetGroup === 'GVP') return true; // Todos veem GVP e ALL
-              if (isColih && e.targetGroup === 'COLIH') return true; // Só COLIH vê COLIH
+              if (e.targetGroup === 'ALL' || e.targetGroup === 'GVP') return true; 
+              if (isColih && e.targetGroup === 'COLIH') return true; 
               return false;
           })
           .sort((a: AppEvent, b: AppEvent) => a.date.localeCompare(b.date))
-          .slice(0, 3);
+          .slice(0, 12); // Aumentado para 12 eventos para garantir que múltiplos não sejam ocultos
   }, [state.events, state.currentUser, isCoordinator]);
 
   // Lógica refatorada: Separação Alta Médica vs Arquivamento HLC-7
@@ -327,6 +330,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       if (!patient) return;
       const isColihUser = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
       try {
+          // Fase 2: Arquivamento Definitivo (HLC-7 Já foi preenchido)
           if (patient.isMedicalDischarge) {
               if (!isColihUser) { alert("Apenas membros da COLIH podem realizar o arquivamento definitivo (HLC-7)."); return; }
               if (window.confirm(`[PROTOCOLO COLIH]\n\nConfirma o envio do formulário HLC-7 para o caso de ${name}?\n\nIsso arquivará o paciente definitivamente.`)) {
@@ -339,7 +343,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
               }
               return;
           }
-          if (window.confirm(`Confirmar que ${name} teve ALTA MÉDICA do hospital?\n\nIsso removerá a solicitação de visita GVP, mas manterá o caso aberto para a COLIH (HLC-7).`)) {
+          
+          // Fase 1: Alta Hospitalar (Gera pendência de HLC-7)
+          // Mensagem Atualizada com Lembrete
+          if (window.confirm(`Confirmar ALTA MÉDICA de ${name}?\n\n⚠️ LEMBRETE IMPORTANTE:\nNão se esqueça de providenciar o envio do formulário HLC-7 para a Sede.\n\nO caso permanecerá aberto administrativamente até a confirmação do envio.`)) {
               const dischargedPatient = { ...patient, isMedicalDischarge: true, gvpRequestPending: false, active: true, estimatedDischargeDate: new Date().toISOString() };
               const updatedPatients = state.patients.map((p: Patient) => p.id === id ? dischargedPatient : p); 
               onUpdateState({ ...state, patients: updatedPatients });
@@ -398,8 +405,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const handleFinishVisit = async (generalNote: string, patientUpdates: any) => {
       if (!myVisitModalData || !state.currentUser) return;
       const { slot } = myVisitModalData;
-      const report = { doctorName: state.currentUser.name, notes: generalNote, followUpNeeded: false, createdAt: new Date().toISOString() };
+      
+      // LOGICA DE RELATÓRIO APRIMORADA: Agrega notas individuais
+      let finalReportNotes = generalNote;
+      const patientDetails = Object.entries(patientUpdates).map(([pid, data]: [string, any]) => {
+          const pName = state.patients.find(p => p.id === pid)?.name || 'Paciente';
+          let statusStr = data.performed ? "✅ Realizada" : `❌ Não realizada (${data.notPerformedReason})`;
+          let details = data.notes ? ` - Obs: "${data.notes}"` : "";
+          return `• ${pName}: ${statusStr}${details}`;
+      }).join('\n');
+
+      if (patientDetails) {
+          finalReportNotes += `\n\n--- Detalhes por Paciente ---\n${patientDetails}`;
+      }
+
+      const report = { doctorName: state.currentUser.name, notes: finalReportNotes, followUpNeeded: false, createdAt: new Date().toISOString() };
       const updatedSlot: VisitSlot = { ...slot, status: 'FINISHED', report };
+      
       const updatedPatients = [...state.patients];
       for (const [pid, data] of Object.entries(patientUpdates)) {
           const idx = updatedPatients.findIndex(p => p.id === pid);
@@ -483,7 +505,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
         {/* ... (MEUS AGENDAMENTOS E VISITAS SOCIAIS MANTIDOS) ... */}
         {myUpcomingVisits.length > 0 && (
             <div className={`p-6 rounded-2xl shadow-lg relative overflow-hidden ${isHospitalMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white'}`}>
-                <div className={`absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 rounded-full blur-3xl opacity-20 ${isHospitalMode ? 'bg-blue-500' : 'bg-white'}`}></div>
+                <div className={`absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 rounded-full blur-3xl opacity-20 ${isHospitalMode ? 'bg-blue-50' : 'bg-white'}`}></div>
                 <h3 className={`text-sm font-black uppercase tracking-widest mb-4 flex items-center gap-2 ${isHospitalMode ? 'text-blue-300' : 'text-blue-100'}`}>
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     Meus Agendamentos
@@ -583,6 +605,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             onReportClick={(slot) => { const route = state.routes.find((r: VisitRoute) => r.id === slot.routeId); if (route) setReportModalSlot({ slot, route }); }}
             onPatientClick={(p) => setViewingPatientId(p.id)}
             hospitals={filteredHospitals} // Using filtered Hospitals
+            events={state.events} // Pass events to the modal
         />
 
         {slotModalData && (
@@ -688,12 +711,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             />
         )}
 
-        {/* MODAL DETALHES DE EVENTO */}
+        {/* MODAL DETALHES DE EVENTO (Atualizado para permitir presença) */}
         <EventDetailModal
             isOpen={!!selectedEventDetails}
             onClose={() => setSelectedEventDetails(null)}
             event={selectedEventDetails}
             isHospitalMode={isHospitalMode}
+            currentUser={state.currentUser}
+            onRegisterAttendance={(evt) => {
+                setAttendanceEvent(evt);
+                setSelectedEventDetails(null);
+            }}
         />
 
         {/* MODAL DETALHES KPI */}
@@ -704,7 +732,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 title={
                     selectedKpiType === 'visits' ? 'Visitas Realizadas (Mês)' :
                     selectedKpiType === 'patients' ? 'Pacientes Ativos' :
-                    selectedKpiType === 'hospitals' ? 'Hospitais Cobertos (Mês)' : 'Próximos Agendamentos'
+                    selectedKpiType === 'hospitals' ? 'Hospitais Cadastrados' : 'Casos em Aberto'
                 }
                 items={detailedKpiData[selectedKpiType] || []}
                 isHospitalMode={isHospitalMode}

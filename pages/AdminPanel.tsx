@@ -104,17 +104,22 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
   // --- LOGICA TREINADORES & PRESENÇA ---
   
   const handleToggleTrainer = async (member: Member) => {
-      const updated = { ...member, isTrainer: !member.isTrainer };
+      // FIX CRÍTICO: Remover campos calculados da interface (trainingMatrix) antes de salvar no banco
+      // Isso evita o erro PGRST204 (coluna não encontrada)
+      const { visitsCount, casesCount, attendanceRate, needsHelpScore, ...cleanMember } = member as any;
+      
+      const updated = { ...cleanMember, isTrainer: !cleanMember.isTrainer };
       
       // Otimistic UI Update
-      onUpdateState({ ...state, members: state.members.map(m => m.id === member.id ? updated : m) });
+      onUpdateState({ ...state, members: state.members.map(m => m.id === cleanMember.id ? { ...m, isTrainer: updated.isTrainer } : m) });
 
       try {
           await atomicUpdate('members', updated);
-      } catch (err) { 
-          alert("Erro ao atualizar status de treinador."); 
+      } catch (err: any) { 
+          console.error("Erro ao atualizar treinador:", err);
+          alert(`Erro ao atualizar status de treinador: ${err.message || 'Verifique o console'}`); 
           // Revert on error
-          onUpdateState({ ...state, members: state.members.map(m => m.id === member.id ? member : m) });
+          onUpdateState({ ...state, members: state.members.map(m => m.id === cleanMember.id ? { ...m, isTrainer: !updated.isTrainer } : m) });
       }
   };
 
@@ -135,13 +140,23 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       onUpdateState({ ...state, events: state.events.map(e => e.id === eventId ? updatedEvent : e) });
       
       // Background Update
-      await atomicUpdate('events', updatedEvent);
+      try {
+          await atomicUpdate('events', updatedEvent);
+      } catch (err: any) {
+          console.error("Erro ao atualizar presença:", err);
+          alert(`Erro ao salvar presença: ${err.message}`);
+          onUpdateState({ ...state, events: state.events.map(e => e.id === eventId ? event : e) });
+      }
   };
 
   const trainingMatrix = useMemo(() => {
-      // 1. Filtrar estritamente Membros COLIH Ativos, EXCLUINDO Facilitadores (Ajudantes)
-      // Garantir que isColih === true e classificação não seja 'Facilitator'
-      let targets = state.members.filter(m => m.active && m.isColih === true && m.colihClassification !== 'Facilitator');
+      // 1. Filtrar Membros COLIH Ativos (EXCLUINDO Facilitadores e GVP)
+      // REGRA DE NEGÓCIO: Apenas membros COLIH plenos devem aparecer aqui.
+      let targets = state.members.filter(m => 
+          m.active && 
+          m.isColih === true && 
+          m.colihClassification !== 'Facilitator'
+      );
       
       if (isRegionalCoord && userRegional) {
           targets = targets.filter(m => m.regional === userRegional);
@@ -184,11 +199,9 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       }).sort((a,b) => b.needsHelpScore - a.needsHelpScore); // Quem precisa de mais ajuda no topo
   }, [state.members, state.colihVisits, state.patients, state.events, isRegionalCoord, userRegional]);
 
-  // Lista ordenada alfabeticamente para seleção de treinadores (Filtro Duplo de Segurança)
+  // Lista ordenada alfabeticamente para seleção de treinadores
   const sortedColihMembers = useMemo(() => {
-      return trainingMatrix
-        .filter(m => m.isColih === true) 
-        .sort((a,b) => a.name.localeCompare(b.name));
+      return trainingMatrix.sort((a,b) => a.name.localeCompare(b.name));
   }, [trainingMatrix]);
 
 
@@ -204,6 +217,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     }
   };
 
+  // ... (Rest of component functions remain the same)
   const handleGeocodeHospital = async () => {
     if (!editingHospital?.address) {
       alert("Digite o endereço ou CEP do hospital primeiro.");
@@ -555,10 +569,10 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className={`p-6 rounded-2xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
                       <h3 className={`text-sm font-black uppercase mb-4 ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Designar Treinadores</h3>
-                      <p className="text-xs text-gray-500 mb-4">Selecione membros experientes (apenas COLIH) para atuar no programa.</p>
+                      <p className="text-xs text-gray-500 mb-4">Selecione membros experientes (apenas COLIH plenos) para atuar no programa.</p>
                       <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-2">
                           {sortedColihMembers.length === 0 ? (
-                              <p className="text-xs text-gray-400 italic">Nenhum membro COLIH ativo encontrado.</p>
+                              <p className="text-xs text-gray-400 italic">Nenhum membro COLIH ativo elegível encontrado.</p>
                           ) : (
                               sortedColihMembers.map(m => (
                                   <label key={m.id} className={`flex items-center justify-between p-2 rounded-lg cursor-pointer ${isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
@@ -687,7 +701,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
           </div>
       )}
 
-      {/* --- ABA HOSPITAIS (Conteúdo inalterado, apenas re-renderizado para garantir integridade do arquivo) --- */}
+      {/* --- ABA HOSPITAIS (Conteúdo inalterado) --- */}
       {activeTab === 'hospitals' && (
         <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
             <div className="overflow-x-auto custom-scrollbar">

@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS public.events (
     time TEXT,
     location TEXT,
     target_group TEXT NOT NULL DEFAULT 'ALL',
-    attendees TEXT[] DEFAULT '{}', -- Lista de IDs dos presentes
+    attendees TEXT[] DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -71,9 +71,28 @@ CREATE TABLE IF NOT EXISTS public.doctors (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- ATUALIZAÇÕES ESTRUTURAIS (Colunas Novas)
-ALTER TABLE public.members ADD COLUMN IF NOT EXISTS is_trainer BOOLEAN DEFAULT FALSE; -- CORREÇÃO SOLICITADA
+-- TABELA DE MEMBROS (Garante colunas críticas)
+CREATE TABLE IF NOT EXISTS public.members (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    role TEXT DEFAULT 'MEMBER',
+    active BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ATUALIZAÇÕES ESTRUTURAIS (Colunas Novas - Execução Segura)
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS is_trainer BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.members ADD COLUMN IF NOT EXISTS has_seen_onboarding BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS colih_classification TEXT;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS is_colih BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS congregation TEXT;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS regional TEXT;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS lat NUMERIC;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS lng NUMERIC;
 
 ALTER TABLE public.events ADD COLUMN IF NOT EXISTS attendees TEXT[] DEFAULT '{}';
 
@@ -99,14 +118,32 @@ ALTER TABLE public.patients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.doctors ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.members ENABLE ROW LEVEL SECURITY; -- Garantir que members tenha RLS se necessário, ou políticas abertas
+ALTER TABLE public.members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.routes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.visits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hospitals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.colih_visits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.social_worker_visits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.city_mappings ENABLE ROW LEVEL SECURITY;
 
--- Limpeza de políticas antigas
-DROP POLICY IF EXISTS "Allow All Patients" ON public.patients;
-DROP POLICY IF EXISTS "Allow All Logs" ON public.logs;
-DROP POLICY IF EXISTS "Allow All Notifications" ON public.notifications;
-DROP POLICY IF EXISTS "Allow All Doctors" ON public.doctors;
-DROP POLICY IF EXISTS "Allow All Members" ON public.members;
+-- Limpeza de políticas antigas para evitar duplicação/conflito
+DO $$ 
+BEGIN
+    -- Drop policies if they exist (Postgres 10+ supports IF EXISTS on DROP POLICY)
+    BEGIN DROP POLICY IF EXISTS "Allow All Patients" ON public.patients; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN DROP POLICY IF EXISTS "Allow All Logs" ON public.logs; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN DROP POLICY IF EXISTS "Allow All Notifications" ON public.notifications; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN DROP POLICY IF EXISTS "Allow All Doctors" ON public.doctors; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN DROP POLICY IF EXISTS "Allow All Members" ON public.members; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN DROP POLICY IF EXISTS "Allow All Events" ON public.events; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN DROP POLICY IF EXISTS "Allow All Routes" ON public.routes; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN DROP POLICY IF EXISTS "Allow All Visits" ON public.visits; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN DROP POLICY IF EXISTS "Allow All Hospitals" ON public.hospitals; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN DROP POLICY IF EXISTS "Allow All ColihVisits" ON public.colih_visits; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN DROP POLICY IF EXISTS "Allow All SocialVisits" ON public.social_worker_visits; EXCEPTION WHEN OTHERS THEN NULL; END;
+    BEGIN DROP POLICY IF EXISTS "Allow All CityMappings" ON public.city_mappings; EXCEPTION WHEN OTHERS THEN NULL; END;
+END $$;
 
 -- Recriação de políticas permissivas
 CREATE POLICY "Allow All Patients" ON public.patients FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
@@ -114,6 +151,13 @@ CREATE POLICY "Allow All Logs" ON public.logs FOR ALL TO public, anon, authentic
 CREATE POLICY "Allow All Notifications" ON public.notifications FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow All Doctors" ON public.doctors FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Allow All Members" ON public.members FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow All Events" ON public.events FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow All Routes" ON public.routes FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow All Visits" ON public.visits FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow All Hospitals" ON public.hospitals FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow All ColihVisits" ON public.colih_visits FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow All SocialVisits" ON public.social_worker_visits FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow All CityMappings" ON public.city_mappings FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
 
 -- CONFIGURAÇÃO DO STORAGE
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
