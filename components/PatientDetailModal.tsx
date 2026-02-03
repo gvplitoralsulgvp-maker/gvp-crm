@@ -143,6 +143,22 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
       onClose();
   };
 
+  // VALIDAÇÃO DE ALTA
+  const handleDischargeRequest = () => {
+      if (!onDischarge) return;
+
+      // Regra de Negócio: Não pode dar alta sem COLIH designado
+      if (!patient.assignedColihIds || patient.assignedColihIds.length === 0) {
+          alert("🚫 BLOQUEIO DE SEGURANÇA\n\nNão é possível informar alta sem uma equipe COLIH designada.\n\nPor favor, designe ao menos um membro da COLIH na seção 'Equipe COLIH Responsável' abaixo antes de prosseguir. Isso garante o fluxo correto do HLC-7.");
+          return;
+      }
+
+      if(window.confirm("Confirmar a alta médica deste paciente? A tela de anexo do HLC-7 será exibida em seguida.")) {
+          onDischarge(patient.id, patient.name); 
+          // Não fecha o modal, permitindo o fluxo contínuo
+      }
+  };
+
   const hasChanges = JSON.stringify(assignedIds.sort()) !== JSON.stringify((patient.assignedColihIds || []).sort());
 
   return createPortal(
@@ -183,14 +199,10 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
             </div>
             
             {/* BOTÃO DE ALTA MÉDICA (GVP) */}
-            {/* FIX: Removed onClose() to allow continuous HLC-7 flow */}
+            {/* FIX: Usar handleDischargeRequest com validação */}
             {patient.active && !patient.isMedicalDischarge && onDischarge && (canEdit || canDischarge) && (
                 <button 
-                    onClick={() => { 
-                        if(window.confirm("Confirmar a alta médica deste paciente? A tela de anexo do HLC-7 será exibida em seguida.")) {
-                            onDischarge(patient.id, patient.name); 
-                        }
-                    }}
+                    onClick={handleDischargeRequest}
                     className="bg-green-600 hover:bg-green-700 text-white text-[9px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg shadow-sm"
                 >
                     Informar Alta
@@ -199,8 +211,8 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
           </div>
 
           {/* BOTÃO DE ARQUIVAMENTO HLC-7 (COLIH) */}
-          {/* Aparece automaticamente assim que a alta é informada (pois o modal não fecha mais) */}
-          {patient.active && patient.isMedicalDischarge && patient.pendingHlc7 && isColihUser && onHlc7Confirm && (
+          {/* FIX: Lógica de exibição simplificada para garantir que apareça se pendente, mesmo que inativo */}
+          {patient.isMedicalDischarge && patient.pendingHlc7 && (isColihUser || canEdit) && onHlc7Confirm && (
               <div className="p-4 bg-white rounded-xl border-2 border-purple-200 shadow-sm space-y-3 animate-fade-in">
                   <div className="flex items-center gap-2 mb-2">
                       <div className="w-2 h-2 rounded-full bg-purple-600 animate-pulse"></div>
