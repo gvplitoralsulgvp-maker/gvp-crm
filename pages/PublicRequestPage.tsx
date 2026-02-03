@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { AppState, Patient, LogEntry, AppNotification, UserRole } from '../types';
+import { AppState, Patient, LogEntry, AppNotification, UserRole, Doctor } from '../types';
 import { Button } from '../components/Button';
 import { useNavigate } from 'react-router-dom';
 import { atomicInsert } from '../services/storageService';
@@ -34,7 +34,11 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
     elderPhone: '', // Contato do Ancião de Congregação
     requestDate: new Date().toLocaleString('sv').slice(0, 16).replace(' ', 'T'), // Data/Hora do Contato
     
-    // Campos Extras (mantidos hidden ou default para compatibilidade)
+    // Novos campos opcionais de Médico
+    attendingDoctor: '',
+    attendingDoctorContact: '',
+    
+    // Campos Extras
     gender: '',
     room: '',
     floor: '',
@@ -72,6 +76,7 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
       const selectedHospital = validHospitals.find(h => h.id === formData.hospitalId);
       const hospitalNameDisplay = selectedHospital ? selectedHospital.name : 'Hospital';
 
+      // 1. Criar Paciente
       const newPatient: Patient = {
         id: crypto.randomUUID(),
         name: formData.name,
@@ -93,6 +98,10 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
         elderPhone: formData.elderPhone,
         requestDate: new Date(formData.requestDate).toISOString(),
         
+        // Dados de Médico
+        attendingDoctor: formData.attendingDoctor,
+        attendingDoctorContact: formData.attendingDoctorContact,
+        
         // Campos padrão / extras
         gender: formData.gender,
         room: formData.room,
@@ -112,6 +121,30 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
         isIsolation: formData.isIsolation,
         isolationType: formData.isolationType
       };
+
+      // 2. BUSCA ATIVA DE MÉDICOS: Se informou médico, cria registro na tabela Doctors
+      if (formData.attendingDoctor && formData.attendingDoctor.trim().length > 3) {
+          const newDoctor: Doctor = {
+              id: crypto.randomUUID(),
+              name: formData.attendingDoctor,
+              phone: formData.attendingDoctorContact,
+              hospitalIds: formData.hospitalId ? [formData.hospitalId] : [],
+              cooperationLevel: 'Unknown', // Marca como lead/desconhecido
+              city: selectedHospital?.city || '',
+              assignedMemberIds: [],
+              isConsultant: false,
+              treatsPediatric: false
+          };
+          
+          try {
+              // Tenta inserir. Não tratamos duplicação aqui para simplificar; admin fará merge depois.
+              await atomicInsert('doctors', newDoctor);
+              // Atualiza estado local também para refletir imediatamente se for o caso
+              onUpdateState({ ...state, doctors: [...state.doctors, newDoctor] });
+          } catch (docErr) {
+              console.warn("Falha ao criar registro automático de médico (Busca Ativa)", docErr);
+          }
+      }
 
       // FIX: Use a random UUID for userId since "PORTAL_PUBLICO" fails UUID validation in Postgres
       const publicSessionId = crypto.randomUUID();
@@ -155,19 +188,15 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
           await atomicInsert('patients', newPatient);
       } catch (dbError: any) {
           // PGRST204: Coluna não encontrada. Indica que o banco ainda não rodou o script de migração.
-          // Tentamos salvar sem os campos novos para não perder a solicitação.
           if (dbError.message?.includes('request_date') || dbError.code === 'PGRST204' || dbError.message?.includes('is_external_request')) {
-              console.warn("⚠️ Schema do banco desatualizado. Salvando em modo de compatibilidade (sem request_date)...");
-              
-              // Cria cópia sem os campos novos
-              const { requestDate, isExternalRequest, ...legacyPatient } = newPatient;
+              console.warn("⚠️ Schema do banco desatualizado. Salvando em modo de compatibilidade...");
+              const { requestDate, isExternalRequest, attendingDoctor, attendingDoctorContact, ...legacyPatient } = newPatient;
               await atomicInsert('patients', legacyPatient);
           } else {
-              throw dbError; // Se for outro erro (ex: 42501), repassa
+              throw dbError; 
           }
       }
       
-      // Tentativa de log (pode falhar se RLS strict, mas não deve bloquear o usuário)
       try {
           await atomicInsert('logs', newLog);
       } catch (logErr) {
@@ -398,6 +427,31 @@ export const PublicRequestPage: React.FC<PublicRequestPageProps> = ({ state, onU
                       onChange={e => setFormData({...formData, age: e.target.value})}
                       placeholder="Ex: 45 anos"
                     />
+                </div>
+
+                {/* SEÇÃO MÉDICO TRATANTE (Busca Ativa) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-teal-600 uppercase tracking-widest px-1">Médico Responsável (Opcional)</label>
+                        <input 
+                          type="text" 
+                          className="w-full border-2 border-gray-50 bg-gray-50 rounded-2xl p-4 text-sm focus:border-teal-600 focus:bg-white outline-none transition-all shadow-sm"
+                          value={formData.attendingDoctor}
+                          onChange={e => setFormData({...formData, attendingDoctor: e.target.value})}
+                          placeholder="Dr(a). Nome Sobrenome"
+                        />
+                        <p className="text-[9px] text-gray-400 px-1">Isso ajuda na busca ativa de médicos.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-teal-600 uppercase tracking-widest px-1">Contato do Médico</label>
+                        <input 
+                          type="text" 
+                          className="w-full border-2 border-gray-50 bg-gray-50 rounded-2xl p-4 text-sm focus:border-teal-600 focus:bg-white outline-none transition-all shadow-sm"
+                          value={formData.attendingDoctorContact}
+                          onChange={e => setFormData({...formData, attendingDoctorContact: e.target.value})}
+                          placeholder="Telefone ou Consultório"
+                        />
+                    </div>
                 </div>
 
                 {/* 11. Contato do Acompanhante e Parentesco */}

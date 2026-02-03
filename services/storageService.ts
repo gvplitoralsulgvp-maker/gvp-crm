@@ -125,11 +125,15 @@ export const loadState = async (): Promise<AppState> => {
           assignedColihIds: ensureArray(p.assignedColihIds, p.assigned_colih_ids),
           isMedicalDischarge: p.is_medical_discharge ?? p.isMedicalDischarge ?? false,
           pendingHlc7: p.pending_hlc7 ?? p.pendingHlc7 ?? false,
+          hlc7FileUrl: p.hlc7_file_url ?? p.hlc7FileUrl,
           gvpRequestPending: p.gvp_request_pending ?? p.gvpRequestPending ?? false,
           nonWitnessFamily: p.non_witness_family ?? p.nonWitnessFamily ?? false,
           elderPhone: p.elder_phone ?? p.elderPhone,
           isExternalRequest: p.is_external_request ?? p.isExternalRequest ?? false,
-          requestDate: p.request_date ?? p.requestDate
+          requestDate: p.request_date ?? p.requestDate,
+          
+          attendingDoctor: p.attending_doctor ?? p.attendingDoctor,
+          attendingDoctorContact: p.attending_doctor_contact ?? p.attendingDoctorContact
       }) as Patient),
 
       // Mapeamento LOGS (Snake -> Camel)
@@ -214,11 +218,15 @@ const sanitizeForDb = (table: string, data: any) => {
         if (copy.assignedColihIds !== undefined) { copy.assigned_colih_ids = copy.assignedColihIds; delete copy.assignedColihIds; }
         if (copy.isMedicalDischarge !== undefined) { copy.is_medical_discharge = copy.isMedicalDischarge; delete copy.isMedicalDischarge; }
         if (copy.pendingHlc7 !== undefined) { copy.pending_hlc7 = copy.pendingHlc7; delete copy.pendingHlc7; }
+        if (copy.hlc7FileUrl !== undefined) { copy.hlc7_file_url = copy.hlc7FileUrl; delete copy.hlc7FileUrl; }
         if (copy.gvpRequestPending !== undefined) { copy.gvp_request_pending = copy.gvpRequestPending; delete copy.gvpRequestPending; }
         if (copy.nonWitnessFamily !== undefined) { copy.non_witness_family = copy.nonWitnessFamily; delete copy.nonWitnessFamily; }
         if (copy.elderPhone !== undefined) { copy.elder_phone = copy.elderPhone; delete copy.elderPhone; }
         if (copy.isExternalRequest !== undefined) { copy.is_external_request = copy.isExternalRequest; delete copy.isExternalRequest; }
         if (copy.requestDate !== undefined) { copy.request_date = copy.requestDate; delete copy.requestDate; }
+        
+        if (copy.attendingDoctor !== undefined) { copy.attending_doctor = copy.attendingDoctor; delete copy.attendingDoctor; }
+        if (copy.attendingDoctorContact !== undefined) { copy.attending_doctor_contact = copy.attendingDoctorContact; delete copy.attendingDoctorContact; }
         
         // Mapeamentos adicionais para evitar PGRST204 e erros de data vazia (22007)
         if (copy.admissionDate !== undefined) { 
@@ -335,10 +343,11 @@ const attemptSaveWithFallback = async (table: string, payload: any, operation: '
              
              // Lista de colunas recentes para remover do payload
              const problemFields = [
-                 'pending_hlc7', 'is_medical_discharge', 'gvp_request_pending', 
+                 'pending_hlc7', 'is_medical_discharge', 'gvp_request_pending', 'hlc7_file_url',
                  'request_date', 'is_external_request', 'regional', 
                  'is_trainer', 'has_seen_onboarding', 'colih_classification',
-                 'attendees', 'hlc38_presented', 'collaborator_interest'
+                 'attendees', 'hlc38_presented', 'collaborator_interest',
+                 'attending_doctor', 'attending_doctor_contact'
              ];
              
              const legacyPayload = { ...payload };

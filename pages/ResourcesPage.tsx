@@ -65,10 +65,10 @@ export const ResourcesPage: React.FC<ResourcesPageProps> = ({ state, onUpdateSta
       }
   };
 
-  // SQL ATUALIZADO V7 (Inclui pending_hlc7 e correções de alta médica)
+  // SQL ATUALIZADO V8 (Inclui hlc7_file_url)
   const sqlCode = `
 -- =======================================================
--- SCRIPT DE CORREÇÃO GERAL (V7)
+-- SCRIPT DE CORREÇÃO GERAL (V8)
 -- =======================================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -106,6 +106,7 @@ ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS regional TEXT;
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS is_external_request BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS request_date TIMESTAMPTZ;
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS pending_hlc7 BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS hlc7_file_url TEXT;
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS is_medical_discharge BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS gvp_request_pending BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS assigned_colih_ids TEXT[] DEFAULT '{}';

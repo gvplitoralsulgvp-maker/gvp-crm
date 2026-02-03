@@ -1,8 +1,9 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Patient, VisitSlot, Member, LogEntry, UserRole } from '../types';
 import { Button } from './Button';
+import { uploadFile } from '../services/storageService';
 
 interface PatientDetailModalProps {
   isOpen: boolean;
@@ -12,10 +13,10 @@ interface PatientDetailModalProps {
   members: Member[];
   logs?: LogEntry[];
   onDischarge?: (id: string, name: string) => void;
-  onHlc7Confirm?: (id: string, name: string) => void;
+  onHlc7Confirm?: (id: string, name: string, fileUrl?: string) => void;
   onToggleGvp?: (patient: Patient) => void;
   onAssignColih?: (patientId: string, memberIds: string[]) => void;
-  onUpdatePatient?: (patient: Patient) => void; // Nova prop para atualização direta
+  onUpdatePatient?: (patient: Patient) => void; 
   isHospitalMode?: boolean;
   canEdit?: boolean;
   canDischarge?: boolean;
@@ -26,15 +27,19 @@ interface PatientDetailModalProps {
 export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({ 
   isOpen, onClose, patient, lastVisit, members, logs = [], onDischarge, onHlc7Confirm, onToggleGvp, onAssignColih, onUpdatePatient, isHospitalMode, canEdit, canDischarge, isColihUser, currentUser 
 }) => {
-  // Estado local para a lista de designados (editável antes de salvar)
+  // Estado local para a lista de designados
   const [assignedIds, setAssignedIds] = useState<string[]>(patient.assignedColihIds || []);
   const [isSavingAssign, setIsSavingAssign] = useState(false);
+  
+  // Estado para upload de HLC-7
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadedHlc7Url, setUploadedHlc7Url] = useState<string | null>(patient.hlc7FileUrl || null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
   const getMemberName = (id: string) => members.find(m => m.id === id)?.name || 'Desconhecido';
 
-  // Configuração dos itens de checklist para renderização e edição
   const checklistItems = [
     { key: 'hasDirectivesCard', label: 'Cartão de Diretivas', status: patient.hasDirectivesCard },
     { key: 'agentsNotified', label: 'Procurador Avisado', status: patient.agentsNotified },
@@ -43,16 +48,12 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
     { key: 'nonWitnessFamily', label: 'Família Não TJ Envolvida', status: patient.nonWitnessFamily, warn: true }
   ];
 
-  // Handler para alternar status dos documentos
   const handleToggleChecklist = async (key: string, currentStatus: boolean | undefined) => {
       if (!onUpdatePatient || !canEdit) return;
-      
       const updatedPatient = { ...patient, [key]: !currentStatus };
-      // Atualização otimista via callback do pai (que deve persistir no banco)
       onUpdatePatient(updatedPatient);
   };
 
-  // Feature 1: WhatsApp Helper
   const openWhatsApp = (phone: string | undefined, message: string) => {
       if (!phone) return;
       const cleanPhone = phone.replace(/\D/g, '');
@@ -69,23 +70,18 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 5);
 
-  // --- LÓGICA DE DESIGNAÇÃO COLIH ---
-  
-  // Verifica permissão: Admin Global, Coord Regional, ou Coord/Presidente da COLIH
   const canAssignColih = currentUser && (
       currentUser.role === UserRole.ADMIN || 
       currentUser.role === UserRole.COORDINATOR || 
       (currentUser.isColih && ['Coordinator', 'President', 'Secretary'].includes(currentUser.colihClassification || ''))
   );
 
-  // Lista de membros COLIH disponíveis para seleção (EXCLUINDO Facilitadores)
   const availableColihMembers = useMemo(() => {
       return members
         .filter(m => m.isColih && m.active && m.colihClassification !== 'Facilitator')
         .sort((a, b) => a.name.localeCompare(b.name));
   }, [members]);
 
-  // Handler para atualizar estado local da seleção
   const handleToggleAssign = (memberId: string) => {
       if (assignedIds.includes(memberId)) {
           setAssignedIds(prev => prev.filter(id => id !== memberId));
@@ -97,7 +93,6 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
       }
   };
 
-  // Handler para SALVAR a designação (Persistência)
   const handleSaveAssignments = async () => {
       if (!onAssignColih) return;
       setIsSavingAssign(true);
@@ -110,6 +105,42 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
       } finally {
           setIsSavingAssign(false);
       }
+  };
+
+  // UPLOAD HLC-7
+  const handleHlc7Upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!e.target.files || e.target.files.length === 0) return;
+      const file = e.target.files[0];
+      setIsUploading(true);
+      try {
+          // Upload para o bucket 'resources' com prefixo 'hlc7'
+          const { url } = await uploadFile(file, 'hlc7');
+          setUploadedHlc7Url(url);
+          
+          // Atualiza registro localmente (opcional, pois será salvo ao fechar o caso)
+          if (onUpdatePatient) {
+              onUpdatePatient({ ...patient, hlc7FileUrl: url });
+          }
+          
+      } catch (err: any) {
+          alert("Erro no upload: " + err.message);
+      } finally {
+          setIsUploading(false);
+      }
+  };
+
+  // ACTION: CONFIRM & ARCHIVE
+  const handleHlc7Action = () => {
+      if (!onHlc7Confirm) return;
+      
+      if (!uploadedHlc7Url) {
+          if (!window.confirm("ATENÇÃO: Nenhum arquivo HLC-7 foi anexado. Deseja encerrar o caso mesmo assim?")) return;
+      } else {
+          if (!window.confirm("O formulário HLC-7 foi anexado. Confirmar encerramento e arquivamento do caso?")) return;
+      }
+      
+      onHlc7Confirm(patient.id, patient.name, uploadedHlc7Url || undefined);
+      onClose();
   };
 
   const hasChanges = JSON.stringify(assignedIds.sort()) !== JSON.stringify((patient.assignedColihIds || []).sort());
@@ -131,10 +162,10 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
           {patient.isMedicalDischarge && (
               <div className="bg-purple-100 border border-purple-200 p-4 rounded-xl text-purple-800 flex flex-col gap-2">
                   <p className="font-bold text-sm">🏥 Paciente com Alta Médica Informada</p>
-                  <p className="text-xs">O paciente já saiu do hospital. {patient.pendingHlc7 ? 'O registro aguarda confirmação do HLC-7.' : 'A solicitação GVP foi encerrada automaticamente.'}</p>
+                  <p className="text-xs">O paciente já saiu do hospital. {patient.pendingHlc7 ? 'O registro aguarda o anexo do HLC-7.' : 'A solicitação GVP foi encerrada automaticamente.'}</p>
                   {patient.pendingHlc7 && (
                       <p className="text-xs font-bold mt-1 text-red-600 bg-red-100 p-1 rounded border border-red-200 text-center">
-                          {isColihUser ? 'AÇÃO NECESSÁRIA: Enviar HLC-7 e Arquivar' : 'Pendente: Envio de HLC-7 pela COLIH.'}
+                          {isColihUser ? 'AÇÃO NECESSÁRIA: Anexar HLC-7 e Arquivar' : 'Pendente: Envio de HLC-7 pela COLIH.'}
                       </p>
                   )}
               </div>
@@ -156,27 +187,51 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                 </div>
             </div>
             
-            {/* BOTÃO DE ALTA MÉDICA */}
+            {/* BOTÃO DE ALTA MÉDICA (GVP) */}
             {patient.active && !patient.isMedicalDischarge && onDischarge && (canEdit || canDischarge) && (
                 <button 
                     onClick={() => { onDischarge(patient.id, patient.name); onClose(); }}
                     className="bg-green-600 hover:bg-green-700 text-white text-[9px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg shadow-sm"
                 >
-                    Informar Alta Hospitalar
+                    Informar Alta
                 </button>
             )}
           </div>
 
-          {/* BOTÃO DE ARQUIVAMENTO HLC-7 */}
-          {patient.active && patient.isMedicalDischarge && patient.pendingHlc7 && isColihUser && onDischarge && (
-              <div className="p-4 bg-white rounded-xl border border-purple-200 shadow-sm">
-                  <p className="text-xs font-bold text-gray-700 mb-2">Encerrar Caso (Protocolo COLIH)</p>
+          {/* BOTÃO DE ARQUIVAMENTO HLC-7 (COLIH) */}
+          {patient.active && patient.isMedicalDischarge && patient.pendingHlc7 && isColihUser && onHlc7Confirm && (
+              <div className="p-4 bg-white rounded-xl border-2 border-purple-200 shadow-sm space-y-3">
+                  <p className="text-xs font-bold text-gray-700">Encerrar Caso (Protocolo COLIH)</p>
+                  
+                  {/* SEÇÃO UPLOAD */}
+                  <div className="flex flex-col gap-2">
+                      {uploadedHlc7Url ? (
+                          <div className="flex items-center gap-2 text-xs bg-green-50 p-2 rounded border border-green-200 text-green-700">
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                              <a href={uploadedHlc7Url} target="_blank" rel="noreferrer" className="underline font-bold">Ver HLC-7 Anexado</a>
+                              <button onClick={() => setUploadedHlc7Url(null)} className="text-red-500 font-bold ml-auto">X</button>
+                          </div>
+                      ) : (
+                          <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 text-center bg-gray-50">
+                              <input type="file" ref={fileInputRef} className="hidden" accept=".pdf,.jpg,.jpeg,.png" onChange={handleHlc7Upload} />
+                              <button 
+                                  onClick={() => fileInputRef.current?.click()} 
+                                  disabled={isUploading}
+                                  className="text-xs font-bold text-purple-600 hover:underline uppercase tracking-wide disabled:opacity-50"
+                              >
+                                  {isUploading ? 'Enviando...' : '📎 Anexar Cópia HLC-7'}
+                              </button>
+                          </div>
+                      )}
+                  </div>
+
                   <button 
-                      onClick={() => { onDischarge(patient.id, patient.name); onClose(); }}
-                      className="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold uppercase tracking-widest py-3 rounded-lg shadow-md transition-all flex items-center justify-center gap-2"
+                      onClick={handleHlc7Action}
+                      disabled={isUploading}
+                      className={`w-full text-white text-xs font-bold uppercase tracking-widest py-3 rounded-lg shadow-md transition-all flex items-center justify-center gap-2 ${uploadedHlc7Url ? 'bg-purple-600 hover:bg-purple-700 animate-pulse' : 'bg-gray-400 cursor-not-allowed'}`}
                   >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                      Finalizar e Arquivar (HLC-7)
+                      Encerrar o Caso
                   </button>
               </div>
           )}
@@ -251,6 +306,17 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                 </div>
                 {patient.congregation && <p className="text-[10px] text-blue-500 font-bold uppercase">{patient.congregation}</p>}
             </div>
+            
+            {patient.attendingDoctor && (
+                <div className="col-span-2 pt-2 border-t border-gray-200/10 space-y-1">
+                    <p className="text-[10px] font-bold text-teal-600 uppercase">Médico Tratante</p>
+                    <div className="flex justify-between">
+                        <span className={`text-sm font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{patient.attendingDoctor}</span>
+                        <span className={`text-xs ${isHospitalMode ? 'text-gray-400' : 'text-gray-600'}`}>{patient.attendingDoctorContact}</span>
+                    </div>
+                </div>
+            )}
+
             <div className="space-y-1">
               <p className="text-[10px] font-bold text-gray-500 uppercase">Tratamento</p>
               <p className={`text-sm font-medium ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{patient.treatment || 'Não especificado'}</p>

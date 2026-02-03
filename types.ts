@@ -134,10 +134,15 @@ export interface Patient {
   gvpRequestPending?: boolean;
   isMedicalDischarge?: boolean;
   pendingHlc7?: boolean; // Novo: Indica que teve alta mas falta enviar HLC-7
+  hlc7FileUrl?: string; // Novo: URL do arquivo HLC-7 anexado
   estimatedDischargeDate?: string;
   needsAccommodation?: boolean;
   isExternalRequest?: boolean;
   requestDate?: string;
+  
+  // Novos campos para Busca Ativa
+  attendingDoctor?: string;
+  attendingDoctorContact?: string;
   
   isIsolation?: boolean;
   isolationType?: string;

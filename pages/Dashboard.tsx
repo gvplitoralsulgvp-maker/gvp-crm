@@ -60,14 +60,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
           .slice(0, 3);
   }, [state.events]);
 
-  // Filtra casos ativos designados para o membro COLIH atual
+  // Filtra casos ativos ou com HLC-7 pendente designados para o membro COLIH atual
   const myActiveColihCases = useMemo(() => {
       if (!state.currentUser?.isColih) return [];
       return state.patients.filter(p => 
-          p.active && 
-          !p.isMedicalDischarge && 
+          (p.active || (p.isMedicalDischarge && p.pendingHlc7)) && // Mostra Ativos OU Alta Pendente HLC-7
           p.assignedColihIds?.includes(state.currentUser!.id)
-      ).sort((a,b) => a.name.localeCompare(b.name));
+      ).sort((a,b) => {
+          // Prioriza HLC-7 Pendente
+          if (a.pendingHlc7 && !b.pendingHlc7) return -1;
+          if (!a.pendingHlc7 && b.pendingHlc7) return 1;
+          return a.name.localeCompare(b.name);
+      });
   }, [state.patients, state.currentUser]);
 
   const handleSlotSave = async (newMemberIds: string[]) => {
@@ -212,8 +216,37 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   const handleDischarge = async (id: string, name: string) => {
       const p = state.patients.find(pt => pt.id === id);
       if (!p) return;
-      const updated = { ...p, active: false, isMedicalDischarge: true };
       
+      // Lógica HLC-7: Se for GVP, marca como alta (some da lista GVP) e pendente HLC7 (aparece COLIH)
+      // O botão no modal já distingue se é GVP ou COLIH realizando a ação.
+      // Se essa função é chamada por GVP, é alta médica.
+      const updated = { 
+          ...p, 
+          active: false, 
+          isMedicalDischarge: true,
+          pendingHlc7: true 
+      };
+      
+      await atomicUpdate('patients', updated);
+      onUpdateState(prev => ({
+          ...prev,
+          patients: prev.patients.map(pt => pt.id === id ? updated : pt)
+      }));
+  };
+
+  // Nova função para quando o COLIH confirma HLC-7 enviado
+  const handleHlc7Confirm = async (id: string, name: string, fileUrl?: string) => {
+      const p = state.patients.find(pt => pt.id === id);
+      if (!p) return;
+      
+      const updated = {
+          ...p,
+          pendingHlc7: false, // Remove pendência
+          active: false, // Garante inativo
+          isMedicalDischarge: true,
+          hlc7FileUrl: fileUrl || p.hlc7FileUrl // Salva URL se fornecida
+      };
+
       await atomicUpdate('patients', updated);
       onUpdateState(prev => ({
           ...prev,
@@ -330,8 +363,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                                 >
                                     <div className="flex justify-between items-center mb-1">
                                         <p className={`text-sm font-bold truncate ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'} ${isPrivacyMode ? 'blur-sm select-none' : ''}`}>{p.name}</p>
-                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${isHospitalMode ? 'bg-teal-900/50 text-teal-300' : 'bg-white text-teal-600 shadow-sm'}`}>
-                                            Ativo
+                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${p.pendingHlc7 ? 'bg-red-500 text-white animate-pulse' : (isHospitalMode ? 'bg-teal-900/50 text-teal-300' : 'bg-white text-teal-600 shadow-sm')}`}>
+                                            {p.pendingHlc7 ? 'Pendente HLC-7' : 'Ativo'}
                                         </span>
                                     </div>
                                     <p className={`text-[10px] truncate ${isHospitalMode ? 'text-gray-500' : 'text-gray-500'}`}>{p.hospitalName}</p>
@@ -558,6 +591,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 logs={state.logs} 
                 isHospitalMode={isHospitalMode}
                 onDischarge={handleDischarge}
+                onHlc7Confirm={handleHlc7Confirm}
                 onToggleGvp={handleToggleGvp}
                 onAssignColih={handleAssignColih}
                 onUpdatePatient={handleUpdatePatient}
