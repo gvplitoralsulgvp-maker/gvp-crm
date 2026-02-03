@@ -18,12 +18,13 @@ interface DailyAgendaModalProps {
   onRouteClick: (route: VisitRoute, slot: VisitSlot | undefined) => void;
   onReportClick: (slot: VisitSlot) => void;
   onPatientClick: (patient: Patient) => void;
+  onEventClick?: (event: AppEvent) => void; 
   hospitals?: Hospital[];
-  events?: AppEvent[]; // Nova prop para receber eventos
+  events?: AppEvent[]; 
 }
 
 export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
-  isOpen, onClose, date, routes, visits, members, patients, currentUser, isPrivacyMode, isHospitalMode, onRouteClick, onReportClick, onPatientClick, hospitals, events = []
+  isOpen, onClose, date, routes, visits, members, patients, currentUser, isPrivacyMode, isHospitalMode, onRouteClick, onReportClick, onPatientClick, onEventClick, hospitals, events = []
 }) => {
   if (!isOpen) return null;
 
@@ -52,6 +53,14 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
   // Filtrar eventos para este dia
   const dayEvents = events.filter(e => e.date === date);
 
+  // Filtrar casos ativos COLIH para o usuário atual
+  const myActiveColihCases = patients.filter(p => 
+      currentUser?.isColih &&
+      p.active && 
+      !p.isMedicalDischarge && 
+      p.assignedColihIds?.includes(currentUser.id)
+  );
+
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className={`rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
@@ -65,12 +74,48 @@ export const DailyAgendaModal: React.FC<DailyAgendaModalProps> = ({
 
         <div className={`flex-grow overflow-y-auto p-4 md:p-6 space-y-4 custom-scrollbar ${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'}`}>
           
+          {/* SEÇÃO: MEUS CASOS COLIH (Se houver) */}
+          {myActiveColihCases.length > 0 && (
+              <div className="mb-4 space-y-2">
+                  <h4 className={`text-[10px] font-black uppercase tracking-widest ${isHospitalMode ? 'text-teal-400' : 'text-teal-600'}`}>Casos Sob Sua Responsabilidade (COLIH)</h4>
+                  {myActiveColihCases.map(p => (
+                     <div 
+                        key={p.id} 
+                        onClick={() => onPatientClick(p)}
+                        className={`p-4 rounded-xl border flex justify-between items-center shadow-sm cursor-pointer transition-all hover:shadow-md ${
+                            isHospitalMode 
+                            ? 'bg-teal-900/10 border-teal-900/30 hover:border-teal-800' 
+                            : 'bg-teal-50 border-teal-100 hover:bg-white'
+                        }`}
+                     >
+                        <div>
+                           <div className="flex items-center gap-2">
+                               <h4 className={`text-sm font-bold ${isHospitalMode ? 'text-teal-300' : 'text-teal-900'} ${isPrivacyMode ? 'blur-sm select-none' : ''}`}>{p.name}</h4>
+                           </div>
+                           <p className={`text-xs mt-1 ${isHospitalMode ? 'text-teal-400' : 'text-teal-600'}`}>{p.hospitalName}</p>
+                        </div>
+                        <div className={`px-2 py-1 rounded text-[9px] font-black uppercase ${isHospitalMode ? 'bg-teal-900/50 text-teal-400' : 'bg-white text-teal-600 shadow-sm'}`}>
+                            Ativo
+                        </div>
+                     </div>
+                  ))}
+              </div>
+          )}
+
           {/* SEÇÃO DE EVENTOS DO DIA */}
           {dayEvents.length > 0 && (
               <div className="mb-4 space-y-2">
                   <h4 className={`text-[10px] font-black uppercase tracking-widest ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>Eventos Agendados</h4>
                   {dayEvents.map(e => (
-                     <div key={e.id} className={`p-4 rounded-xl border flex justify-between items-center shadow-sm ${isHospitalMode ? 'bg-indigo-900/10 border-indigo-900/30' : 'bg-indigo-50 border-indigo-100'}`}>
+                     <div 
+                        key={e.id} 
+                        onClick={() => onEventClick && onEventClick(e)}
+                        className={`p-4 rounded-xl border flex justify-between items-center shadow-sm cursor-pointer transition-all hover:shadow-md ${
+                            isHospitalMode 
+                            ? 'bg-indigo-900/10 border-indigo-900/30 hover:border-indigo-800' 
+                            : 'bg-indigo-50 border-indigo-100 hover:bg-white'
+                        }`}
+                     >
                         <div>
                            <div className="flex items-center gap-2">
                                <h4 className={`text-sm font-bold ${isHospitalMode ? 'text-indigo-300' : 'text-indigo-900'}`}>{e.title}</h4>

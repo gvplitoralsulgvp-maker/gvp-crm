@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { AppState, VisitRoute, VisitSlot, Patient, VisitReport, Member, UserRole, AppEvent } from '../types';
 import { CalendarWidget } from '../components/CalendarWidget';
@@ -11,6 +12,8 @@ import { ViewReportModal } from '../components/ViewReportModal';
 import { SwapRequestModal } from '../components/SwapRequestModal';
 import { CancelVisitModal } from '../components/CancelVisitModal';
 import { PatientDetailModal } from '../components/PatientDetailModal';
+import { EventDetailModal } from '../components/EventDetailModal';
+import { AttendanceModal } from '../components/AttendanceModal';
 import { atomicUpdate, atomicInsert } from '../services/storageService';
 
 interface DashboardProps {
@@ -26,17 +29,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   // Modal States
   const [isDailyAgendaOpen, setIsDailyAgendaOpen] = useState(false);
   const [selectedRouteForSlot, setSelectedRouteForSlot] = useState<VisitRoute | null>(null);
-  const [slotToEdit, setSlotToEdit] = useState<VisitSlot | null>(null); // For SlotModal
+  const [slotToEdit, setSlotToEdit] = useState<VisitSlot | null>(null); 
   
-  const [myVisitData, setMyVisitData] = useState<{route: VisitRoute, slot: VisitSlot} | null>(null); // For MyVisitModal
-  const [reportData, setReportData] = useState<{slot: VisitSlot, route: VisitRoute} | null>(null); // For ReportModal (writing)
-  const [viewReportData, setViewReportData] = useState<{slot: VisitSlot, route: VisitRoute} | null>(null); // For ViewReportModal (reading)
+  const [myVisitData, setMyVisitData] = useState<{route: VisitRoute, slot: VisitSlot} | null>(null);
+  const [reportData, setReportData] = useState<{slot: VisitSlot, route: VisitRoute} | null>(null);
+  const [viewReportData, setViewReportData] = useState<{slot: VisitSlot, route: VisitRoute} | null>(null);
   
   const [isQuickScaleOpen, setIsQuickScaleOpen] = useState(false);
   const [swapRequestData, setSwapRequestData] = useState<{date: string} | null>(null);
   const [cancelVisitData, setCancelVisitData] = useState<{slot: VisitSlot, memberId: string} | null>(null);
   
   const [viewingPatientId, setViewingPatientId] = useState<string | null>(null);
+
+  // Event & Attendance States
+  const [selectedEvent, setSelectedEvent] = useState<AppEvent | null>(null);
+  const [isAttendanceOpen, setIsAttendanceOpen] = useState(false);
 
   const viewingPatient = useMemo(() => 
     state.patients.find(p => p.id === viewingPatientId), 
@@ -45,32 +52,53 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   // Derived Data
   const activeRoutes = useMemo(() => state.routes.filter(r => r.active), [state.routes]);
   
+  const upcomingEvents = useMemo(() => {
+      const today = new Date().toISOString().split('T')[0];
+      return state.events
+          .filter(e => e.date >= today)
+          .sort((a,b) => a.date.localeCompare(b.date))
+          .slice(0, 3);
+  }, [state.events]);
+
+  // Filtra casos ativos designados para o membro COLIH atual
+  const myActiveColihCases = useMemo(() => {
+      if (!state.currentUser?.isColih) return [];
+      return state.patients.filter(p => 
+          p.active && 
+          !p.isMedicalDischarge && 
+          p.assignedColihIds?.includes(state.currentUser!.id)
+      ).sort((a,b) => a.name.localeCompare(b.name));
+  }, [state.patients, state.currentUser]);
+
   const handleSlotSave = async (newMemberIds: string[]) => {
     if (!selectedRouteForSlot) return;
     
-    // Check if slot exists for date and route
-    const existingSlotIndex = state.visits.findIndex(v => v.date === selectedDate && v.routeId === selectedRouteForSlot.id);
-    let newVisits = [...state.visits];
-    let slotId = existingSlotIndex >= 0 ? newVisits[existingSlotIndex].id : crypto.randomUUID();
+    const routeId = selectedRouteForSlot.id;
+    const date = selectedDate;
+
+    const existingSlot = state.visits.find(v => v.date === date && v.routeId === routeId);
+    const slotId = existingSlot ? existingSlot.id : crypto.randomUUID();
 
     const newSlot: VisitSlot = {
         id: slotId,
-        routeId: selectedRouteForSlot.id,
-        date: selectedDate,
+        routeId: routeId,
+        date: date,
         memberIds: newMemberIds,
-        status: existingSlotIndex >= 0 ? newVisits[existingSlotIndex].status : 'PENDING',
-        report: existingSlotIndex >= 0 ? newVisits[existingSlotIndex].report : undefined,
-        onTheWayMemberIds: existingSlotIndex >= 0 ? newVisits[existingSlotIndex].onTheWayMemberIds : []
+        status: existingSlot ? existingSlot.status : 'PENDING',
+        report: existingSlot ? existingSlot.report : undefined,
+        onTheWayMemberIds: existingSlot ? existingSlot.onTheWayMemberIds : []
     };
 
-    if (existingSlotIndex >= 0) {
-        newVisits[existingSlotIndex] = newSlot;
-    } else {
-        newVisits.push(newSlot);
-    }
-
     await atomicUpdate('visits', newSlot);
-    onUpdateState({ ...state, visits: newVisits });
+    
+    onUpdateState(prev => {
+        const idx = prev.visits.findIndex(v => v.id === slotId);
+        const newVisits = [...prev.visits];
+        if (idx >= 0) newVisits[idx] = newSlot;
+        else newVisits.push(newSlot);
+        return { ...prev, visits: newVisits };
+    });
+    
     setSelectedRouteForSlot(null);
   };
 
@@ -87,15 +115,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       };
       
       await atomicUpdate('visits', newSlot);
-      // Update local state
-      const existingIdx = state.visits.findIndex(v => v.id === slotId);
-      let newVisits = [...state.visits];
-      if (existingIdx >= 0) {
-          newVisits[existingIdx] = newSlot;
-      } else {
-          newVisits.push(newSlot);
-      }
-      onUpdateState({ ...state, visits: newVisits });
+      
+      onUpdateState(prev => {
+          const idx = prev.visits.findIndex(v => v.id === slotId);
+          const newVisits = [...prev.visits];
+          if (idx >= 0) newVisits[idx] = newSlot;
+          else newVisits.push(newSlot);
+          return { ...prev, visits: newVisits };
+      });
   };
 
   const handleSaveReport = async (report: VisitReport) => {
@@ -105,8 +132,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       const updatedSlot: VisitSlot = { ...slot, report, status: 'FINISHED' };
       await atomicUpdate('visits', updatedSlot);
       
-      const updatedVisits = state.visits.map(v => v.id === slot.id ? updatedSlot : v);
-      onUpdateState({ ...state, visits: updatedVisits });
+      onUpdateState(prev => ({
+          ...prev,
+          visits: prev.visits.map(v => v.id === slot.id ? updatedSlot : v)
+      }));
       setReportData(null);
   };
 
@@ -114,21 +143,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       const memberIds = slot ? slot.memberIds : [];
       const isMemberInSlot = state.currentUser && memberIds.includes(state.currentUser.id);
       
-      // If user is part of the slot, open MyVisitModal logic (or details)
-      // Actually MyVisitModal is for "My Visit" details.
-      // If we are in DailyAgendaModal, clicking "Entrar na Rota" or "Gerenciar" should open SlotModal.
-      // But if I am already in the route, maybe I want to see details.
-      
       if (isMemberInSlot) {
-          // Open MyVisitModal for today or future
-          // But wait, the button in DailyAgendaModal says "Entrar na Rota" or "Gerenciar" or "Escalado".
-          // If "Escalado", it might be disabled or open details.
-          // Let's assume SlotModal is for editing the scale.
           setSelectedRouteForSlot(route);
-          // Current members for this slot
           setSlotToEdit(slot || null); 
       } else {
-          // Open SlotModal to join/manage
           setSelectedRouteForSlot(route);
           setSlotToEdit(slot || null);
       }
@@ -152,9 +170,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       const updatedSlot = { ...slot, memberIds: newMemberIds };
       
       await atomicUpdate('visits', updatedSlot);
-      onUpdateState({ ...state, visits: state.visits.map(v => v.id === slot.id ? updatedSlot : v) });
       
-      // Log cancellation
       const logEntry = {
           id: crypto.randomUUID(),
           timestamp: new Date().toISOString(),
@@ -164,7 +180,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
           details: `Cancelou visita em ${slot.date}. Motivo: ${justification}`
       };
       await atomicInsert('logs', logEntry);
-      onUpdateState(prev => ({ ...prev, logs: [logEntry, ...prev.logs] }));
+
+      onUpdateState(prev => ({
+          ...prev,
+          visits: prev.visits.map(v => v.id === slot.id ? updatedSlot : v),
+          logs: [logEntry, ...prev.logs]
+      }));
       
       setCancelVisitData(null);
   };
@@ -177,8 +198,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
   };
 
   const handleConfirmSwap = async (newDate: string, note: string) => {
-      // Implement swap logic (notification to admins/coordinators)
-      // For now just log or alert
       alert("Solicitação de troca enviada aos coordenadores.");
       setSwapRequestData(null);
   };
@@ -194,14 +213,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       const p = state.patients.find(pt => pt.id === id);
       if (!p) return;
       const updated = { ...p, active: false, isMedicalDischarge: true };
+      
       await atomicUpdate('patients', updated);
-      onUpdateState({ ...state, patients: state.patients.map(pt => pt.id === id ? updated : pt) });
+      onUpdateState(prev => ({
+          ...prev,
+          patients: prev.patients.map(pt => pt.id === id ? updated : pt)
+      }));
   };
 
   const handleToggleGvp = async (patient: Patient) => {
       const updated = { ...patient, gvpRequestPending: !patient.gvpRequestPending };
       await atomicUpdate('patients', updated);
-      onUpdateState({ ...state, patients: state.patients.map(p => p.id === patient.id ? updated : p) });
+      onUpdateState(prev => ({
+          ...prev,
+          patients: prev.patients.map(p => p.id === patient.id ? updated : p)
+      }));
   };
 
   const handleAssignColih = async (patientId: string, memberIds: string[]) => {
@@ -209,25 +235,52 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
       if (!patient) return;
       const updated = { ...patient, assignedColihIds: memberIds };
       await atomicUpdate('patients', updated);
-      onUpdateState({ ...state, patients: state.patients.map(p => p.id === patientId ? updated : p) });
+      onUpdateState(prev => ({
+          ...prev,
+          patients: prev.patients.map(p => p.id === patientId ? updated : p)
+      }));
   };
 
   const handleUpdatePatient = async (updatedPatient: Patient) => {
       await atomicUpdate('patients', updatedPatient);
-      onUpdateState({ ...state, patients: state.patients.map(p => p.id === updatedPatient.id ? updatedPatient : p) });
-      if (viewingPatient && viewingPatient.id === updatedPatient.id) {
-          // Update local viewing patient if open
-          // But viewingPatient is memoized from state, so it should update automatically
-      }
+      onUpdateState(prev => ({
+          ...prev,
+          patients: prev.patients.map(p => p.id === updatedPatient.id ? updatedPatient : p)
+      }));
   };
 
-  // Helper to find partner
+  const handleAttendanceConfirm = async (present: boolean) => {
+      if (!selectedEvent || !state.currentUser) return;
+      
+      let attendees = selectedEvent.attendees || [];
+      if (present) {
+          if (!attendees.includes(state.currentUser.id)) {
+              attendees = [...attendees, state.currentUser.id];
+          }
+      } else {
+          attendees = attendees.filter(id => id !== state.currentUser!.id);
+      }
+
+      const updatedEvent = { ...selectedEvent, attendees };
+      
+      try {
+          await atomicUpdate('events', updatedEvent);
+          onUpdateState(prev => ({
+              ...prev,
+              events: prev.events.map(e => e.id === updatedEvent.id ? updatedEvent : e)
+          }));
+      } catch (e) {
+          alert("Erro ao atualizar presença.");
+      }
+      setIsAttendanceOpen(false);
+      setSelectedEvent(null);
+  };
+
   const getPartner = (slot: VisitSlot) => {
       const partnerId = slot.memberIds.find(id => id !== state.currentUser?.id);
       return partnerId ? state.members.find(m => m.id === partnerId) || null : null;
   };
 
-  // Helper for recent history
   const getRecentHistory = (routeId: string) => {
       return state.visits
         .filter(v => v.routeId === routeId && v.report && v.status === 'FINISHED')
@@ -257,25 +310,66 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             </button>
         </div>
 
-        {/* Calendar Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-                <FullCalendar 
-                    selectedDate={selectedDate} 
-                    onChange={(d) => { setSelectedDate(d); setIsDailyAgendaOpen(true); }}
-                    visits={state.visits}
-                    routes={activeRoutes}
-                    members={state.members}
-                    currentUser={state.currentUser}
-                    events={state.events}
-                    isHospitalMode={isHospitalMode}
-                />
-            </div>
-            <div>
+        {/* Calendar Section - REORDERED FOR MOBILE (Widgets First) */}
+        <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6">
+            
+            {/* Right Column (Widgets) - Order 1 on Mobile, Order 2 on Desktop */}
+            <div className="order-1 lg:order-2 lg:col-span-1 space-y-6">
                 <CalendarWidget selectedDate={selectedDate} onChange={setSelectedDate} />
                 
+                {/* WIDGET 1: MEUS CASOS COLIH (NOVO) */}
+                {myActiveColihCases.length > 0 && (
+                    <div className={`p-4 rounded-xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                        <h3 className={`text-xs font-black uppercase tracking-widest mb-4 ${isHospitalMode ? 'text-teal-400' : 'text-teal-600'}`}>Meus Casos (COLIH)</h3>
+                        <div className="space-y-3">
+                            {myActiveColihCases.map(p => (
+                                <div 
+                                    key={p.id}
+                                    onClick={() => setViewingPatientId(p.id)}
+                                    className={`p-3 rounded-xl border cursor-pointer transition-all hover:shadow-md group ${isHospitalMode ? 'bg-teal-900/10 border-teal-900/30 hover:border-teal-800' : 'bg-teal-50 border-teal-100 hover:bg-white'}`}
+                                >
+                                    <div className="flex justify-between items-center mb-1">
+                                        <p className={`text-sm font-bold truncate ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'} ${isPrivacyMode ? 'blur-sm select-none' : ''}`}>{p.name}</p>
+                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${isHospitalMode ? 'bg-teal-900/50 text-teal-300' : 'bg-white text-teal-600 shadow-sm'}`}>
+                                            Ativo
+                                        </span>
+                                    </div>
+                                    <p className={`text-[10px] truncate ${isHospitalMode ? 'text-gray-500' : 'text-gray-500'}`}>{p.hospitalName}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Upcoming Events Widget (Always Visible) */}
+                <div className={`p-4 rounded-xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                    <h3 className={`text-xs font-black uppercase tracking-widest mb-4 ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>Próximos Eventos</h3>
+                    {upcomingEvents.length > 0 ? (
+                        <div className="space-y-3">
+                            {upcomingEvents.map(e => (
+                                <div 
+                                    key={e.id}
+                                    onClick={() => setSelectedEvent(e)}
+                                    className={`p-3 rounded-xl border cursor-pointer transition-all hover:shadow-md group ${isHospitalMode ? 'bg-indigo-900/10 border-indigo-900/30 hover:border-indigo-800' : 'bg-indigo-50 border-indigo-100 hover:bg-white'}`}
+                                >
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className={`text-xs font-bold ${isHospitalMode ? 'text-indigo-400' : 'text-indigo-700'}`}>{new Date(e.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${isHospitalMode ? 'bg-indigo-900/50 text-indigo-300' : 'bg-white text-indigo-600 shadow-sm'}`}>
+                                            {e.targetGroup === 'ALL' ? 'Geral' : e.targetGroup}
+                                        </span>
+                                    </div>
+                                    <p className={`text-sm font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{e.title}</p>
+                                    <p className={`text-[10px] mt-1 truncate ${isHospitalMode ? 'text-gray-500' : 'text-gray-500'}`}>{e.location || 'Local não definido'}</p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className={`text-xs italic text-center py-2 ${isHospitalMode ? 'text-gray-600' : 'text-gray-400'}`}>Nenhum evento próximo.</p>
+                    )}
+                </div>
+
                 {/* Upcoming Visits Widget */}
-                <div className={`mt-6 p-4 rounded-xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                <div className={`p-4 rounded-xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
                     <h3 className={`text-xs font-black uppercase tracking-widest mb-4 ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>Próximas Visitas</h3>
                     <div className="space-y-3">
                         {state.visits
@@ -302,10 +396,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                             })
                         }
                         {state.visits.filter(v => v.memberIds.includes(state.currentUser?.id || '') && v.date >= new Date().toISOString().split('T')[0]).length === 0 && (
-                            <p className="text-xs text-gray-400 italic text-center py-2">Nenhuma visita agendada.</p>
+                            <p className={`text-xs italic text-center py-2 ${isHospitalMode ? 'text-gray-600' : 'text-gray-400'}`}>Nenhuma visita agendada.</p>
                         )}
                     </div>
                 </div>
+            </div>
+
+            {/* Left Column (Main Calendar) - Order 2 on Mobile, Order 1 on Desktop */}
+            <div className="order-2 lg:order-1 lg:col-span-2">
+                <FullCalendar 
+                    selectedDate={selectedDate} 
+                    onChange={(d) => { setSelectedDate(d); setIsDailyAgendaOpen(true); }}
+                    visits={state.visits}
+                    routes={activeRoutes}
+                    members={state.members}
+                    currentUser={state.currentUser}
+                    events={state.events}
+                    isHospitalMode={isHospitalMode}
+                />
             </div>
         </div>
 
@@ -324,15 +432,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
             isPrivacyMode={isPrivacyMode}
             isHospitalMode={isHospitalMode}
             onRouteClick={(route, slot) => {
-                // If the user is part of the slot, allow them to manage it details (MyVisitModal is accessed via widget or clicking self in logic usually)
-                // Here we want to handle the "Action Button" in the modal.
-                // If button says "Entrar na Rota", we open SlotModal.
-                // If button says "Escalado", it might be disabled in the modal or open MyVisitModal.
-                // Let's assume handleRouteClick maps to "Manage Slot" action.
-                
                 const memberIds = slot ? slot.memberIds : [];
                 if (state.currentUser && memberIds.includes(state.currentUser.id)) {
-                    // Already escalated.
                     if (slot) handleOpenMyVisit(route, slot);
                 } else {
                     handleRouteClick(route, slot);
@@ -343,6 +444,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 if (route) setViewReportData({ slot, route });
             }}
             onPatientClick={(patient) => setViewingPatientId(patient.id)}
+            onEventClick={(event) => {
+                setSelectedEvent(event);
+                setIsDailyAgendaOpen(false); // Close agenda when viewing event details
+            }}
             hospitals={state.hospitals}
             events={state.events}
         />
@@ -379,9 +484,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 isPrivacyMode={isPrivacyMode}
                 onSwapRequest={handleSwapRequest}
                 onCancelVisit={handleCancelVisit}
-                onOnTheWay={() => {
-                    // Force refresh/re-render handled by state update in modal
-                }}
+                onOnTheWay={() => {}}
                 onFinishVisit={handleFinishVisit}
                 onPatientClick={(p) => setViewingPatientId(p.id)}
                 slot={myVisitData.slot}
@@ -450,7 +553,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 isOpen={true}
                 onClose={() => setViewingPatientId(null)}
                 patient={viewingPatient}
-                lastVisit={null} // Can compute last visit for this patient if needed
+                lastVisit={null} 
                 members={state.members}
                 logs={state.logs} 
                 isHospitalMode={isHospitalMode}
@@ -462,6 +565,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPr
                 canDischarge={true}
                 isColihUser={state.currentUser?.isColih}
                 currentUser={state.currentUser} 
+            />
+        )}
+
+        {/* Event Details (With Attendance) */}
+        {selectedEvent && (
+            <EventDetailModal 
+                isOpen={true}
+                onClose={() => setSelectedEvent(null)}
+                event={selectedEvent}
+                currentUser={state.currentUser}
+                onRegisterAttendance={() => setIsAttendanceOpen(true)}
+                isHospitalMode={isHospitalMode}
+            />
+        )}
+
+        {/* Attendance Confirmation */}
+        {isAttendanceOpen && selectedEvent && (
+            <AttendanceModal 
+                isOpen={true}
+                onClose={handleAttendanceConfirm}
+                event={selectedEvent}
+                isHospitalMode={isHospitalMode}
             />
         )}
     </div>
