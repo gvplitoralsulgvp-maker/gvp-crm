@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { VisitRoute, Member, Hospital, Patient } from '../types';
+import { VisitRoute, Member, Hospital, Patient, VisitSlot } from '../types';
 import { HistoryItem } from './ReportModal';
 import { Button } from './Button';
 import { generateRouteBriefing } from '../services/geminiService';
+import { atomicUpdate } from '../services/storageService';
 
 interface MyVisitModalProps {
   isOpen: boolean;
@@ -22,15 +23,19 @@ interface MyVisitModalProps {
   onOnTheWay?: () => void;
   onFinishVisit?: () => void;
   onPatientClick: (patient: Patient) => void;
+  slot?: VisitSlot; // Passado para poder atualizar o status no banco
+  currentUser?: Member | null;
 }
 
 export const MyVisitModal: React.FC<MyVisitModalProps> = ({ 
-  isOpen, onClose, date, route, partner, hospitalDetails, patients, recentHistory, isHospitalMode, isPrivacyMode, onSwapRequest, onCancelVisit, onOnTheWay, onFinishVisit, onPatientClick
+  isOpen, onClose, date, route, partner, hospitalDetails, patients, recentHistory, isHospitalMode, isPrivacyMode, onSwapRequest, onCancelVisit, onOnTheWay, onFinishVisit, onPatientClick, slot, currentUser
 }) => {
   const [briefing, setBriefing] = useState<string | null>(null);
   const [isBriefingLoading, setIsBriefingLoading] = useState(false);
   const [nearbyHospital, setNearbyHospital] = useState<Hospital | null>(null);
-  const [sentOnTheWay, setSentOnTheWay] = useState(false);
+  
+  // Verifica se o usuário atual JÁ marcou "A Caminho" persistido no slot
+  const isAlreadyOnTheWay = slot && currentUser && slot.onTheWayMemberIds?.includes(currentUser.id);
 
   useEffect(() => {
     if (isOpen && "geolocation" in navigator) {
@@ -43,7 +48,6 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
         if (near) setNearbyHospital(near);
       });
     }
-    if (!isOpen) setSentOnTheWay(false);
   }, [isOpen, hospitalDetails]);
 
   const handleGetBriefing = async () => {
@@ -54,9 +58,23 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
     setIsBriefingLoading(false);
   };
 
-  const handleOnTheWay = () => {
-      if (onOnTheWay) onOnTheWay();
-      setSentOnTheWay(true);
+  const handleOnTheWay = async () => {
+      if (!slot || !currentUser) return;
+      
+      const currentList = slot.onTheWayMemberIds || [];
+      if (!currentList.includes(currentUser.id)) {
+          const updatedSlot = { 
+              ...slot, 
+              onTheWayMemberIds: [...currentList, currentUser.id] 
+          };
+          
+          try {
+              await atomicUpdate('visits', updatedSlot);
+              if (onOnTheWay) onOnTheWay();
+          } catch (e) {
+              alert("Erro ao atualizar status.");
+          }
+      }
   };
 
   if (!isOpen || !route) return null;
@@ -77,7 +95,7 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black bg-opacity-60 p-4 backdrop-blur-sm">
-      <div className={`rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800 shadow-black' : 'bg-white'}`}>
+      <div className={`rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-fade-in ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
         <div className="bg-blue-600 px-6 py-5 flex justify-between items-start shrink-0">
           <div>
             <h3 className="text-white font-bold text-xl">Detalhes da Visita</h3>
@@ -90,9 +108,9 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
           <div className="grid grid-cols-2 gap-4">
              <button 
                 onClick={handleOnTheWay}
-                disabled={sentOnTheWay || !partner || isFuture}
+                disabled={!!isAlreadyOnTheWay || !partner || isFuture}
                 className={`flex items-center justify-center gap-2 p-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all border-2 ${
-                    sentOnTheWay || isFuture
+                    isAlreadyOnTheWay || isFuture
                     ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-60' 
                     : isHospitalMode 
                         ? 'bg-blue-900/20 border-blue-900/50 text-blue-400 hover:bg-blue-900/40' 
@@ -101,7 +119,7 @@ export const MyVisitModal: React.FC<MyVisitModalProps> = ({
                 title={isFuture ? "Disponível apenas no dia da visita" : ""}
              >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-                {sentOnTheWay ? 'Avisado!' : 'A caminho'}
+                {isAlreadyOnTheWay ? 'Avisado!' : 'A caminho'}
              </button>
 
              <button 

@@ -54,6 +54,18 @@ export const QuickScaleModal: React.FC<QuickScaleModalProps> = ({ isOpen, onClos
         setTempMemberIds(tempMemberIds.filter(mid => mid !== id));
     } else {
         if (tempMemberIds.length < 2) {
+            // Conflict Check
+            const conflict = state.visits.find(v => 
+                v.date === selectedDate &&
+                v.routeId !== selectedRouteId && 
+                v.memberIds.includes(id)
+            );
+            if (conflict) {
+                const memberName = state.members.find(m => m.id === id)?.name || 'Este membro';
+                alert(`⚠️ CONFLITO: ${memberName} já está escalado(a) em outra rota neste dia.`);
+                return;
+            }
+
             setTempMemberIds([...tempMemberIds, id]);
         } else {
             alert("Esta dupla já está completa.");

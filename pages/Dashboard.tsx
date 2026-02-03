@@ -1,741 +1,467 @@
-
-import React, { useState, useEffect, useMemo } from 'react';
-import { AppState, VisitRoute, VisitSlot, Patient, Member, AppNotification, UserRole, AppEvent, SocialWorkerVisit, Hospital } from '../types';
+import React, { useState, useMemo } from 'react';
+import { AppState, VisitRoute, VisitSlot, Patient, VisitReport, Member, UserRole, AppEvent } from '../types';
+import { CalendarWidget } from '../components/CalendarWidget';
 import { FullCalendar } from '../components/FullCalendar';
 import { DailyAgendaModal } from '../components/DailyAgendaModal';
 import { MyVisitModal } from '../components/MyVisitModal';
-import { PatientDetailModal } from '../components/PatientDetailModal';
+import { ReportModal } from '../components/ReportModal';
 import { SlotModal } from '../components/SlotModal';
+import { QuickScaleModal } from '../components/QuickScaleModal';
 import { ViewReportModal } from '../components/ViewReportModal';
-import { FinishVisitModal } from '../components/FinishVisitModal';
-import { FinishSocialVisitModal } from '../components/FinishSocialVisitModal';
-import { CancelVisitModal } from '../components/CancelVisitModal';
 import { SwapRequestModal } from '../components/SwapRequestModal';
-import { AttendanceModal } from '../components/AttendanceModal';
-import { EventDetailModal } from '../components/EventDetailModal';
-import { KpiDetailModal } from '../components/KpiDetailModal';
-import { atomicUpdate } from '../services/storageService';
-
-// Componente KpiCard atualizado com onClick
-const KpiCard: React.FC<{ title: string; value: number | string; icon: React.ReactNode; colorBg: string; colorText: string; isHospitalMode?: boolean; onClick?: () => void }> = ({ title, value, icon, colorBg, colorText, isHospitalMode, onClick }) => (
-  <button 
-    onClick={onClick}
-    className={`w-full p-4 rounded-2xl border shadow-sm flex items-center gap-4 transition-all hover:shadow-md active:scale-95 text-left ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 hover:border-blue-200'}`}
-  >
-    <div className={`p-3 rounded-xl ${colorBg} ${colorText}`}>
-      {icon}
-    </div>
-    <div>
-      <p className={`text-[10px] font-bold uppercase tracking-widest ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>{title}</p>
-      <p className={`text-2xl font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{value}</p>
-    </div>
-  </button>
-);
-
-const ActivityChart: React.FC<{ data: number[]; isHospitalMode?: boolean }> = ({ data, isHospitalMode }) => {
-  const max = Math.max(...data, 1);
-  return (
-    <div className={`p-5 rounded-2xl border shadow-sm flex flex-col justify-end h-40 ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
-      <div className="flex justify-between items-end h-24 gap-1">
-        {data.map((val, idx) => (
-          <div key={idx} className="flex-1 flex flex-col justify-end items-center gap-1 group">
-             <div 
-                className={`w-full rounded-t-sm transition-all relative ${val > 0 ? (isHospitalMode ? 'bg-blue-600' : 'bg-blue-500') : (isHospitalMode ? 'bg-gray-800' : 'bg-gray-100')}`}
-                style={{ height: `${(val / max) * 100}%`, minHeight: val > 0 ? '4px' : '2px' }}
-             >
-                {/* Tooltip simples */}
-                <div className="opacity-0 group-hover:opacity-100 absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-black text-white text-[9px] font-bold px-1.5 py-0.5 rounded pointer-events-none whitespace-nowrap z-10">
-                    {val} visitas
-                </div>
-             </div>
-          </div>
-        ))}
-      </div>
-      <div className="flex justify-between mt-2 pt-2 border-t border-gray-800/10">
-         <span className="text-[9px] font-bold text-gray-400">Dia 1</span>
-         <span className="text-[9px] font-bold text-gray-400">Atividade do Mês Atual</span>
-         <span className="text-[9px] font-bold text-gray-400">Dia {data.length}</span>
-      </div>
-    </div>
-  );
-};
+import { CancelVisitModal } from '../components/CancelVisitModal';
+import { PatientDetailModal } from '../components/PatientDetailModal';
+import { atomicUpdate, atomicInsert } from '../services/storageService';
 
 interface DashboardProps {
   state: AppState;
-  onUpdateState: (newState: AppState) => void;
+  onUpdateState: React.Dispatch<React.SetStateAction<AppState>>;
   isPrivacyMode: boolean;
   isHospitalMode?: boolean;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ state, onUpdateState, isPrivacyMode, isHospitalMode }) => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [isDailyOpen, setIsDailyOpen] = useState(false);
   
-  // Modals State
+  // Modal States
+  const [isDailyAgendaOpen, setIsDailyAgendaOpen] = useState(false);
+  const [selectedRouteForSlot, setSelectedRouteForSlot] = useState<VisitRoute | null>(null);
+  const [slotToEdit, setSlotToEdit] = useState<VisitSlot | null>(null); // For SlotModal
+  
+  const [myVisitData, setMyVisitData] = useState<{route: VisitRoute, slot: VisitSlot} | null>(null); // For MyVisitModal
+  const [reportData, setReportData] = useState<{slot: VisitSlot, route: VisitRoute} | null>(null); // For ReportModal (writing)
+  const [viewReportData, setViewReportData] = useState<{slot: VisitSlot, route: VisitRoute} | null>(null); // For ViewReportModal (reading)
+  
+  const [isQuickScaleOpen, setIsQuickScaleOpen] = useState(false);
+  const [swapRequestData, setSwapRequestData] = useState<{date: string} | null>(null);
+  const [cancelVisitData, setCancelVisitData] = useState<{slot: VisitSlot, memberId: string} | null>(null);
+  
   const [viewingPatientId, setViewingPatientId] = useState<string | null>(null);
-  const [slotModalData, setSlotModalData] = useState<{ route: VisitRoute; slot?: VisitSlot } | null>(null);
-  const [reportModalSlot, setReportModalSlot] = useState<{ slot: VisitSlot, route: VisitRoute } | null>(null);
-  const [myVisitModalData, setMyVisitModalData] = useState<{ slot: VisitSlot, route: VisitRoute } | null>(null);
-  const [finishSocialVisit, setFinishSocialVisit] = useState<SocialWorkerVisit | null>(null);
+
+  const viewingPatient = useMemo(() => 
+    state.patients.find(p => p.id === viewingPatientId), 
+  [state.patients, viewingPatientId]);
+
+  // Derived Data
+  const activeRoutes = useMemo(() => state.routes.filter(r => r.active), [state.routes]);
   
-  const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
-  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
-  const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
+  const handleSlotSave = async (newMemberIds: string[]) => {
+    if (!selectedRouteForSlot) return;
+    
+    // Check if slot exists for date and route
+    const existingSlotIndex = state.visits.findIndex(v => v.date === selectedDate && v.routeId === selectedRouteForSlot.id);
+    let newVisits = [...state.visits];
+    let slotId = existingSlotIndex >= 0 ? newVisits[existingSlotIndex].id : crypto.randomUUID();
 
-  // New Details Modals
-  const [selectedEventDetails, setSelectedEventDetails] = useState<AppEvent | null>(null);
-  const [selectedKpiType, setSelectedKpiType] = useState<'visits' | 'patients' | 'hospitals' | 'schedule' | null>(null);
+    const newSlot: VisitSlot = {
+        id: slotId,
+        routeId: selectedRouteForSlot.id,
+        date: selectedDate,
+        memberIds: newMemberIds,
+        status: existingSlotIndex >= 0 ? newVisits[existingSlotIndex].status : 'PENDING',
+        report: existingSlotIndex >= 0 ? newVisits[existingSlotIndex].report : undefined,
+        onTheWayMemberIds: existingSlotIndex >= 0 ? newVisits[existingSlotIndex].onTheWayMemberIds : []
+    };
 
-  // Attendance Modal State
-  const [attendanceEvent, setAttendanceEvent] = useState<AppEvent | null>(null);
+    if (existingSlotIndex >= 0) {
+        newVisits[existingSlotIndex] = newSlot;
+    } else {
+        newVisits.push(newSlot);
+    }
 
-  // Optimistic tracking
-  const [optimisticArchived, setOptimisticArchived] = useState<Set<string>>(new Set());
+    await atomicUpdate('visits', newSlot);
+    onUpdateState({ ...state, visits: newVisits });
+    setSelectedRouteForSlot(null);
+  };
 
-  const isCoordinator = state.currentUser?.role === UserRole.COORDINATOR;
-  const userRegional = state.currentUser?.regional;
-
-  // --- ATTENDANCE CHECK LOGIC ---
-  useEffect(() => {
-      if (!state.currentUser) return;
-
-      const now = new Date();
-      // Ajuste para garantir comparação correta com string YYYY-MM-DD local
-      const offset = now.getTimezoneOffset() * 60000;
-      const localTodayStr = new Date(now.getTime() - offset).toISOString().split('T')[0];
+  const handleQuickScaleSave = async (newMemberIds: string[], date: string, route: VisitRoute, existingSlot?: VisitSlot) => {
+      const slotId = existingSlot ? existingSlot.id : crypto.randomUUID();
+      const newSlot: VisitSlot = {
+          id: slotId,
+          routeId: route.id,
+          date: date,
+          memberIds: newMemberIds,
+          status: existingSlot ? existingSlot.status : 'PENDING',
+          report: existingSlot ? existingSlot.report : undefined,
+          onTheWayMemberIds: existingSlot ? existingSlot.onTheWayMemberIds : []
+      };
       
-      // Encontra o primeiro evento relevante que AINDA NÃO foi respondido
-      const relevantEvent = state.events.find(e => {
-          // 1. Verifica data e público alvo
-          const isTarget = e.date === localTodayStr && 
-                           (e.targetGroup === 'ALL' || 
-                           (e.targetGroup === 'COLIH' && state.currentUser?.isColih) || 
-                           (e.targetGroup === 'GVP' && !state.currentUser?.isColih));
-          if (!isTarget) return false;
-
-          // 2. Verifica se já respondeu ou dispensou
-          const hasAlreadyAttended = e.attendees?.includes(state.currentUser!.id);
-          const hasDismissed = localStorage.getItem(`attendance_dismissed_${e.id}`) === 'true';
-
-          return !hasAlreadyAttended && !hasDismissed;
-      });
-
-      if (relevantEvent) {
-          // Lógica de Janela de Tempo
-          let shouldShow = true;
-
-          if (relevantEvent.time) {
-              try {
-                  const [hours, minutes] = relevantEvent.time.split(':').map(Number);
-                  
-                  const eventTime = new Date(now);
-                  eventTime.setHours(hours, minutes, 0, 0);
-
-                  // Janela: Mostra o dia todo até 8 horas DEPOIS do início
-                  const windowEnd = new Date(eventTime.getTime() + 8 * 60 * 60 * 1000); 
-
-                  // Se já passou muito do horário (8h), não mostra mais
-                  if (now > windowEnd) {
-                      shouldShow = false;
-                  }
-              } catch (e) {
-                  console.warn("Erro ao processar horário do evento", e);
-                  shouldShow = true;
-              }
-          }
-
-          if (shouldShow) {
-              setAttendanceEvent(relevantEvent);
-          }
-      }
-  }, [state.events, state.currentUser]);
-
-  const handleAttendanceResponse = async (present: boolean) => {
-      if (!attendanceEvent || !state.currentUser) return;
-
-      if (present) {
-          // Add user to attendees
-          const currentAttendees = attendanceEvent.attendees || [];
-          if (!currentAttendees.includes(state.currentUser.id)) {
-              const updatedEvent = { 
-                  ...attendanceEvent, 
-                  attendees: [...currentAttendees, state.currentUser.id] 
-              };
-              
-              // Optimistic Update
-              onUpdateState({
-                  ...state,
-                  events: state.events.map(e => e.id === attendanceEvent.id ? updatedEvent : e)
-              });
-
-              // Persist
-              await atomicUpdate('events', updatedEvent);
-          }
+      await atomicUpdate('visits', newSlot);
+      // Update local state
+      const existingIdx = state.visits.findIndex(v => v.id === slotId);
+      let newVisits = [...state.visits];
+      if (existingIdx >= 0) {
+          newVisits[existingIdx] = newSlot;
       } else {
-          // User said No, just dismiss locally for today
-          localStorage.setItem(`attendance_dismissed_${attendanceEvent.id}`, 'true');
+          newVisits.push(newSlot);
       }
-      
-      setAttendanceEvent(null);
+      onUpdateState({ ...state, visits: newVisits });
   };
 
-  // --- FILTERING ---
-  const filteredHospitals = useMemo(() => {
-      if (isCoordinator && userRegional) {
-          return state.hospitals.filter(h => !h.regional || h.regional === userRegional);
-      }
-      return state.hospitals;
-  }, [state.hospitals, isCoordinator, userRegional]);
-
-  const filteredRoutes = useMemo(() => {
-      if (isCoordinator && userRegional) {
-          return state.routes.filter(r => {
-              // If route has hospitals, check if any belong to visible hospitals list
-              if (!r.hospitals || r.hospitals.length === 0) return false;
-              return r.hospitals.some(hName => filteredHospitals.some(fh => fh.name === hName));
-          });
-      }
-      return state.routes;
-  }, [state.routes, filteredHospitals, isCoordinator, userRegional]);
-
-  const filteredPatients = useMemo(() => {
-      let patients = state.patients.filter(p => !optimisticArchived.has(p.id));
-      if (isCoordinator && userRegional) {
-          patients = patients.filter(p => !p.regional || p.regional === userRegional);
-      }
-      return patients;
-  }, [state.patients, optimisticArchived, isCoordinator, userRegional]);
-
-  // Derived data based on filtered lists
-  const activePatients = filteredPatients.filter((p: Patient) => p.active);
-
-  // --- CÁLCULO DE KPIS (useMemo) ...
-  const { kpis, chartData, detailedKpiData } = useMemo(() => {
-      const now = new Date();
-      const currentMonthStr = now.toISOString().slice(0, 7); // YYYY-MM
-      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const handleSaveReport = async (report: VisitReport) => {
+      if (!reportData) return;
+      const { slot } = reportData;
       
-      // Filter visits based on visible routes
-      const visibleRouteIds = filteredRoutes.map(r => r.id);
-      const relevantVisits = state.visits.filter(v => visibleRouteIds.includes(v.routeId));
-
-      const monthVisits = relevantVisits.filter((v: VisitSlot) => v.date.startsWith(currentMonthStr));
-      const finishedVisits = monthVisits.filter((v: VisitSlot) => v.status === 'FINISHED');
-      const scheduledVisits = monthVisits.filter((v: VisitSlot) => v.status !== 'FINISHED' && v.memberIds.length > 0);
+      const updatedSlot: VisitSlot = { ...slot, report, status: 'FINISHED' };
+      await atomicUpdate('visits', updatedSlot);
       
-      const activeP = activePatients.filter((p: Patient) => p.active && !p.isMedicalDischarge);
-      
-      const visitedHospitalIds = new Set<string>();
-      finishedVisits.forEach((v: VisitSlot) => {
-          const route = filteredRoutes.find((r: VisitRoute) => r.id === v.routeId);
-          route?.hospitals?.forEach((h: string) => visitedHospitalIds.add(h));
-      });
-
-      const data = new Array(daysInMonth).fill(0);
-      finishedVisits.forEach((v: VisitSlot) => {
-          const day = parseInt(v.date.split('-')[2]);
-          if(day >= 1 && day <= daysInMonth) data[day-1]++;
-      });
-
-      // Prepare detailed items for KPI Modal
-      const details = {
-          visits: finishedVisits.map(v => {
-              const route = filteredRoutes.find(r => r.id === v.routeId);
-              const members = v.memberIds.map(id => state.members.find(m => m.id === id)?.name).filter(Boolean).join(', ');
-              return { 
-                  id: v.id, 
-                  primaryText: new Date(v.date + 'T12:00:00').toLocaleDateString(), 
-                  secondaryText: route?.name || 'Rota', 
-                  tertiaryText: members,
-                  tag: 'Realizada',
-                  tagColor: 'bg-green-100 text-green-700'
-              };
-          }),
-          schedule: scheduledVisits.map(v => {
-              const route = filteredRoutes.find(r => r.id === v.routeId);
-              const members = v.memberIds.map(id => state.members.find(m => m.id === id)?.name).filter(Boolean).join(', ');
-              return { 
-                  id: v.id, 
-                  primaryText: new Date(v.date + 'T12:00:00').toLocaleDateString(), 
-                  secondaryText: route?.name || 'Rota', 
-                  tertiaryText: members,
-                  tag: 'Agendada',
-                  tagColor: 'bg-orange-100 text-orange-700'
-              };
-          }),
-          patients: activeP.map(p => ({
-              id: p.id,
-              primaryText: p.name,
-              secondaryText: p.hospitalName || 'Hospital não inf.',
-              tertiaryText: p.congregation,
-              tag: 'Ativo',
-              tagColor: 'bg-blue-100 text-blue-700'
-          })),
-          hospitals: Array.from(visitedHospitalIds).map((hName, idx) => ({
-              id: `h-${idx}`,
-              primaryText: hName,
-              secondaryText: 'Visitado este mês',
-              tag: 'Coberto',
-              tagColor: 'bg-purple-100 text-purple-700'
-          }))
-      };
-      
-      return { 
-          kpis: { finished: finishedVisits.length, scheduled: scheduledVisits.length, activePatients: activeP.length, hospitalsVisited: visitedHospitalIds.size }, 
-          chartData: data,
-          detailedKpiData: details
-      };
-  }, [state.visits, activePatients, filteredRoutes, state.members]);
-
-  // --- MEUS AGENDAMENTOS (Visitas Regulares) ---
-  const myUpcomingVisits = useMemo(() => {
-      if (!state.currentUser) return [];
-      const today = new Date().toISOString().split('T')[0];
-      return state.visits.filter((v: VisitSlot) => v.memberIds.includes(state.currentUser!.id) && v.status !== 'FINISHED' && v.date >= today).sort((a: VisitSlot, b: VisitSlot) => a.date.localeCompare(b.date));
-  }, [state.visits, state.currentUser]);
-
-  // --- MINHAS VISITAS SOCIAIS PENDENTES ---
-  const mySocialVisits = useMemo(() => {
-      if (!state.currentUser) return [];
-      return state.socialWorkerVisits.filter((v: SocialWorkerVisit) => v.memberIds.includes(state.currentUser!.id) && v.status !== 'FINISHED').sort((a: SocialWorkerVisit, b: SocialWorkerVisit) => a.date.localeCompare(b.date));
-  }, [state.socialWorkerVisits, state.currentUser]);
-
-  // --- FILTRO DE EVENTOS ---
-  const myEvents = useMemo(() => {
-      if (!state.currentUser) return [];
-
-      // FIX: Gerar data local baseada no navegador, independente do fuso horário UTC do servidor/ISO
-      // Garante que eventos de "hoje" apareçam até o último minuto do dia local
-      const d = new Date();
-      const localTodayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      
-      const isColih = state.currentUser.isColih;
-      const isAdmin = state.currentUser.role === UserRole.ADMIN;
-      
-      return state.events
-          .filter((e: AppEvent) => e.date >= localTodayStr) // Comparação correta de string YYYY-MM-DD
-          .filter((e: AppEvent) => {
-              if (isAdmin || isCoordinator) return true;
-              if (e.targetGroup === 'ALL' || e.targetGroup === 'GVP') return true; 
-              if (isColih && e.targetGroup === 'COLIH') return true; 
-              return false;
-          })
-          .sort((a: AppEvent, b: AppEvent) => a.date.localeCompare(b.date))
-          .slice(0, 12); // Aumentado para 12 eventos para garantir que múltiplos não sejam ocultos
-  }, [state.events, state.currentUser, isCoordinator]);
-
-  // Lógica refatorada: Separação Alta Médica vs Arquivamento HLC-7
-  const handleDischarge = async (id: string, name: string) => { 
-      const patient = state.patients.find((p: Patient) => p.id === id);
-      if (!patient) return;
-      const isColihUser = state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
-      try {
-          // Fase 2: Arquivamento Definitivo (HLC-7 Já foi preenchido)
-          if (patient.isMedicalDischarge) {
-              if (!isColihUser) { alert("Apenas membros da COLIH podem realizar o arquivamento definitivo (HLC-7)."); return; }
-              if (window.confirm(`[PROTOCOLO COLIH]\n\nConfirma o envio do formulário HLC-7 para o caso de ${name}?\n\nIsso arquivará o paciente definitivamente.`)) {
-                  setOptimisticArchived(prev => new Set(prev).add(id));
-                  const archivedPatient = { ...patient, active: false, gvpRequestPending: false, isMedicalDischarge: true };
-                  const updatedPatients = state.patients.map((p: Patient) => p.id === id ? archivedPatient : p);
-                  onUpdateState({ ...state, patients: updatedPatients });
-                  setViewingPatientId(null);
-                  await atomicUpdate('patients', archivedPatient);
-              }
-              return;
-          }
-          
-          // Fase 1: Alta Hospitalar (Gera pendência de HLC-7)
-          // Mensagem Atualizada com Lembrete
-          if (window.confirm(`Confirmar ALTA MÉDICA de ${name}?\n\n⚠️ LEMBRETE IMPORTANTE:\nNão se esqueça de providenciar o envio do formulário HLC-7 para a Sede.\n\nO caso permanecerá aberto administrativamente até a confirmação do envio.`)) {
-              const dischargedPatient = { ...patient, isMedicalDischarge: true, gvpRequestPending: false, active: true, estimatedDischargeDate: new Date().toISOString() };
-              const updatedPatients = state.patients.map((p: Patient) => p.id === id ? dischargedPatient : p); 
-              onUpdateState({ ...state, patients: updatedPatients });
-              setViewingPatientId(null);
-              await atomicUpdate('patients', dischargedPatient);
-          }
-      } catch (err: any) { console.error(err); alert(`Erro ao processar alta: ${err.message}`); }
-  };
-
-  const handleToggleGvp = async (patient: Patient) => {
-      const willEnable = !patient.gvpRequestPending;
-      if (!window.confirm(willEnable ? "Marcar solicitação?" : "Remover solicitação?")) return;
-      const updated = { ...patient, gvpRequestPending: willEnable };
-      await atomicUpdate('patients', updated);
-      onUpdateState({ ...state, patients: state.patients.map((p: Patient) => p.id === patient.id ? updated : p) });
+      const updatedVisits = state.visits.map(v => v.id === slot.id ? updatedSlot : v);
+      onUpdateState({ ...state, visits: updatedVisits });
+      setReportData(null);
   };
 
   const handleRouteClick = (route: VisitRoute, slot: VisitSlot | undefined) => {
-      const isMeInSlot = slot?.memberIds.includes(state.currentUser?.id || '');
-      if (isMeInSlot && slot) { setMyVisitModalData({ slot, route }); } else { setSlotModalData({ route, slot }); }
+      const memberIds = slot ? slot.memberIds : [];
+      const isMemberInSlot = state.currentUser && memberIds.includes(state.currentUser.id);
+      
+      // If user is part of the slot, open MyVisitModal logic (or details)
+      // Actually MyVisitModal is for "My Visit" details.
+      // If we are in DailyAgendaModal, clicking "Entrar na Rota" or "Gerenciar" should open SlotModal.
+      // But if I am already in the route, maybe I want to see details.
+      
+      if (isMemberInSlot) {
+          // Open MyVisitModal for today or future
+          // But wait, the button in DailyAgendaModal says "Entrar na Rota" or "Gerenciar" or "Escalado".
+          // If "Escalado", it might be disabled or open details.
+          // Let's assume SlotModal is for editing the scale.
+          setSelectedRouteForSlot(route);
+          // Current members for this slot
+          setSlotToEdit(slot || null); 
+      } else {
+          // Open SlotModal to join/manage
+          setSelectedRouteForSlot(route);
+          setSlotToEdit(slot || null);
+      }
   };
 
-  const handleOpenMyVisit = (visit: VisitSlot) => {
-      const route = state.routes.find((r: VisitRoute) => r.id === visit.routeId);
-      if (route) { setMyVisitModalData({ slot: visit, route }); }
+  const handleOpenMyVisit = (route: VisitRoute, slot: VisitSlot) => {
+      setMyVisitData({ route, slot });
   };
 
-  const handleSlotSave = async (newMemberIds: string[]) => {
-      if (!slotModalData) return;
-      const { route, slot } = slotModalData;
-      const newSlot: VisitSlot = slot ? { ...slot, memberIds: newMemberIds } : { id: crypto.randomUUID(), routeId: route.id, date: selectedDate, memberIds: newMemberIds, status: 'PENDING' };
-      try {
-          await atomicUpdate('visits', newSlot);
-          const updatedVisits = slot ? state.visits.map((v: VisitSlot) => v.id === slot.id ? newSlot : v) : [...state.visits, newSlot];
-          onUpdateState({ ...state, visits: updatedVisits });
-          setSlotModalData(null);
-      } catch (e) { alert("Erro ao salvar escala."); }
+  const handleCancelVisit = async () => {
+      if (!myVisitData || !state.currentUser) return;
+      setCancelVisitData({ slot: myVisitData.slot, memberId: state.currentUser.id });
+      setMyVisitData(null);
   };
 
-  const handleCancelVisit = async (justification: string) => {
-      if (!myVisitModalData || !state.currentUser) return;
-      const { slot } = myVisitModalData;
-      const newMemberIds = slot.memberIds.filter(id => id !== state.currentUser?.id);
+  const handleConfirmCancel = async (justification: string) => {
+      if (!cancelVisitData) return;
+      const { slot, memberId } = cancelVisitData;
+      
+      const newMemberIds = slot.memberIds.filter(id => id !== memberId);
       const updatedSlot = { ...slot, memberIds: newMemberIds };
-      const logEntry = { id: crypto.randomUUID(), timestamp: new Date().toISOString(), userId: state.currentUser.id, userName: state.currentUser.name, action: 'Cancelamento', details: `Cancelou visita dia ${slot.date}. Motivo: ${justification}` };
-      try {
-          await atomicUpdate('visits', updatedSlot);
-          await atomicUpdate('logs', logEntry);
-          const updatedVisits = state.visits.map((v: VisitSlot) => v.id === slot.id ? updatedSlot : v);
-          onUpdateState({ ...state, visits: updatedVisits, logs: [...state.logs, logEntry] });
-          setIsCancelModalOpen(false);
-          setMyVisitModalData(null);
-      } catch (e) { alert("Erro ao cancelar."); }
-  };
-
-  const handleFinishVisit = async (generalNote: string, patientUpdates: any) => {
-      if (!myVisitModalData || !state.currentUser) return;
-      const { slot } = myVisitModalData;
       
-      // LOGICA DE RELATÓRIO APRIMORADA: Agrega notas individuais
-      let finalReportNotes = generalNote;
-      const patientDetails = Object.entries(patientUpdates).map(([pid, data]: [string, any]) => {
-          const pName = state.patients.find(p => p.id === pid)?.name || 'Paciente';
-          let statusStr = data.performed ? "✅ Realizada" : `❌ Não realizada (${data.notPerformedReason})`;
-          let details = data.notes ? ` - Obs: "${data.notes}"` : "";
-          return `• ${pName}: ${statusStr}${details}`;
-      }).join('\n');
-
-      if (patientDetails) {
-          finalReportNotes += `\n\n--- Detalhes por Paciente ---\n${patientDetails}`;
-      }
-
-      const report = { doctorName: state.currentUser.name, notes: finalReportNotes, followUpNeeded: false, createdAt: new Date().toISOString() };
-      const updatedSlot: VisitSlot = { ...slot, status: 'FINISHED', report };
+      await atomicUpdate('visits', updatedSlot);
+      onUpdateState({ ...state, visits: state.visits.map(v => v.id === slot.id ? updatedSlot : v) });
       
-      const updatedPatients = [...state.patients];
-      for (const [pid, data] of Object.entries(patientUpdates)) {
-          const idx = updatedPatients.findIndex(p => p.id === pid);
-          if (idx !== -1) {
-              updatedPatients[idx] = { ...updatedPatients[idx], hasDirectivesCard: (data as any).hasDirectivesCard, agentsNotified: (data as any).agentsNotified, hasS55: (data as any).hasS55, formsConsidered: (data as any).formsConsidered };
-              await atomicUpdate('patients', updatedPatients[idx]);
-          }
+      // Log cancellation
+      const logEntry = {
+          id: crypto.randomUUID(),
+          timestamp: new Date().toISOString(),
+          userId: memberId,
+          userName: state.members.find(m => m.id === memberId)?.name || 'Unknown',
+          action: 'CANCEL_VISIT',
+          details: `Cancelou visita em ${slot.date}. Motivo: ${justification}`
+      };
+      await atomicInsert('logs', logEntry);
+      onUpdateState(prev => ({ ...prev, logs: [logEntry, ...prev.logs] }));
+      
+      setCancelVisitData(null);
+  };
+
+  const handleSwapRequest = () => {
+      if (myVisitData) {
+          setSwapRequestData({ date: myVisitData.slot.date });
+          setMyVisitData(null);
       }
-      try {
-          await atomicUpdate('visits', updatedSlot);
-          const updatedVisits = state.visits.map((v: VisitSlot) => v.id === slot.id ? updatedSlot : v);
-          onUpdateState({ ...state, visits: updatedVisits, patients: updatedPatients });
-          setIsFinishModalOpen(false);
-          setMyVisitModalData(null);
-      } catch (e) { alert("Erro ao finalizar visita."); }
   };
 
-  const handleFinishSocialVisit = async (notes: string) => {
-      if (!finishSocialVisit || !state.currentUser) return;
-      const updatedVisit: SocialWorkerVisit = { ...finishSocialVisit, status: 'FINISHED', report: { doctorName: state.currentUser.name, notes: notes, followUpNeeded: false, createdAt: new Date().toISOString() } };
-      try {
-          await atomicUpdate('social_worker_visits', updatedVisit);
-          const updatedList = state.socialWorkerVisits.map((v: SocialWorkerVisit) => v.id === updatedVisit.id ? updatedVisit : v);
-          onUpdateState({ ...state, socialWorkerVisits: updatedList });
-          setFinishSocialVisit(null);
-      } catch (e) { alert("Erro ao finalizar visita social."); }
+  const handleConfirmSwap = async (newDate: string, note: string) => {
+      // Implement swap logic (notification to admins/coordinators)
+      // For now just log or alert
+      alert("Solicitação de troca enviada aos coordenadores.");
+      setSwapRequestData(null);
   };
 
-  const viewingPatient = viewingPatientId ? activePatients.find((p: Patient) => p.id === viewingPatientId) : null;
-  const myVisitSlot = myVisitModalData?.slot;
-  const myVisitRoute = myVisitModalData?.route;
-  const myVisitPatients = myVisitRoute && myVisitRoute.hospitals ? activePatients.filter((p: Patient) => myVisitRoute.hospitals?.includes(p.hospitalName || '')) : [];
-  const partnerId = myVisitSlot?.memberIds.find(id => id !== state.currentUser?.id);
-  const partner = partnerId ? state.members.find(m => m.id === partnerId) : null;
-  const hospitalDetails = myVisitRoute?.hospitals ? filteredHospitals.filter((h: Hospital) => myVisitRoute.hospitals?.includes(h.name)) : [];
+  const handleFinishVisit = () => {
+      if (myVisitData) {
+          setReportData({ slot: myVisitData.slot, route: myVisitData.route });
+          setMyVisitData(null);
+      }
+  };
+
+  const handleDischarge = async (id: string, name: string) => {
+      const p = state.patients.find(pt => pt.id === id);
+      if (!p) return;
+      const updated = { ...p, active: false, isMedicalDischarge: true };
+      await atomicUpdate('patients', updated);
+      onUpdateState({ ...state, patients: state.patients.map(pt => pt.id === id ? updated : pt) });
+  };
+
+  const handleToggleGvp = async (patient: Patient) => {
+      const updated = { ...patient, gvpRequestPending: !patient.gvpRequestPending };
+      await atomicUpdate('patients', updated);
+      onUpdateState({ ...state, patients: state.patients.map(p => p.id === patient.id ? updated : p) });
+  };
+
+  const handleAssignColih = async (patientId: string, memberIds: string[]) => {
+      const patient = state.patients.find(p => p.id === patientId);
+      if (!patient) return;
+      const updated = { ...patient, assignedColihIds: memberIds };
+      await atomicUpdate('patients', updated);
+      onUpdateState({ ...state, patients: state.patients.map(p => p.id === patientId ? updated : p) });
+  };
+
+  const handleUpdatePatient = async (updatedPatient: Patient) => {
+      await atomicUpdate('patients', updatedPatient);
+      onUpdateState({ ...state, patients: state.patients.map(p => p.id === updatedPatient.id ? updatedPatient : p) });
+      if (viewingPatient && viewingPatient.id === updatedPatient.id) {
+          // Update local viewing patient if open
+          // But viewingPatient is memoized from state, so it should update automatically
+      }
+  };
+
+  // Helper to find partner
+  const getPartner = (slot: VisitSlot) => {
+      const partnerId = slot.memberIds.find(id => id !== state.currentUser?.id);
+      return partnerId ? state.members.find(m => m.id === partnerId) || null : null;
+  };
+
+  // Helper for recent history
+  const getRecentHistory = (routeId: string) => {
+      return state.visits
+        .filter(v => v.routeId === routeId && v.report && v.status === 'FINISHED')
+        .sort((a,b) => b.date.localeCompare(a.date))
+        .slice(0, 3)
+        .map(v => ({
+            date: v.date,
+            notes: v.report!.notes,
+            visitorNames: v.memberIds.map(id => state.members.find(m => m.id === id)?.name).join(', ')
+        }));
+  };
 
   return (
     <div className="space-y-6 pb-20 animate-fade-in">
-        {/* KPI DASHBOARD SECTION */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard 
-                title="Visitas (Mês)" 
-                value={kpis.finished} 
-                icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} 
-                colorBg={isHospitalMode ? 'bg-green-900/30' : 'bg-green-100'} 
-                colorText={isHospitalMode ? 'text-green-400' : 'text-green-600'} 
-                isHospitalMode={isHospitalMode}
-                onClick={() => setSelectedKpiType('visits')}
-            />
-            <KpiCard 
-                title="Pacientes Ativos" 
-                value={kpis.activePatients} 
-                icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>} 
-                colorBg={isHospitalMode ? 'bg-blue-900/30' : 'bg-blue-100'} 
-                colorText={isHospitalMode ? 'text-blue-400' : 'text-blue-600'} 
-                isHospitalMode={isHospitalMode}
-                onClick={() => setSelectedKpiType('patients')}
-            />
-            <KpiCard 
-                title="Hospitais (Mês)" 
-                value={kpis.hospitalsVisited} 
-                icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>} 
-                colorBg={isHospitalMode ? 'bg-purple-900/30' : 'bg-purple-100'} 
-                colorText={isHospitalMode ? 'text-purple-400' : 'text-purple-600'} 
-                isHospitalMode={isHospitalMode}
-                onClick={() => setSelectedKpiType('hospitals')}
-            />
-            <KpiCard 
-                title="Agendamentos" 
-                value={kpis.scheduled} 
-                icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} 
-                colorBg={isHospitalMode ? 'bg-orange-900/30' : 'bg-orange-100'} 
-                colorText={isHospitalMode ? 'text-orange-400' : 'text-orange-600'} 
-                isHospitalMode={isHospitalMode}
-                onClick={() => setSelectedKpiType('schedule')}
-            />
+        
+        {/* Header Section */}
+        <div className={`p-6 rounded-2xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100 shadow-sm'}`}>
+            <div>
+                <h2 className={`text-xl font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Minha Agenda</h2>
+                <p className={`text-sm ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Gerencie suas visitas e escalas.</p>
+            </div>
+            <button 
+                onClick={() => setIsQuickScaleOpen(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg hover:bg-blue-700 transition-all active:scale-95"
+            >
+                + Agendar Visita
+            </button>
         </div>
 
-        <ActivityChart data={chartData} isHospitalMode={isHospitalMode} />
-
-        {/* ... (MEUS AGENDAMENTOS E VISITAS SOCIAIS MANTIDOS) ... */}
-        {myUpcomingVisits.length > 0 && (
-            <div className={`p-6 rounded-2xl shadow-lg relative overflow-hidden ${isHospitalMode ? 'bg-blue-900/20 border border-blue-800' : 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white'}`}>
-                <div className={`absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 rounded-full blur-3xl opacity-20 ${isHospitalMode ? 'bg-blue-50' : 'bg-white'}`}></div>
-                <h3 className={`text-sm font-black uppercase tracking-widest mb-4 flex items-center gap-2 ${isHospitalMode ? 'text-blue-300' : 'text-blue-100'}`}>
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    Meus Agendamentos
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 relative z-10">
-                    {myUpcomingVisits.map((visit: VisitSlot) => {
-                        const route = state.routes.find((r: VisitRoute) => r.id === visit.routeId);
-                        const partnerId = visit.memberIds.find(id => id !== state.currentUser?.id);
-                        const partner = state.members.find(m => m.id === partnerId);
-                        const isToday = visit.date === new Date().toISOString().split('T')[0];
-                        return (
-                            <button key={visit.id} onClick={() => handleOpenMyVisit(visit)} className={`text-left p-4 rounded-xl backdrop-blur-md border transition-all active:scale-95 group ${isHospitalMode ? 'bg-black/30 border-white/10 hover:bg-black/50' : 'bg-white/10 border-white/20 hover:bg-white/20'}`}>
-                                <div className="flex justify-between items-start">
-                                    <div><p className={`font-bold text-lg ${isHospitalMode ? 'text-white' : 'text-white'}`}>{route?.name}</p><p className={`text-xs mt-1 ${isHospitalMode ? 'text-gray-300' : 'text-blue-100'}`}>{route?.hospitals?.join(', ')}</p></div>
-                                    <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${isToday ? 'bg-white text-blue-700 shadow-sm' : (isHospitalMode ? 'bg-gray-700 text-gray-300' : 'bg-blue-800/50 text-blue-100')}`}>{new Date(visit.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
-                                </div>
-                                <div className="mt-3 flex items-center gap-2 text-xs font-medium opacity-80 group-hover:opacity-100 transition-opacity"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg> Dupla: {partner ? partner.name : 'Aguardando parceiro'}</div>
-                            </button>
-                        );
-                    })}
-                </div>
+        {/* Calendar Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+                <FullCalendar 
+                    selectedDate={selectedDate} 
+                    onChange={(d) => { setSelectedDate(d); setIsDailyAgendaOpen(true); }}
+                    visits={state.visits}
+                    routes={activeRoutes}
+                    members={state.members}
+                    currentUser={state.currentUser}
+                    events={state.events}
+                    isHospitalMode={isHospitalMode}
+                />
             </div>
-        )}
-
-        {mySocialVisits.length > 0 && (
-            <div className={`p-4 rounded-2xl border-2 border-indigo-500/30 ${isHospitalMode ? 'bg-indigo-900/10' : 'bg-indigo-50'}`}>
-                <h3 className="text-xs font-black uppercase text-indigo-600 tracking-widest mb-3">Designações de Assistência Social</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {mySocialVisits.map((v: SocialWorkerVisit) => {
-                        const hospital = state.hospitals.find((h: Hospital) => h.id === v.hospitalId);
-                        const partnerId = v.memberIds.find(id => id !== state.currentUser?.id);
-                        const partner = state.members.find(m => m.id === partnerId);
-                        return (
-                            <div key={v.id} className={`p-4 rounded-xl shadow-sm flex flex-col justify-between ${isHospitalMode ? 'bg-[#212327] border border-gray-700' : 'bg-white border border-gray-200'}`}>
-                                <div className="mb-3">
-                                    <div className="flex justify-between items-start">
-                                        <h4 className={`font-bold ${isHospitalMode ? 'text-white' : 'text-gray-900'}`}>{hospital?.name}</h4>
-                                        <span className="text-xs font-black text-indigo-500">{new Date(v.date + 'T12:00:00').toLocaleDateString()}</span>
+            <div>
+                <CalendarWidget selectedDate={selectedDate} onChange={setSelectedDate} />
+                
+                {/* Upcoming Visits Widget */}
+                <div className={`mt-6 p-4 rounded-xl border ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                    <h3 className={`text-xs font-black uppercase tracking-widest mb-4 ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>Próximas Visitas</h3>
+                    <div className="space-y-3">
+                        {state.visits
+                            .filter(v => v.memberIds.includes(state.currentUser?.id || '') && v.date >= new Date().toISOString().split('T')[0])
+                            .sort((a,b) => a.date.localeCompare(b.date))
+                            .slice(0, 3)
+                            .map(v => {
+                                const route = state.routes.find(r => r.id === v.routeId);
+                                return (
+                                    <div 
+                                        key={v.id} 
+                                        onClick={() => route && handleOpenMyVisit(route, v)}
+                                        className={`p-3 rounded-xl border cursor-pointer transition-all hover:shadow-md ${isHospitalMode ? 'bg-blue-900/10 border-blue-900/30 hover:border-blue-800' : 'bg-blue-50 border-blue-100 hover:bg-white'}`}
+                                    >
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className={`text-xs font-bold ${isHospitalMode ? 'text-blue-400' : 'text-blue-700'}`}>{new Date(v.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${v.status === 'FINISHED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                                {v.status === 'FINISHED' ? 'Realizada' : 'Agendada'}
+                                            </span>
+                                        </div>
+                                        <p className={`text-sm font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{route?.name}</p>
                                     </div>
-                                    <p className={`text-xs mt-1 ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Dupla: {partner ? partner.name : 'Você'}</p>
-                                </div>
-                                <button onClick={() => setFinishSocialVisit(v)} className="w-full py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase hover:bg-indigo-700 transition-colors shadow-md">Relatar & Finalizar</button>
-                            </div>
-                        );
-                    })}
+                                );
+                            })
+                        }
+                        {state.visits.filter(v => v.memberIds.includes(state.currentUser?.id || '') && v.date >= new Date().toISOString().split('T')[0]).length === 0 && (
+                            <p className="text-xs text-gray-400 italic text-center py-2">Nenhuma visita agendada.</p>
+                        )}
+                    </div>
                 </div>
             </div>
-        )}
+        </div>
 
-        {myEvents.length > 0 && (
-            <div className={`p-4 rounded-2xl border shadow-sm ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100'}`}>
-                <h3 className={`text-xs font-black uppercase tracking-widest mb-3 ${isHospitalMode ? 'text-gray-400' : 'text-blue-600'}`}>Próximos Eventos</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {myEvents.map((event: AppEvent) => (
-                        <button 
-                            key={event.id} 
-                            onClick={() => setSelectedEventDetails(event)}
-                            className={`p-3 rounded-xl border flex flex-col justify-between text-left transition-all active:scale-95 ${isHospitalMode ? 'bg-black/20 border-gray-700 hover:bg-white/5' : 'bg-white border-blue-100 shadow-sm hover:bg-white/80'}`}
-                        >
-                            <div>
-                                <div className="flex justify-between items-start">
-                                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${event.targetGroup === 'GVP' ? 'bg-blue-100 text-blue-700' : event.targetGroup === 'COLIH' ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-700'}`}>{event.targetGroup === 'ALL' ? 'Geral' : event.targetGroup}</span>
-                                    <span className={`text-xs font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{new Date(event.date + 'T12:00:00').toLocaleDateString()}</span>
-                                </div>
-                                <h4 className={`font-bold mt-1 ${isHospitalMode ? 'text-gray-200' : 'text-gray-900'}`}>{event.title}</h4>
-                                <p className={`text-xs mt-1 truncate ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>{event.location} {event.time ? `• ${event.time}` : ''}</p>
-                            </div>
-                        </button>
-                    ))}
-                </div>
-            </div>
-        )}
-
-        <FullCalendar 
-            selectedDate={selectedDate}
-            onChange={(d) => { setSelectedDate(d); setIsDailyOpen(true); }}
-            visits={state.visits}
-            routes={filteredRoutes} // Using filtered Routes
-            members={state.members}
-            currentUser={state.currentUser}
-            events={state.events}
-            isHospitalMode={isHospitalMode}
-        />
-
+        {/* MODALS */}
+        
+        {/* Daily Agenda */}
         <DailyAgendaModal 
-            isOpen={isDailyOpen}
-            onClose={() => setIsDailyOpen(false)}
+            isOpen={isDailyAgendaOpen}
+            onClose={() => setIsDailyAgendaOpen(false)}
             date={selectedDate}
-            routes={filteredRoutes} // Using filtered Routes
+            routes={activeRoutes}
             visits={state.visits}
             members={state.members}
-            patients={activePatients}
+            patients={state.patients}
             currentUser={state.currentUser}
             isPrivacyMode={isPrivacyMode}
             isHospitalMode={isHospitalMode}
-            onRouteClick={handleRouteClick}
-            onReportClick={(slot) => { const route = state.routes.find((r: VisitRoute) => r.id === slot.routeId); if (route) setReportModalSlot({ slot, route }); }}
-            onPatientClick={(p) => setViewingPatientId(p.id)}
-            hospitals={filteredHospitals} // Using filtered Hospitals
-            events={state.events} // Pass events to the modal
+            onRouteClick={(route, slot) => {
+                // If the user is part of the slot, allow them to manage it details (MyVisitModal is accessed via widget or clicking self in logic usually)
+                // Here we want to handle the "Action Button" in the modal.
+                // If button says "Entrar na Rota", we open SlotModal.
+                // If button says "Escalado", it might be disabled in the modal or open MyVisitModal.
+                // Let's assume handleRouteClick maps to "Manage Slot" action.
+                
+                const memberIds = slot ? slot.memberIds : [];
+                if (state.currentUser && memberIds.includes(state.currentUser.id)) {
+                    // Already escalated.
+                    if (slot) handleOpenMyVisit(route, slot);
+                } else {
+                    handleRouteClick(route, slot);
+                }
+            }}
+            onReportClick={(slot) => {
+                const route = state.routes.find(r => r.id === slot.routeId);
+                if (route) setViewReportData({ slot, route });
+            }}
+            onPatientClick={(patient) => setViewingPatientId(patient.id)}
+            hospitals={state.hospitals}
+            events={state.events}
         />
 
-        {slotModalData && (
+        {/* Slot Management (Join/Leave) */}
+        {selectedRouteForSlot && (
             <SlotModal 
                 isOpen={true}
-                onClose={() => setSlotModalData(null)}
-                route={slotModalData.route}
-                currentMemberIds={slotModalData.slot?.memberIds || []}
+                onClose={() => setSelectedRouteForSlot(null)}
+                route={selectedRouteForSlot}
+                currentMemberIds={slotToEdit ? slotToEdit.memberIds : []}
                 allMembers={state.members}
-                currentUser={state.currentUser}
                 onSave={handleSlotSave}
+                currentUser={state.currentUser}
                 isHospitalMode={isHospitalMode}
-                hospitals={filteredHospitals} // Using filtered Hospitals
+                hospitals={state.hospitals}
+                allVisits={state.visits}
+                currentDate={selectedDate}
             />
         )}
 
-        {reportModalSlot && (
+        {/* My Visit Details (Action Center) */}
+        {myVisitData && (
+            <MyVisitModal 
+                isOpen={true}
+                onClose={() => setMyVisitData(null)}
+                date={myVisitData.slot.date}
+                route={myVisitData.route}
+                partner={getPartner(myVisitData.slot)}
+                hospitalDetails={state.hospitals.filter(h => myVisitData.route.hospitals?.includes(h.name))}
+                patients={state.patients}
+                recentHistory={getRecentHistory(myVisitData.route.id)}
+                isHospitalMode={isHospitalMode}
+                isPrivacyMode={isPrivacyMode}
+                onSwapRequest={handleSwapRequest}
+                onCancelVisit={handleCancelVisit}
+                onOnTheWay={() => {
+                    // Force refresh/re-render handled by state update in modal
+                }}
+                onFinishVisit={handleFinishVisit}
+                onPatientClick={(p) => setViewingPatientId(p.id)}
+                slot={myVisitData.slot}
+                currentUser={state.currentUser}
+            />
+        )}
+
+        {/* Report Writing */}
+        {reportData && (
+            <ReportModal 
+                isOpen={true}
+                onClose={() => setReportData(null)}
+                onSave={handleSaveReport}
+                hospitalName={reportData.route.hospitals?.join(', ') || ''}
+                visitParticipants={reportData.slot.memberIds.map(id => state.members.find(m => m.id === id)?.name).join(' & ')}
+                recentHistory={getRecentHistory(reportData.route.id)}
+                isHospitalMode={isHospitalMode}
+            />
+        )}
+
+        {/* View Report */}
+        {viewReportData && (
             <ViewReportModal 
                 isOpen={true}
-                onClose={() => setReportModalSlot(null)}
-                slot={reportModalSlot.slot}
-                route={reportModalSlot.route}
+                onClose={() => setViewReportData(null)}
+                slot={viewReportData.slot}
+                route={viewReportData.route}
                 members={state.members}
                 isHospitalMode={isHospitalMode}
             />
         )}
 
-        {myVisitModalData && myVisitRoute && (
-            <MyVisitModal 
+        {/* Quick Scale */}
+        <QuickScaleModal 
+            isOpen={isQuickScaleOpen}
+            onClose={() => setIsQuickScaleOpen(false)}
+            state={state}
+            onSave={handleQuickScaleSave}
+            isHospitalMode={isHospitalMode}
+        />
+
+        {/* Swap Request */}
+        {swapRequestData && (
+            <SwapRequestModal 
                 isOpen={true}
-                onClose={() => setMyVisitModalData(null)}
-                date={myVisitModalData.slot.date}
-                route={myVisitRoute}
-                partner={partner || null}
-                hospitalDetails={hospitalDetails}
-                patients={activePatients}
-                recentHistory={[]} 
+                onClose={() => setSwapRequestData(null)}
+                currentDate={swapRequestData.date}
+                onConfirm={handleConfirmSwap}
                 isHospitalMode={isHospitalMode}
-                isPrivacyMode={isPrivacyMode}
-                onSwapRequest={() => setIsSwapModalOpen(true)}
-                onCancelVisit={() => setIsCancelModalOpen(true)}
-                onFinishVisit={() => setIsFinishModalOpen(true)}
-                onPatientClick={(p) => setViewingPatientId(p.id)}
             />
         )}
 
+        {/* Cancel Visit */}
+        {cancelVisitData && (
+            <CancelVisitModal 
+                isOpen={true}
+                onClose={() => setCancelVisitData(null)}
+                onConfirm={handleConfirmCancel}
+                isHospitalMode={isHospitalMode}
+            />
+        )}
+
+        {/* Patient Detail Modal */}
         {viewingPatient && (
             <PatientDetailModal 
                 isOpen={true}
                 onClose={() => setViewingPatientId(null)}
                 patient={viewingPatient}
-                lastVisit={null} 
+                lastVisit={null} // Can compute last visit for this patient if needed
                 members={state.members}
                 logs={state.logs} 
                 isHospitalMode={isHospitalMode}
                 onDischarge={handleDischarge}
                 onToggleGvp={handleToggleGvp}
+                onAssignColih={handleAssignColih}
+                onUpdatePatient={handleUpdatePatient}
                 canEdit={state.currentUser?.role === 'ADMIN' || state.currentUser?.isColih}
                 canDischarge={true}
                 isColihUser={state.currentUser?.isColih}
-            />
-        )}
-
-        <FinishVisitModal 
-            isOpen={isFinishModalOpen}
-            onClose={() => setIsFinishModalOpen(false)}
-            onConfirm={handleFinishVisit}
-            patients={myVisitPatients}
-            isHospitalMode={isHospitalMode}
-        />
-
-        {finishSocialVisit && (
-            <FinishSocialVisitModal 
-                isOpen={true}
-                onClose={() => setFinishSocialVisit(null)}
-                onConfirm={handleFinishSocialVisit}
-                hospitalName={filteredHospitals.find((h: Hospital) => h.id === finishSocialVisit.hospitalId)?.name || ''}
-                isHospitalMode={isHospitalMode}
-            />
-        )}
-
-        <CancelVisitModal 
-            isOpen={isCancelModalOpen}
-            onClose={() => setIsCancelModalOpen(false)}
-            onConfirm={handleCancelVisit}
-            isHospitalMode={isHospitalMode}
-        />
-
-        <SwapRequestModal 
-            isOpen={isSwapModalOpen}
-            onClose={() => setIsSwapModalOpen(false)}
-            currentDate={selectedDate}
-            onConfirm={(newDate, note) => { alert("Solicitação enviada ao coordenador."); setIsSwapModalOpen(false); }}
-            isHospitalMode={isHospitalMode}
-        />
-
-        {attendanceEvent && (
-            <AttendanceModal
-                isOpen={true}
-                onClose={handleAttendanceResponse}
-                event={attendanceEvent}
-                isHospitalMode={isHospitalMode}
-            />
-        )}
-
-        {/* MODAL DETALHES DE EVENTO (Atualizado para permitir presença) */}
-        <EventDetailModal
-            isOpen={!!selectedEventDetails}
-            onClose={() => setSelectedEventDetails(null)}
-            event={selectedEventDetails}
-            isHospitalMode={isHospitalMode}
-            currentUser={state.currentUser}
-            onRegisterAttendance={(evt) => {
-                setAttendanceEvent(evt);
-                setSelectedEventDetails(null);
-            }}
-        />
-
-        {/* MODAL DETALHES KPI */}
-        {selectedKpiType && (
-            <KpiDetailModal
-                isOpen={true}
-                onClose={() => setSelectedKpiType(null)}
-                title={
-                    selectedKpiType === 'visits' ? 'Visitas Realizadas (Mês)' :
-                    selectedKpiType === 'patients' ? 'Pacientes Ativos' :
-                    selectedKpiType === 'hospitals' ? 'Hospitais Cadastrados' : 'Casos em Aberto'
-                }
-                items={detailedKpiData[selectedKpiType] || []}
-                isHospitalMode={isHospitalMode}
+                currentUser={state.currentUser} 
             />
         )}
     </div>

@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { HashRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { loadState, createDefaultState, atomicUpdate } from './services/storageService';
 import { AppState, UserRole, AppNotification } from './types';
@@ -39,6 +39,11 @@ const Layout: React.FC<{
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [showNotifPermission, setShowNotifPermission] = useState(false);
+  
+  // Estado para o dropdown de carteira
+  const [isAssignmentsOpen, setIsAssignmentsOpen] = useState(false);
+  const assignmentsRef = useRef<HTMLDivElement>(null);
+
   const location = useLocation();
   const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -50,6 +55,30 @@ const Layout: React.FC<{
       notificationAudioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
     } catch (e) { console.warn("Erro ao inicializar audio:", e); }
   }, []);
+
+  // Fechar dropdown de carteira ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (assignmentsRef.current && !assignmentsRef.current.contains(event.target as Node)) {
+        setIsAssignmentsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Carteira Designada (Memoized)
+  const myAssignments = useMemo(() => {
+      if (!state.currentUser) return { doctors: [], hospitals: [] };
+      const doctors = state.doctors.filter(d => d.assignedMemberIds?.includes(state.currentUser!.id));
+      const hospitals = state.hospitals.filter(h => h.responsibleMemberIds?.includes(state.currentUser!.id));
+      return { doctors, hospitals };
+  }, [state.doctors, state.hospitals, state.currentUser]);
+
+  const hasAssignments = myAssignments.doctors.length > 0 || myAssignments.hospitals.length > 0;
+  
+  // Regra de Visibilidade do Ícone: Tem designações OU é COLIH/Admin (para ver carteira vazia)
+  const showWalletIcon = hasAssignments || state.currentUser?.isColih || state.currentUser?.role === UserRole.ADMIN;
 
   const handleRequestPermission = () => {
     Notification.requestPermission().then(permission => {
@@ -214,7 +243,7 @@ const Layout: React.FC<{
   const isManagement = state.currentUser.role === UserRole.ADMIN || state.currentUser.role === UserRole.COORDINATOR;
 
   const menuItems = [
-    { to: "/dashboard", label: "Agenda", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+    { to: "/dashboard", label: "Agenda", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
     
     ...(hasColihAccess ? [
         { to: "/colih/doctors", label: "Médicos", icon: "M20 7h-4v-3c0-1.105-.895-2-2-2h-4c-1.105 0-2 .895-2 2v3h-4c-1.105 0-2 .895-2 2v11c0 1.105.895 2 2 2h16c1.105 0 2-.895 2-2v-11c0-1.105-.895-2-2-2zm-10-3h4v3h-4v-3zm0 0" },
@@ -285,6 +314,94 @@ const Layout: React.FC<{
           </div>
 
           <div className="flex items-center gap-1 md:gap-2 shrink-0">
+            {/* ÍCONE DE CARTEIRA DESIGNADA */}
+            {showWalletIcon && (
+                <div className="relative" ref={assignmentsRef}>
+                    <button 
+                        onClick={() => setIsAssignmentsOpen(!isAssignmentsOpen)}
+                        className={`p-2 rounded-full transition-all relative ${isAssignmentsOpen ? 'bg-indigo-100 text-indigo-600' : 'text-gray-400 hover:text-indigo-600 hover:bg-gray-100'}`}
+                        title="Minha Carteira"
+                    >
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        {hasAssignments ? (
+                            <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500 border-2 border-white"></span>
+                            </span>
+                        ) : (
+                            <span className="absolute top-1 right-1 flex h-3 w-3 items-center justify-center rounded-full bg-gray-400 text-[8px] font-bold text-white border border-white">0</span>
+                        )}
+                    </button>
+
+                    {isAssignmentsOpen && (
+                        <div className={`absolute right-0 top-full mt-2 w-80 max-h-[80vh] overflow-y-auto rounded-2xl shadow-xl z-50 p-4 border animate-fade-in ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                            <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100/10">
+                                <h3 className={`text-xs font-black uppercase tracking-widest ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Minha Carteira</h3>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${hasAssignments ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>{myAssignments.doctors.length + myAssignments.hospitals.length}</span>
+                            </div>
+                            
+                            {!hasAssignments && (
+                                <div className="text-center py-6">
+                                    <p className={`text-xs italic ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>Você não possui médicos ou hospitais designados.</p>
+                                    {state.currentUser?.role === UserRole.ADMIN && (
+                                        <p className="text-[10px] text-indigo-500 mt-2">Vá em Médicos {'>'} Editar para designar-se.</p>
+                                    )}
+                                </div>
+                            )}
+
+                            {myAssignments.doctors.length > 0 && (
+                                <div className="mb-4">
+                                    <p className={`text-[10px] font-bold mb-2 uppercase flex items-center gap-2 ${isHospitalMode ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                        Médicos Designados
+                                    </p>
+                                    <div className="space-y-2">
+                                        {myAssignments.doctors.map(d => {
+                                            const lastVisit = d.lastVisitDate ? new Date(d.lastVisitDate) : null;
+                                            const days = lastVisit ? Math.floor((new Date().getTime() - lastVisit.getTime()) / (1000 * 3600 * 24)) : 999;
+                                            const isCritical = days > 180;
+                                            
+                                            return (
+                                                <div key={d.id} className={`p-3 rounded-xl border flex justify-between items-center group transition-colors ${isHospitalMode ? 'bg-black/20 border-gray-700 hover:border-gray-600' : 'bg-gray-50 border-gray-200 hover:bg-white hover:border-blue-200 hover:shadow-sm'}`}>
+                                                    <div>
+                                                        <p className={`text-xs font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{d.name}</p>
+                                                        <p className="text-[9px] text-gray-500">{d.specialty}</p>
+                                                    </div>
+                                                    <div className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${isCritical ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                                                        {days === 999 ? 'Nunca' : `${days}d`}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {myAssignments.hospitals.length > 0 && (
+                                <div>
+                                    <p className={`text-[10px] font-bold mb-2 uppercase flex items-center gap-2 ${isHospitalMode ? 'text-teal-400' : 'text-teal-600'}`}>
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                                        Hospitais (AS)
+                                    </p>
+                                    <div className="space-y-2">
+                                        {myAssignments.hospitals.map(h => (
+                                            <div key={h.id} className={`p-3 rounded-xl border flex justify-between items-center group transition-colors ${isHospitalMode ? 'bg-black/20 border-gray-700 hover:border-gray-600' : 'bg-gray-50 border-gray-200 hover:bg-white hover:border-teal-200 hover:shadow-sm'}`}>
+                                                <div>
+                                                    <p className={`text-xs font-bold ${isHospitalMode ? 'text-gray-200' : 'text-gray-800'}`}>{h.name}</p>
+                                                    <p className="text-[9px] text-gray-500">{h.city}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
             <NotificationCenter 
               notifications={state.notifications.filter(n => n.userId === state.currentUser?.id)} 
               onMarkAsRead={handleMarkAsRead} 

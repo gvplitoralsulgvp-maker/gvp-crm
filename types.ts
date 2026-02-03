@@ -82,6 +82,7 @@ export interface VisitSlot {
   memberIds: string[];
   status: VisitStatus;
   report?: VisitReport;
+  onTheWayMemberIds?: string[]; // Lista de IDs de quem marcou "A Caminho"
 }
 
 export interface SocialWorkerVisit {
@@ -132,6 +133,7 @@ export interface Patient {
   
   gvpRequestPending?: boolean;
   isMedicalDischarge?: boolean;
+  pendingHlc7?: boolean; // Novo: Indica que teve alta mas falta enviar HLC-7
   estimatedDischargeDate?: string;
   needsAccommodation?: boolean;
   isExternalRequest?: boolean;
@@ -177,6 +179,7 @@ export interface Doctor {
   treatsPediatric?: boolean;
   responsibleMemberName?: string;
   lastVisitDate?: string;
+  assignedMemberIds?: string[];
 }
 
 export type ColihInteractionType = 'visit' | 'presentation' | 'material_delivery' | 'email_phone';

@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS public.doctors (
     is_consultant BOOLEAN DEFAULT FALSE,
     treats_pediatric BOOLEAN DEFAULT FALSE,
     responsible_member_name TEXT,
+    assigned_member_ids TEXT[] DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -106,12 +107,20 @@ ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS hlc38_presented BOOLEAN
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS collaborator_interest BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.colih_visits ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'SCHEDULED';
 
+-- CORREÇÕES NA TABELA DE MÉDICOS (ADICIONAR COLUNAS FALTANTES EM LEGADO)
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS regional TEXT;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS specialty TEXT;
 ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS hospital_ids TEXT[] DEFAULT '{}';
 ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS last_visit_date DATE;
 ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS cooperation_level TEXT;
 ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS is_consultant BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS treats_pediatric BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS responsible_member_name TEXT;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS assigned_member_ids TEXT[] DEFAULT '{}';
 
 -- PERMISSÕES RLS
 ALTER TABLE public.patients ENABLE ROW LEVEL SECURITY;

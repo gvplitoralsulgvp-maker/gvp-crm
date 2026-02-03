@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Member, VisitRoute, UserRole, Hospital } from '../types';
+import { Member, VisitRoute, UserRole, Hospital, VisitSlot } from '../types';
 import { Button } from './Button';
 
 interface SlotModalProps {
@@ -14,10 +14,12 @@ interface SlotModalProps {
   currentUser: Member | null;
   isHospitalMode?: boolean;
   hospitals?: Hospital[];
+  allVisits?: VisitSlot[]; // NEW: To check for conflicts
+  currentDate?: string; // NEW: To check for conflicts
 }
 
 export const SlotModal: React.FC<SlotModalProps> = ({ 
-  isOpen, onClose, route, currentMemberIds, allMembers, onSave, currentUser, isHospitalMode, hospitals 
+  isOpen, onClose, route, currentMemberIds, allMembers, onSave, currentUser, isHospitalMode, hospitals, allVisits, currentDate
 }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>(currentMemberIds);
   const [searchTerm, setSearchTerm] = useState('');
@@ -36,12 +38,25 @@ export const SlotModal: React.FC<SlotModalProps> = ({
       setSelectedIds(selectedIds.filter(mid => mid !== member.id));
     } else {
       if (selectedIds.length < 2) {
-        // --- REGIONAL CHECK ---
+        
+        // --- 1. CONFLICT CHECK (Double Booking) ---
+        if (allVisits && currentDate) {
+            const conflict = allVisits.find(v => 
+                v.date === currentDate && 
+                v.routeId !== route.id && // Not this route
+                v.memberIds.includes(member.id)
+            );
+            if (conflict) {
+                alert(`⚠️ CONFLITO DE AGENDA:\n\n${member.name} já está escalado(a) em outra rota neste mesmo dia.`);
+                return;
+            }
+        }
+
+        // --- 2. REGIONAL CHECK ---
         const routeHospitals = hospitals?.filter(h => route.hospitals?.includes(h.name)) || [];
         const routeRegional = routeHospitals.length > 0 ? routeHospitals[0].regional : null;
         
-        // Determinar a regional do membro (campo direto ou inferido da cidade se possível)
-        // Por simplificação, usaremos member.regional. Se nulo, assumimos "Global" ou sem restrição.
+        // Determinar a regional do membro
         if (routeRegional && member.regional && member.regional !== routeRegional) {
             const confirmed = window.confirm(
                 `Aviso de Regional!\n\n` +

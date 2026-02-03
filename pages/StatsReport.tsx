@@ -4,84 +4,149 @@ import { AppState, UserRole } from '../types';
 import { Button } from '../components/Button';
 import { KpiDetailModal } from '../components/KpiDetailModal';
 
-// Componente Interno: Cartão de Métrica Interativo
+// --- COMPONENTES GRÁFICOS AVANÇADOS (SVG PURO) ---
+
+// 1. Gráfico de Tendência (Área com Gradiente)
+const TrendChart: React.FC<{ data: number[], isHospitalMode?: boolean }> = ({ data, isHospitalMode }) => {
+  const height = 80;
+  const width = 300;
+  const max = Math.max(...data, 1);
+  
+  // Pontos da linha
+  const points = data.map((val, i) => {
+    const x = (i / (data.length - 1)) * width;
+    const y = height - (val / max) * height; // Invertido pois SVG Y cresce para baixo
+    return `${x},${y}`;
+  }).join(' ');
+
+  // Pontos para a área fechada (adiciona cantos inferiores)
+  const areaPoints = `${points} ${width},${height} 0,${height}`;
+
+  return (
+    <div className={`p-6 rounded-3xl border shadow-sm relative overflow-hidden flex flex-col justify-between h-64 ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-200'}`}>
+      <div className="flex justify-between items-start z-10">
+        <div>
+            <h3 className={`text-sm font-black uppercase tracking-widest ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Tendência de Atividade</h3>
+            <p className={`text-xs ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>Últimos {data.length} dias</p>
+        </div>
+        <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${data[data.length-1] >= data[0] ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+            {data[data.length-1] >= data[0] ? '▲ Crescimento' : '▼ Queda'}
+        </div>
+      </div>
+      
+      <div className="absolute bottom-0 left-0 right-0 h-40 w-full">
+         <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full" preserveAspectRatio="none">
+            <defs>
+               <linearGradient id="trendGradient" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.4" />
+                  <stop offset="100%" stopColor="#3B82F6" stopOpacity="0" />
+               </linearGradient>
+            </defs>
+            {/* Grid Lines Horizontais */}
+            <line x1="0" y1={height * 0.25} x2={width} y2={height * 0.25} stroke={isHospitalMode ? "#333" : "#f3f4f6"} strokeWidth="0.5" strokeDasharray="2" />
+            <line x1="0" y1={height * 0.5} x2={width} y2={height * 0.5} stroke={isHospitalMode ? "#333" : "#f3f4f6"} strokeWidth="0.5" strokeDasharray="2" />
+            <line x1="0" y1={height * 0.75} x2={width} y2={height * 0.75} stroke={isHospitalMode ? "#333" : "#f3f4f6"} strokeWidth="0.5" strokeDasharray="2" />
+
+            {/* Área */}
+            <path d={`M0,${height} ${points} L${width},${height} Z`} fill="url(#trendGradient)" />
+            {/* Linha */}
+            <polyline points={points} fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+         </svg>
+      </div>
+    </div>
+  );
+};
+
+// 2. Anéis de Saúde Hospitalar
+const HospitalHealthRing: React.FC<{ hospitalName: string, daysSince: number, isHospitalMode?: boolean }> = ({ hospitalName, daysSince, isHospitalMode }) => {
+  // Lógica: 0-7 dias = 100% health, >30 dias = 0% health
+  const maxDays = 30;
+  const health = Math.max(0, Math.min(100, 100 - ((daysSince / maxDays) * 100)));
+  
+  const radius = 30;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (health / 100) * circumference;
+  
+  const color = daysSince <= 7 ? 'text-green-500' : daysSince <= 15 ? 'text-yellow-500' : 'text-red-500';
+  const bgColor = isHospitalMode ? 'text-gray-800' : 'text-gray-100';
+
+  return (
+    <div className="flex flex-col items-center gap-3 group cursor-default">
+      <div className="relative w-24 h-24 transition-transform group-hover:scale-105">
+        <svg className="w-full h-full transform -rotate-90">
+           {/* Fundo */}
+           <circle cx="48" cy="48" r={radius} stroke="currentColor" strokeWidth="6" fill="transparent" className={bgColor} />
+           {/* Progresso */}
+           <circle cx="48" cy="48" r={radius} stroke="currentColor" strokeWidth="6" fill="transparent" 
+                   strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round"
+                   className={`${color} transition-all duration-1000 ease-out`} />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center flex-col">
+           <span className={`text-2xl font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{daysSince === 999 ? '-' : daysSince}</span>
+           <span className="text-[9px] uppercase font-bold text-gray-400">Dias</span>
+        </div>
+      </div>
+      <div className="text-center">
+          <p className={`text-[10px] font-bold uppercase truncate max-w-[120px] ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{hospitalName}</p>
+          <p className={`text-[9px] ${color} font-black uppercase`}>{daysSince > 30 ? 'Crítico' : daysSince > 7 ? 'Atenção' : 'Em dia'}</p>
+      </div>
+    </div>
+  );
+};
+
+// 3. Mapa de Calor (Grid)
+const ActivityHeatmap: React.FC<{ data: number[][], isHospitalMode?: boolean }> = ({ data, isHospitalMode }) => {
+  // data: Matriz 4 semanas (linhas) x 7 dias (colunas)
+  const days = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+  
+  const getOpacityClass = (count: number) => {
+     if (count === 0) return isHospitalMode ? 'bg-gray-800' : 'bg-gray-100';
+     if (count <= 2) return 'bg-blue-300';
+     if (count <= 5) return 'bg-blue-500';
+     return 'bg-blue-700';
+  };
+
+  return (
+    <div className={`p-6 rounded-3xl border shadow-sm ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-200'}`}>
+        <div className="flex justify-between items-end mb-4">
+            <h3 className={`text-sm font-black uppercase tracking-widest ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>Mapa de Calor (Mês)</h3>
+            <div className="flex gap-1">
+                {[0, 3, 6].map(i => <div key={i} className={`w-2 h-2 rounded-full ${getOpacityClass(i)}`}></div>)}
+            </div>
+        </div>
+        
+        <div className="grid grid-cols-8 gap-2">
+            <div className="text-[9px] font-bold text-gray-400 uppercase self-center">Sem</div>
+            {days.map((d, i) => <div key={i} className="text-[9px] font-bold text-center text-gray-400 uppercase">{d}</div>)}
+            
+            {data.map((week, wIdx) => (
+                <React.Fragment key={wIdx}>
+                    <div className="text-[9px] font-bold text-gray-500 uppercase self-center">S{wIdx + 1}</div>
+                    {week.map((count, dIdx) => (
+                        <div 
+                            key={`${wIdx}-${dIdx}`} 
+                            className={`h-8 rounded-md transition-all hover:scale-110 cursor-pointer flex items-center justify-center group relative ${getOpacityClass(count)}`}
+                        >
+                            {count > 0 && <span className="opacity-0 group-hover:opacity-100 text-[8px] font-bold text-white">{count}</span>}
+                        </div>
+                    ))}
+                </React.Fragment>
+            ))}
+        </div>
+    </div>
+  );
+};
+
+// Componente Cartão de Métrica Simples (Mantido para KPIs numéricos)
 const MetricCard: React.FC<{ title: string; value: number | string; colorClass: string; isHospitalMode?: boolean; onClick?: () => void }> = ({ title, value, colorClass, isHospitalMode, onClick }) => (
     <button 
         onClick={onClick}
-        className={`w-full p-5 rounded-2xl border shadow-sm flex flex-col justify-between h-32 transition-all hover:shadow-md active:scale-95 text-left ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-200 hover:border-blue-200'}`}
+        className={`w-full p-5 rounded-2xl border shadow-sm flex flex-col justify-between h-28 transition-all hover:shadow-md active:scale-95 text-left ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-200 hover:border-blue-200'}`}
     >
         <span className={`text-[10px] font-bold uppercase tracking-widest ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>{title}</span>
-        <span className={`text-4xl font-bold ${colorClass}`}>{value}</span>
+        <span className={`text-3xl font-black ${colorClass}`}>{value}</span>
     </button>
 );
-
-// Componente Interno: Gráfico de Barras Simples (CSS)
-const SimpleBarChart: React.FC<{ data: { label: string, value: number }[], isHospitalMode?: boolean }> = ({ data, isHospitalMode }) => {
-    const maxValue = Math.max(...data.map(d => d.value), 1);
-    
-    return (
-        <div className="h-48 flex items-end gap-2 pt-4 pb-2">
-            {data.map((d, idx) => {
-                const heightPct = (d.value / maxValue) * 100;
-                return (
-                    <div key={idx} className="flex-1 flex flex-col items-center gap-2 group relative h-full justify-end">
-                        {/* Tooltip */}
-                        <div className={`absolute bottom-full mb-1 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-bold px-2 py-1 rounded shadow-lg pointer-events-none whitespace-nowrap z-10 ${isHospitalMode ? 'bg-white text-black' : 'bg-gray-800 text-white'}`}>
-                            {d.label}: {d.value}
-                        </div>
-                        {/* Barra */}
-                        <div 
-                            className="w-full max-w-[40px] rounded-t-md transition-all hover:opacity-80 bg-blue-500 relative" 
-                            style={{ height: `${heightPct}%`, minHeight: '4px' }}
-                        >
-                            {/* Valor dentro da barra se couber, ou fora */}
-                        </div>
-                        {/* Label Eixo X */}
-                        <span className={`text-[9px] font-bold truncate w-full text-center ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`} title={d.label}>
-                            {d.label.split(' ')[0]}...
-                        </span>
-                    </div>
-                )
-            })}
-            {data.length === 0 && <p className="w-full text-center text-xs text-gray-400 self-center">Sem dados para exibir</p>}
-        </div>
-    );
-};
-
-// Componente Interno: Gráfico Donut SVG
-const DonutChart: React.FC<{ active: number, total: number, isHospitalMode?: boolean }> = ({ active, total, isHospitalMode }) => {
-    const percentage = total === 0 ? 0 : (active / total) * 100;
-    // Circunferência de raio 15.9155 ~= 100
-    
-    return (
-        <div className="relative w-40 h-40 mx-auto flex items-center justify-center">
-            <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
-                {/* Fundo do Anel */}
-                <path 
-                    className={`${isHospitalMode ? 'text-gray-800' : 'text-gray-100'}`} 
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="4" 
-                />
-                {/* Segmento de Valor */}
-                <path 
-                    className="text-green-500 transition-all duration-1000 ease-out" 
-                    strokeDasharray={`${percentage}, 100`} 
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="4" 
-                    strokeLinecap="round"
-                />
-            </svg>
-            <div className="absolute flex flex-col items-center">
-                <span className={`text-3xl font-black ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{active}</span>
-                <span className={`text-[9px] font-bold uppercase tracking-widest ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>Ativos</span>
-            </div>
-        </div>
-    );
-};
 
 export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }> = ({ state, isHospitalMode }) => {
   const [activeTab, setActiveTab] = useState<'kpis' | 'socialWorkers' | 'missed' | 'coverage'>('kpis');
@@ -106,10 +171,8 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
 
   const filteredRoutes = useMemo(() => {
       if (isCoordinator && userRegional) {
-          // Routes are filtered if they contain hospitals from the region
           return state.routes.filter(r => {
               if (!r.hospitals) return false;
-              // Check if any hospital in the route belongs to visible hospitals
               return r.hospitals.some(hName => filteredHospitals.some(fh => fh.name === hName));
           });
       }
@@ -151,6 +214,47 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
     return filteredVisits.filter(v => v.status === 'FINISHED' && new Date(v.date) >= cutoffDate);
   }, [filteredVisits, cutoffDate]);
 
+  // Daily Counts for TrendChart
+  const dailyCounts = useMemo(() => {
+      const counts = new Array(activeRange).fill(0);
+      const now = new Date();
+      // Start from oldest
+      const start = new Date(now);
+      start.setDate(start.getDate() - activeRange + 1);
+
+      currentVisits.forEach(v => {
+          const vDate = new Date(v.date + 'T12:00:00');
+          const diff = Math.floor((vDate.getTime() - start.getTime()) / (1000 * 3600 * 24));
+          if (diff >= 0 && diff < activeRange) {
+              counts[diff]++;
+          }
+      });
+      return counts;
+  }, [currentVisits, activeRange]);
+
+  // Heatmap Data (4 Weeks x 7 Days)
+  const heatMapData = useMemo(() => {
+      const matrix = [
+          [0,0,0,0,0,0,0],
+          [0,0,0,0,0,0,0],
+          [0,0,0,0,0,0,0],
+          [0,0,0,0,0,0,0]
+      ];
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      
+      currentVisits.forEach(v => {
+          const d = new Date(v.date + 'T12:00:00');
+          if (d.getMonth() === currentMonth) {
+              const day = d.getDay(); // 0-6
+              const date = d.getDate();
+              const week = Math.min(3, Math.floor((date - 1) / 7));
+              matrix[week][day]++;
+          }
+      });
+      return matrix;
+  }, [currentVisits]);
+
   const currentSocialVisits = useMemo(() => {
     return filteredSocialVisits.filter(v => v.status === 'FINISHED' && new Date(v.date) >= cutoffDate);
   }, [filteredSocialVisits, cutoffDate]);
@@ -164,7 +268,6 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
     );
   }, [filteredVisits, todayStr]);
 
-  // Listas detalhadas para os cards
   const newPatientsList = useMemo(() => {
       return filteredPatients.filter(p => new Date(p.admissionDate) >= cutoffDate);
   }, [filteredPatients, cutoffDate]);
@@ -173,7 +276,6 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
       return filteredPatients.filter(p => p.active);
   }, [filteredPatients]);
 
-  // Lista de Cobertura Hospitalar
   const hospitalCoverage = useMemo(() => {
       const today = new Date();
       return filteredHospitals.map(h => {
@@ -190,30 +292,11 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
       }).sort((a,b) => b.daysSince - a.daysSince);
   }, [filteredHospitals, filteredRoutes, filteredVisits]);
 
-  // Dados para os Gráficos
-  const visitsByHospital = useMemo(() => {
-      const counts: Record<string, number> = {};
-      currentVisits.forEach(v => {
-          const route = filteredRoutes.find(r => r.id === v.routeId);
-          // Atribui a visita a todos os hospitais da rota
-          route?.hospitals?.forEach(hName => {
-              counts[hName] = (counts[hName] || 0) + 1;
-          });
-      });
-      return Object.entries(counts)
-        .map(([label, value]) => ({ label, value }))
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 6); // Top 6
-  }, [currentVisits, filteredRoutes]);
-
-  const totalPatientsCount = filteredPatients.length;
-
   const handlePrint = () => {
       setIsPrintMode(true);
       setTimeout(() => { window.print(); setIsPrintMode(false); }, 500);
   };
 
-  // Preparação de dados para o Modal
   const detailedKpiData = useMemo(() => {
       const visitsItems = currentVisits.map(v => {
           const route = filteredRoutes.find(r => r.id === v.routeId);
@@ -316,81 +399,43 @@ export const StatsReport: React.FC<{ state: AppState, isHospitalMode?: boolean }
 
       {activeTab === 'kpis' && (
         <div className="space-y-6">
-            {/* 4 CARDS NO TOPO */}
+            {/* CARDS NO TOPO */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <MetricCard 
-                    title="Total de Atendimentos" 
-                    value={currentVisits.length} 
-                    colorClass="text-blue-600" 
-                    isHospitalMode={isHospitalMode}
-                    onClick={() => setSelectedKpiType('visits')}
-                />
-                <MetricCard 
-                    title="Casos Recebidos" 
-                    value={newPatientsList.length} 
-                    colorClass="text-green-600" 
-                    isHospitalMode={isHospitalMode} 
-                    onClick={() => setSelectedKpiType('new_patients')}
-                />
-                <MetricCard 
-                    title="Hospitais Cadastrados" 
-                    value={filteredHospitals.length} 
-                    colorClass="text-purple-600" 
-                    isHospitalMode={isHospitalMode} 
-                    onClick={() => setSelectedKpiType('hospitals')}
-                />
-                <MetricCard 
-                    title="Casos em Aberto" 
-                    value={activePatientsList.length} 
-                    colorClass="text-orange-600" 
-                    isHospitalMode={isHospitalMode} 
-                    onClick={() => setSelectedKpiType('active_patients')}
-                />
+                <MetricCard title="Total de Atendimentos" value={currentVisits.length} colorClass="text-blue-600" isHospitalMode={isHospitalMode} onClick={() => setSelectedKpiType('visits')} />
+                <MetricCard title="Casos Recebidos" value={newPatientsList.length} colorClass="text-green-600" isHospitalMode={isHospitalMode} onClick={() => setSelectedKpiType('new_patients')} />
+                <MetricCard title="Hospitais Cadastrados" value={filteredHospitals.length} colorClass="text-purple-600" isHospitalMode={isHospitalMode} onClick={() => setSelectedKpiType('hospitals')} />
+                <MetricCard title="Casos em Aberto" value={activePatientsList.length} colorClass="text-orange-600" isHospitalMode={isHospitalMode} onClick={() => setSelectedKpiType('active_patients')} />
             </div>
 
-            {/* GRÁFICOS */}
+            {/* GRÁFICOS AVANÇADOS */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Gráfico de Barras (Ocupa 2 colunas) */}
-                <div className={`col-span-1 lg:col-span-2 p-6 rounded-2xl border shadow-sm ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-200'}`}>
-                    <h3 className={`text-base font-bold mb-4 ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Atendimentos por Hospital</h3>
-                    <SimpleBarChart data={visitsByHospital} isHospitalMode={isHospitalMode} />
+                {/* 1. TrendChart (Área) */}
+                <div className="col-span-1 lg:col-span-2">
+                    <TrendChart data={dailyCounts} isHospitalMode={isHospitalMode} />
                 </div>
 
-                {/* Gráfico de Rosca (Ocupa 1 coluna) */}
-                <div className={`p-6 rounded-2xl border shadow-sm flex flex-col items-center justify-center ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-200'}`}>
-                    <h3 className={`text-base font-bold mb-6 w-full text-left ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Status dos Casos</h3>
-                    <DonutChart active={activePatientsList.length} total={totalPatientsCount} isHospitalMode={isHospitalMode} />
-                    <div className="mt-6 w-full space-y-2">
-                        <div className="flex justify-between text-xs">
-                            <span className="text-gray-500 font-bold uppercase flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-green-500"></div> Em Aberto
-                            </span>
-                            <span className={`font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{activePatientsList.length}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                            <span className="text-gray-500 font-bold uppercase flex items-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${isHospitalMode ? 'bg-gray-700' : 'bg-gray-200'}`}></div> Arquivados
-                            </span>
-                            <span className={`font-bold ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{totalPatientsCount - activePatientsList.length}</span>
-                        </div>
-                    </div>
+                {/* 2. Heatmap */}
+                <div className="col-span-1">
+                    <ActivityHeatmap data={heatMapData} isHospitalMode={isHospitalMode} />
                 </div>
             </div>
         </div>
       )}
 
       {activeTab === 'coverage' && (
-          <div className="space-y-6">
-              <div className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl flex items-center gap-3">
-                  <div className="p-2 bg-orange-500 text-white rounded-lg">
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  </div>
-                  <div>
-                      <p className="text-sm font-bold text-orange-700">Status de Visitação por Hospital</p>
-                      <p className="text-xs text-orange-600 opacity-80">Monitoramento de frequência de visitas GVP. O ideal é manter abaixo de 7 dias.</p>
+          <div className="space-y-8">
+              {/* SECTION: ANÉIS DE SAÚDE (TOP 4 MAIS CRÍTICOS) */}
+              <div className="space-y-4">
+                  <h3 className={`text-sm font-black uppercase tracking-widest ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>Hospitais Prioritários</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6 justify-items-center p-6 rounded-3xl border shadow-sm ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-200'}">
+                      {hospitalCoverage.slice(0, 4).map(h => (
+                          <HospitalHealthRing key={h.id} hospitalName={h.name} daysSince={h.daysSince} isHospitalMode={isHospitalMode} />
+                      ))}
+                      {hospitalCoverage.length === 0 && <p className="col-span-4 text-xs text-gray-400 italic">Nenhum hospital cadastrado.</p>}
                   </div>
               </div>
 
+              {/* LISTA COMPLETA */}
               <div className={`rounded-xl border overflow-hidden ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
                   <div className="overflow-x-auto custom-scrollbar">
                       <table className="min-w-full divide-y divide-gray-800/10">

@@ -9,11 +9,12 @@ import { supabase } from '../services/supabaseClient';
 import { ConfirmModal } from '../components/ConfirmModal';
 
 export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: AppState) => void, isHospitalMode?: boolean }> = ({ state, onUpdateState, isHospitalMode }) => {
-  const [activeTab, setActiveTab] = useState<'members' | 'hospitals' | 'cities' | 'routes' | 'reports' | 'balance' | 'events' | 'training'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'hospitals' | 'doctors' | 'cities' | 'routes' | 'reports' | 'balance' | 'events' | 'training'>('members');
   const [editingHospital, setEditingHospital] = useState<Partial<Hospital> | null>(null);
   const [editingRoute, setEditingRoute] = useState<Partial<VisitRoute> | null>(null);
   const [editingMember, setEditingMember] = useState<Partial<Member> | null>(null);
   const [editingEvent, setEditingEvent] = useState<Partial<AppEvent> | null>(null);
+  const [editingDoctor, setEditingDoctor] = useState<Partial<Doctor> | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
   
@@ -27,7 +28,9 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
   const [newCityRegional, setNewCityRegional] = useState('');
   const [newCityName, setNewCityName] = useState('');
   
+  // Filtros
   const [memberFilter, setMemberFilter] = useState<'ALL' | 'GVP' | 'COLIH' | 'FACILITATOR' | 'ADMIN' | 'COORDINATOR'>('ALL');
+  const [doctorSearch, setDoctorSearch] = useState('');
   
   const isGlobalAdmin = state.currentUser?.role === UserRole.ADMIN;
   const isRegionalCoord = state.currentUser?.role === UserRole.COORDINATOR;
@@ -74,9 +77,17 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       return state.hospitals;
   }, [state.hospitals, isRegionalCoord, userRegional]);
 
+  const filteredDoctors = useMemo(() => {
+      let list = state.doctors;
+      if (doctorSearch) {
+          const lower = doctorSearch.toLowerCase();
+          list = list.filter(d => d.name.toLowerCase().includes(lower) || d.specialty?.toLowerCase().includes(lower));
+      }
+      return list.sort((a,b) => a.name.localeCompare(b.name));
+  }, [state.doctors, doctorSearch]);
+
   const filteredRoutes = useMemo(() => {
       if (isRegionalCoord && userRegional) {
-          // Mostra rota se pelo menos um hospital da rota pertencer à regional do coordenador
           return state.routes.filter(r => {
               if (!r.hospitals) return false;
               return r.hospitals.some(hName => {
@@ -95,30 +106,41 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       return state.cityMappings;
   }, [state.cityMappings, isRegionalCoord, userRegional]);
 
-  // Combina as regionais fixas com as dinâmicas para os dropdowns
   const availableRegionals = useMemo(() => {
       const dynamicRegs = state.cityMappings.map(c => c.regional);
       return Array.from(new Set([...ALL_REGIONALS, ...dynamicRegs])).sort();
   }, [state.cityMappings]);
 
+  // SEPARAÇÃO DE EVENTOS (ATIVOS VS HISTÓRICO)
+  const { activeEvents, historyEvents } = useMemo(() => {
+      const today = new Date();
+      // Regra: Persistir até 24h após a data. 
+      // Definimos o corte como "Ontem". Se data do evento >= Ontem, ainda é ativo.
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      const cutoffStr = yesterday.toISOString().split('T')[0];
+
+      const active = state.events
+          .filter(e => e.date >= cutoffStr)
+          .sort((a, b) => a.date.localeCompare(b.date)); // Próximos primeiro
+
+      const history = state.events
+          .filter(e => e.date < cutoffStr)
+          .sort((a, b) => b.date.localeCompare(a.date)); // Mais recentes primeiro
+
+      return { activeEvents: active, historyEvents: history };
+  }, [state.events]);
+
   // --- LOGICA TREINADORES & PRESENÇA ---
   
   const handleToggleTrainer = async (member: Member) => {
-      // FIX CRÍTICO: Remover campos calculados da interface (trainingMatrix) antes de salvar no banco
-      // Isso evita o erro PGRST204 (coluna não encontrada)
       const { visitsCount, casesCount, attendanceRate, needsHelpScore, ...cleanMember } = member as any;
-      
       const updated = { ...cleanMember, isTrainer: !cleanMember.isTrainer };
-      
-      // Otimistic UI Update
       onUpdateState({ ...state, members: state.members.map(m => m.id === cleanMember.id ? { ...m, isTrainer: updated.isTrainer } : m) });
-
       try {
           await atomicUpdate('members', updated);
       } catch (err: any) { 
-          console.error("Erro ao atualizar treinador:", err);
-          alert(`Erro ao atualizar status de treinador: ${err.message || 'Verifique o console'}`); 
-          // Revert on error
+          alert(`Erro: ${err.message}`); 
           onUpdateState({ ...state, members: state.members.map(m => m.id === cleanMember.id ? { ...m, isTrainer: !updated.isTrainer } : m) });
       }
   };
@@ -126,84 +148,45 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
   const handleUpdateAttendance = async (eventId: string, memberId: string, isPresent: boolean) => {
       const event = state.events.find(e => e.id === eventId);
       if (!event) return;
-      
       let newAttendees = event.attendees || [];
       if (isPresent) {
           if (!newAttendees.includes(memberId)) newAttendees = [...newAttendees, memberId];
       } else {
           newAttendees = newAttendees.filter(id => id !== memberId);
       }
-      
       const updatedEvent = { ...event, attendees: newAttendees };
-      
-      // Otimistic UI Update
       onUpdateState({ ...state, events: state.events.map(e => e.id === eventId ? updatedEvent : e) });
-      
-      // Background Update
       try {
           await atomicUpdate('events', updatedEvent);
       } catch (err: any) {
-          console.error("Erro ao atualizar presença:", err);
-          alert(`Erro ao salvar presença: ${err.message}`);
-          onUpdateState({ ...state, events: state.events.map(e => e.id === eventId ? event : e) });
+          alert(`Erro: ${err.message}`);
       }
   };
 
   const trainingMatrix = useMemo(() => {
-      // 1. Filtrar Membros COLIH Ativos (EXCLUINDO Facilitadores e GVP)
-      // REGRA DE NEGÓCIO: Apenas membros COLIH plenos devem aparecer aqui.
-      let targets = state.members.filter(m => 
-          m.active && 
-          m.isColih === true && 
-          m.colihClassification !== 'Facilitator'
-      );
-      
+      let targets = state.members.filter(m => m.active && m.isColih === true && m.colihClassification !== 'Facilitator');
       if (isRegionalCoord && userRegional) {
           targets = targets.filter(m => m.regional === userRegional);
       }
-
-      // 2. Calcular Métricas
       return targets.map(m => {
-          // A. Visitas Médicas (Últimos 6 meses)
           const sixMonthsAgo = new Date();
           sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-          const visitsCount = state.colihVisits.filter(v => 
-              v.memberIds.includes(m.id) && 
-              v.status === 'COMPLETED' && 
-              new Date(v.date) >= sixMonthsAgo
-          ).length;
-
-          // B. Casos Atendidos (Pacientes designados ativos ou recentes)
-          const casesCount = state.patients.filter(p => 
-              p.assignedColihIds?.includes(m.id) && 
-              (p.active || (p.estimatedDischargeDate && new Date(p.estimatedDischargeDate) >= sixMonthsAgo))
-          ).length;
-
-          // C. Presença em Reuniões
-          // Considera apenas eventos "COLIH" ou "ALL" passados
-          const pastEvents = state.events.filter(e => 
-              (e.targetGroup === 'COLIH' || e.targetGroup === 'ALL') &&
-              new Date(e.date) < new Date()
-          );
+          const visitsCount = state.colihVisits.filter(v => v.memberIds.includes(m.id) && v.status === 'COMPLETED' && new Date(v.date) >= sixMonthsAgo).length;
+          const casesCount = state.patients.filter(p => p.assignedColihIds?.includes(m.id) && (p.active || (p.estimatedDischargeDate && new Date(p.estimatedDischargeDate) >= sixMonthsAgo))).length;
+          const pastEvents = state.events.filter(e => (e.targetGroup === 'COLIH' || e.targetGroup === 'ALL') && new Date(e.date) < new Date());
           const attendedCount = pastEvents.filter(e => e.attendees?.includes(m.id)).length;
           const attendanceRate = pastEvents.length > 0 ? Math.round((attendedCount / pastEvents.length) * 100) : 0;
-
-          // Score Simples (0-3) para identificar quem precisa de ajuda
-          // Critérios arbitrários: < 2 visitas, < 1 caso, < 50% presença
           let needsHelpScore = 0;
           if (visitsCount < 2) needsHelpScore++;
           if (casesCount < 1) needsHelpScore++;
           if (attendanceRate < 50) needsHelpScore++;
-
           return { ...m, visitsCount, casesCount, attendanceRate, needsHelpScore };
-      }).sort((a,b) => b.needsHelpScore - a.needsHelpScore); // Quem precisa de mais ajuda no topo
+      }).sort((a,b) => b.needsHelpScore - a.needsHelpScore);
   }, [state.members, state.colihVisits, state.patients, state.events, isRegionalCoord, userRegional]);
 
-  // Lista ordenada alfabeticamente para seleção de treinadores
   const sortedColihMembers = useMemo(() => {
       return trainingMatrix.sort((a,b) => a.name.localeCompare(b.name));
   }, [trainingMatrix]);
-
 
   const handleRefreshData = async () => {
     setIsSyncing(true);
@@ -217,7 +200,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     }
   };
 
-  // ... (Rest of component functions remain the same)
   const handleGeocodeHospital = async () => {
     if (!editingHospital?.address) {
       alert("Digite o endereço ou CEP do hospital primeiro.");
@@ -227,33 +209,18 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     try {
       const result = await getCoordsFromCep(editingHospital.address);
       const detectedRegional = getRegionalByCity(result.city, state.cityMappings);
-
-      setEditingHospital({
-        ...editingHospital,
-        lat: result.lat,
-        lng: result.lng,
-        city: result.city,
-        address: result.address,
-        regional: detectedRegional || editingHospital.regional
-      });
-      alert(`Localização encontrada! Cidade: ${result.city} -> Regional: ${detectedRegional || 'Manual'}`);
-    } catch (err) {
-      alert("Não foi possível localizar este endereço automaticamente. Verifique os dados.");
-    } finally {
-      setIsGeocoding(false);
-    }
+      setEditingHospital({ ...editingHospital, lat: result.lat, lng: result.lng, city: result.city, address: result.address, regional: detectedRegional || editingHospital.regional });
+      alert(`Localização encontrada!`);
+    } catch (err) { alert("Não foi possível localizar este endereço."); } finally { setIsGeocoding(false); }
   };
 
   const handleSaveMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingMember?.name || !editingMember.email) return;
-    
-    // Coordenadores Regionais não podem alterar papel para ADMIN
     if (isRegionalCoord && editingMember.role === UserRole.ADMIN) {
         alert("Você não tem permissão para criar Administradores Globais.");
         return;
     }
-
     const newMember: Member = {
       id: editingMember.id || crypto.randomUUID(),
       name: editingMember.name,
@@ -272,62 +239,77 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       regional: editingMember.regional,
       isTrainer: editingMember.isTrainer || false
     };
-
     try {
       await atomicUpdate('members', newMember);
-      const updated = editingMember.id 
-        ? state.members.map(m => m.id === editingMember.id ? newMember : m)
-        : [...state.members, newMember];
+      const updated = editingMember.id ? state.members.map(m => m.id === editingMember.id ? newMember : m) : [...state.members, newMember];
       onUpdateState({ ...state, members: updated });
       setEditingMember(null);
-    } catch (err: any) { 
-        console.error(err);
-        alert(`Erro ao salvar membro: ${err.message}`); 
-    }
+    } catch (err: any) { alert(`Erro ao salvar membro: ${err.message}`); }
+  };
+
+  const handleSaveDoctor = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!editingDoctor?.name) return;
+      const newDoc: Doctor = {
+          id: editingDoctor.id || crypto.randomUUID(),
+          name: editingDoctor.name,
+          specialty: editingDoctor.specialty || '',
+          hospitalIds: editingDoctor.hospitalIds || [],
+          city: editingDoctor.city || '',
+          address: editingDoctor.address || '',
+          regional: editingDoctor.regional || '',
+          phone: editingDoctor.phone || '',
+          email: editingDoctor.email || '',
+          cooperationLevel: editingDoctor.cooperationLevel || 'Unknown',
+          isConsultant: editingDoctor.isConsultant || false,
+          treatsPediatric: editingDoctor.treatsPediatric || false,
+          assignedMemberIds: editingDoctor.assignedMemberIds || [],
+          lastVisitDate: editingDoctor.lastVisitDate,
+          responsibleMemberName: editingDoctor.responsibleMemberName
+      };
+      try {
+          await atomicUpdate('doctors', newDoc);
+          const updated = editingDoctor.id ? state.doctors.map(d => d.id === newDoc.id ? newDoc : d) : [...state.doctors, newDoc];
+          onUpdateState({ ...state, doctors: updated });
+          setEditingDoctor(null);
+      } catch (err: any) { alert("Erro ao salvar médico: " + err.message); }
+  };
+
+  const handleDeleteDoctor = (id: string) => {
+      setConfirmConfig({
+          isOpen: true,
+          title: 'Excluir Médico',
+          description: 'Tem certeza? O histórico de visitas será preservado, mas o médico não aparecerá mais nas listas.',
+          onConfirm: async () => {
+              try {
+                  await atomicDelete('doctors', id);
+                  onUpdateState({ ...state, doctors: state.doctors.filter(d => d.id !== id) });
+              } catch (e) { alert("Erro ao excluir médico."); }
+          }
+      });
   };
 
   const handleAddCity = async () => {
       if (!newCityName || !newCityRegional) return;
-      const normalizedCity = newCityName.trim();
-      
-      if (state.cityMappings.some(c => c.city.toLowerCase() === normalizedCity.toLowerCase())) {
-          alert(`A cidade "${normalizedCity}" já está cadastrada.`);
-          return;
-      }
-
-      const newMapping: CityMapping = {
-          id: crypto.randomUUID(),
-          city: normalizedCity,
-          regional: newCityRegional
-      };
-
+      if (state.cityMappings.some(c => c.city.toLowerCase() === newCityName.trim().toLowerCase())) return;
+      const newMapping: CityMapping = { id: crypto.randomUUID(), city: newCityName.trim(), regional: newCityRegional };
       try {
           await atomicUpdate('city_mappings', newMapping);
-          onUpdateState({
-              ...state,
-              cityMappings: [...state.cityMappings, newMapping]
-          });
+          onUpdateState({ ...state, cityMappings: [...state.cityMappings, newMapping] });
           setNewCityName('');
-      } catch (e) {
-          alert("Erro ao adicionar cidade.");
-      }
+      } catch (e) { alert("Erro ao adicionar cidade."); }
   };
 
   const handleDeleteCity = (id: string, cityName: string) => {
       setConfirmConfig({
           isOpen: true,
           title: 'Remover Cidade',
-          description: `Tem certeza que deseja remover ${cityName} do mapeamento? Isso pode afetar o preenchimento automático de regionais.`,
+          description: `Tem certeza que deseja remover ${cityName}?`,
           onConfirm: async () => {
               try {
                   await atomicDelete('city_mappings', id);
-                  onUpdateState({
-                      ...state,
-                      cityMappings: state.cityMappings.filter(c => c.id !== id)
-                  });
-              } catch (e) {
-                  alert("Erro ao remover.");
-              }
+                  onUpdateState({ ...state, cityMappings: state.cityMappings.filter(c => c.id !== id) });
+              } catch (e) { alert("Erro ao remover."); }
           }
       });
   };
@@ -343,13 +325,12 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       lat: editingHospital.lat || 0,
       lng: editingHospital.lng || 0,
       importantInfo: editingHospital.importantInfo || '',
-      regional: editingHospital.regional
+      regional: editingHospital.regional,
+      responsibleMemberIds: editingHospital.responsibleMemberIds || []
     };
     try {
       await atomicUpdate('hospitals', newHospital);
-      const updated = editingHospital.id 
-        ? state.hospitals.map(h => h.id === editingHospital.id ? newHospital : h)
-        : [...state.hospitals, newHospital];
+      const updated = editingHospital.id ? state.hospitals.map(h => h.id === editingHospital.id ? newHospital : h) : [...state.hospitals, newHospital];
       onUpdateState({ ...state, hospitals: updated });
       setEditingHospital(null);
     } catch (err) { alert("Erro ao salvar hospital."); }
@@ -366,9 +347,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
     };
     try {
       await atomicUpdate('routes', newRoute);
-      const updated = editingRoute.id 
-        ? state.routes.map(r => r.id === editingRoute.id ? newRoute : r)
-        : [...state.routes, newRoute];
+      const updated = editingRoute.id ? state.routes.map(r => r.id === editingRoute.id ? newRoute : r) : [...state.routes, newRoute];
       onUpdateState({ ...state, routes: updated });
       setEditingRoute(null);
     } catch (err) { alert("Erro ao salvar rota."); }
@@ -378,16 +357,13 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
       setConfirmConfig({
           isOpen: true,
           title: 'Excluir Rota',
-          description: 'Tem certeza que deseja excluir esta rota? Todos os históricos de visitas associados a ela poderão ficar sem referência.',
+          description: 'Tem certeza que deseja excluir esta rota?',
           onConfirm: async () => {
               try {
                   await atomicDelete('routes', id);
-                  const updated = state.routes.filter(r => r.id !== id);
-                  onUpdateState({ ...state, routes: updated });
+                  onUpdateState({ ...state, routes: state.routes.filter(r => r.id !== id) });
                   setEditingRoute(null);
-              } catch (err) {
-                  alert("Erro ao excluir rota.");
-              }
+              } catch (err) { alert("Erro ao excluir rota."); }
           }
       });
   };
@@ -395,7 +371,6 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
   const handleSaveEvent = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!editingEvent?.title || !editingEvent.date) return;
-
       const newEvent: AppEvent = {
           id: editingEvent.id || crypto.randomUUID(),
           title: editingEvent.title,
@@ -407,31 +382,24 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
           createdAt: new Date().toISOString(),
           attendees: editingEvent.attendees || []
       };
-
       try {
           await atomicUpdate('events', newEvent);
-          const updatedEvents = editingEvent.id
-              ? state.events.map(ev => ev.id === editingEvent.id ? newEvent : ev)
-              : [...state.events, newEvent];
+          const updatedEvents = editingEvent.id ? state.events.map(ev => ev.id === editingEvent.id ? newEvent : ev) : [...state.events, newEvent];
           onUpdateState({ ...state, events: updatedEvents });
           setEditingEvent(null);
-      } catch (err) {
-          alert("Erro ao salvar evento.");
-      }
+      } catch (err) { alert("Erro ao salvar evento."); }
   };
 
   const handleDeleteEvent = (id: string) => {
       setConfirmConfig({
           isOpen: true,
           title: 'Excluir Evento',
-          description: 'Tem certeza que deseja cancelar este evento? Ele desaparecerá da agenda de todos os membros.',
+          description: 'Tem certeza que deseja cancelar este evento?',
           onConfirm: async () => {
               try {
                   await atomicDelete('events', id);
                   onUpdateState({ ...state, events: state.events.filter(ev => ev.id !== id) });
-              } catch (err) {
-                  alert("Erro ao excluir evento.");
-              }
+              } catch (err) { alert("Erro ao excluir evento."); }
           }
       });
   };
@@ -443,21 +411,17 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
 
   // Balanço Stats
   const { gvpStats, colihStats } = useMemo(() => {
-    // Filtro inicial para os stats respeitando a regional do coordenador
     let relevantMembers = state.members;
     if (isRegionalCoord && userRegional) {
         relevantMembers = state.members.filter(m => m.regional === userRegional);
     }
-
     const stats = relevantMembers.map(m => {
       const gvpVisits = state.visits.filter(v => (v.memberIds || []).includes(m.id) && v.status === 'FINISHED').length;
       const colihVisits = state.colihVisits.filter(v => (v.memberIds || []).includes(m.id)).length;
       return { ...m, visitCount: gvpVisits + colihVisits };
     });
-
     const colihMembers = stats.filter(m => m.isColih && m.colihClassification !== 'Facilitator').sort((a, b) => b.visitCount - a.visitCount);
     const gvpMembers = stats.filter(m => !m.isColih && m.role !== UserRole.ADMIN).sort((a, b) => b.visitCount - a.visitCount);
-
     return { gvpStats: gvpMembers, colihStats: colihMembers };
   }, [state.members, state.visits, state.colihVisits, isRegionalCoord, userRegional]);
 
@@ -478,6 +442,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
             <Button size="sm" className="rounded-xl px-6" onClick={() => {
               if (activeTab === 'members') setEditingMember({ active: true, role: UserRole.MEMBER, isColih: false, regional: userRegional || '' });
               if (activeTab === 'hospitals') setEditingHospital({ city: 'Santos', regional: userRegional || '' });
+              if (activeTab === 'doctors') setEditingDoctor({ assignedMemberIds: [] });
               if (activeTab === 'routes') setEditingRoute({ active: true, hospitals: [] });
               if (activeTab === 'events') setEditingEvent({ targetGroup: 'ALL', date: new Date().toISOString().split('T')[0] });
             }}>
@@ -490,6 +455,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         {[
           { id: 'members', label: 'Membros' },
           { id: 'hospitals', label: 'Unidades' },
+          { id: 'doctors', label: 'Médicos' },
           { id: 'cities', label: 'Cidades' },
           { id: 'routes', label: 'Logística' },
           { id: 'events', label: 'Eventos' },
@@ -562,7 +528,76 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         </div>
       )}
 
-      {/* --- ABA TREINAMENTO (NOVA) --- */}
+      {/* --- ABA MÉDICOS --- */}
+      {activeTab === 'doctors' && (
+          <div className="space-y-4">
+              <div className="relative">
+                  <input 
+                      type="text" 
+                      placeholder="Buscar médico por nome ou especialidade..."
+                      className={`w-full p-3 border rounded-xl outline-none ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-800 text-white' : 'bg-white border-gray-100'}`}
+                      value={doctorSearch}
+                      onChange={e => setDoctorSearch(e.target.value)}
+                  />
+              </div>
+              <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
+                  <div className="overflow-x-auto custom-scrollbar">
+                      <table className="min-w-full divide-y divide-gray-200/10">
+                          <thead className={`${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'} text-[10px] font-black text-gray-400 uppercase tracking-widest`}>
+                              <tr>
+                                  <th className="px-6 py-4 text-left">Médico</th>
+                                  <th className="px-6 py-4 text-left">Contato</th>
+                                  <th className="px-6 py-4 text-left">Vínculos</th>
+                                  <th className="px-6 py-4 text-left">Status</th>
+                                  <th className="px-6 py-4 text-right">Ação</th>
+                              </tr>
+                          </thead>
+                          <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-sm`}>
+                              {filteredDoctors.map(doc => (
+                                  <tr key={doc.id} className={`${isHospitalMode ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}>
+                                      <td className="px-6 py-4">
+                                          <p className="font-bold">{doc.name}</p>
+                                          <p className="text-[10px] text-gray-500 uppercase">{doc.specialty || 'Não informado'}</p>
+                                      </td>
+                                      <td className="px-6 py-4 text-xs">
+                                          {doc.phone && <p>{doc.phone}</p>}
+                                          {doc.city && <p className="text-gray-500">{doc.city}</p>}
+                                      </td>
+                                      <td className="px-6 py-4 text-xs max-w-xs truncate">
+                                          {doc.hospitalIds && doc.hospitalIds.length > 0 ? (
+                                              doc.hospitalIds.map(hid => state.hospitals.find(h => h.id === hid)?.name).filter(Boolean).join(', ')
+                                          ) : (
+                                              <span className="text-gray-400 italic">Sem vínculo</span>
+                                          )}
+                                      </td>
+                                      <td className="px-6 py-4">
+                                          <div className="flex flex-col gap-1">
+                                              {doc.isConsultant && <span className="bg-purple-100 text-purple-700 text-[9px] font-black uppercase px-2 py-0.5 rounded w-max">Consultor</span>}
+                                              <span className={`text-[9px] font-bold uppercase w-max px-2 py-0.5 rounded ${
+                                                  doc.cooperationLevel === 'High' ? 'bg-green-100 text-green-700' :
+                                                  doc.cooperationLevel === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                                                  doc.cooperationLevel === 'Low' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'
+                                              }`}>
+                                                  {doc.cooperationLevel === 'High' ? 'Cooperador' : doc.cooperationLevel === 'Medium' ? 'Médio' : doc.cooperationLevel === 'Low' ? 'Baixo' : 'Desc.'}
+                                              </span>
+                                          </div>
+                                      </td>
+                                      <td className="px-6 py-4 text-right flex justify-end gap-2">
+                                          <button onClick={() => setEditingDoctor(doc)} className="text-blue-500 font-bold text-xs hover:underline">EDITAR</button>
+                                          {isGlobalAdmin && (
+                                              <button onClick={() => handleDeleteDoctor(doc.id)} className="text-red-500 font-bold text-xs hover:underline">EXCLUIR</button>
+                                          )}
+                                      </td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* --- ABA TREINAMENTO --- */}
       {activeTab === 'training' && (
           <div className="space-y-8">
               {/* 1. SEÇÃO DE GESTÃO DE TREINADORES */}
@@ -701,7 +736,7 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
           </div>
       )}
 
-      {/* --- ABA HOSPITAIS (Conteúdo inalterado) --- */}
+      {/* --- ABA HOSPITAIS --- */}
       {activeTab === 'hospitals' && (
         <div className={`${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'} rounded-2xl shadow-sm border overflow-hidden`}>
             <div className="overflow-x-auto custom-scrollbar">
@@ -787,34 +822,78 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
         </div>
       )}
 
-      {/* --- ABA EVENTOS --- */}
+      {/* --- ABA EVENTOS (ATUALIZADA: Cards para ativos/recentes, Lista para histórico) --- */}
       {activeTab === 'events' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {state.events.sort((a,b) => b.date.localeCompare(a.date)).map(event => (
-                <div key={event.id} className={`p-5 rounded-2xl border flex justify-between ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
-                    <div>
-                        <div className="flex items-center gap-2 mb-1">
-                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${event.targetGroup === 'COLIH' ? 'bg-teal-100 text-teal-700' : event.targetGroup === 'GVP' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{event.targetGroup}</span>
-                            <span className={`text-xs font-medium ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>{new Date(event.date + 'T12:00:00').toLocaleDateString()}</span>
+        <div className="space-y-8">
+            {/* SEÇÃO 1: CARDS (ATIVOS OU RECENTES - ÚLTIMAS 24H) */}
+            <div>
+                <h3 className={`text-sm font-black uppercase tracking-widest mb-4 flex items-center gap-2 ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>
+                    <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    Próximos Eventos & Recentes
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {activeEvents.map(event => (
+                        <div key={event.id} className={`p-5 rounded-2xl border flex justify-between ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${event.targetGroup === 'COLIH' ? 'bg-teal-100 text-teal-700' : event.targetGroup === 'GVP' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{event.targetGroup}</span>
+                                    <span className={`text-xs font-medium ${isHospitalMode ? 'text-gray-400' : 'text-gray-500'}`}>{new Date(event.date + 'T12:00:00').toLocaleDateString()}</span>
+                                </div>
+                                <h4 className={`font-bold text-lg ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{event.title}</h4>
+                                <p className={`text-sm mt-1 ${isHospitalMode ? 'text-gray-400' : 'text-gray-600'}`}>{event.location} {event.time ? `• ${event.time}` : ''}</p>
+                                
+                                {event.attendees && event.attendees.length > 0 && (
+                                    <p className="text-[10px] text-green-600 font-bold mt-2 flex items-center gap-1">
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        {event.attendees.length} presentes confirmados
+                                    </p>
+                                )}
+                            </div>
+                            <div className="flex flex-col justify-between items-end">
+                                <button onClick={() => setEditingEvent(event)} className="text-blue-500"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
+                                <button onClick={() => handleDeleteEvent(event.id)} className="text-red-500"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                            </div>
                         </div>
-                        <h4 className={`font-bold text-lg ${isHospitalMode ? 'text-white' : 'text-gray-800'}`}>{event.title}</h4>
-                        <p className={`text-sm mt-1 ${isHospitalMode ? 'text-gray-400' : 'text-gray-600'}`}>{event.location} {event.time ? `• ${event.time}` : ''}</p>
-                        
-                        {/* Attendance Summary */}
-                        {event.attendees && event.attendees.length > 0 && (
-                            <p className="text-[10px] text-green-600 font-bold mt-2 flex items-center gap-1">
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                {event.attendees.length} presentes confirmados
-                            </p>
-                        )}
+                    ))}
+                    {activeEvents.length === 0 && <p className="col-span-full text-center py-4 text-gray-400 text-sm">Nenhum evento próximo agendado.</p>}
+                </div>
+            </div>
+
+            {/* SEÇÃO 2: HISTÓRICO (LISTA COMPACTA) */}
+            {historyEvents.length > 0 && (
+                <div className={`rounded-2xl border overflow-hidden ${isHospitalMode ? 'bg-[#212327] border-gray-800' : 'bg-white border-gray-100'}`}>
+                    <div className="p-4 border-b border-gray-800/10 bg-gray-50/5">
+                        <h3 className={`text-xs font-black uppercase tracking-widest ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>Histórico de Eventos Passados</h3>
                     </div>
-                    <div className="flex flex-col justify-between items-end">
-                        <button onClick={() => setEditingEvent(event)} className="text-blue-500"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
-                        <button onClick={() => handleDeleteEvent(event.id)} className="text-red-500"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                    <div className="overflow-x-auto custom-scrollbar">
+                        <table className="min-w-full divide-y divide-gray-200/10">
+                            <thead className={`${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'} text-[10px] font-black text-gray-400 uppercase tracking-widest`}>
+                                <tr>
+                                    <th className="px-6 py-3 text-left">Data</th>
+                                    <th className="px-6 py-3 text-left">Evento</th>
+                                    <th className="px-6 py-3 text-left">Público</th>
+                                    <th className="px-6 py-3 text-left">Presentes</th>
+                                    <th className="px-6 py-3 text-right">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody className={`divide-y ${isHospitalMode ? 'divide-gray-800' : 'divide-gray-100'} text-sm`}>
+                                {historyEvents.map(event => (
+                                    <tr key={event.id} className={`${isHospitalMode ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}>
+                                        <td className="px-6 py-3 text-xs font-mono">{new Date(event.date + 'T12:00:00').toLocaleDateString()}</td>
+                                        <td className="px-6 py-3 font-bold">{event.title}</td>
+                                        <td className="px-6 py-3 text-xs uppercase">{event.targetGroup}</td>
+                                        <td className="px-6 py-3 text-xs text-gray-500">{event.attendees?.length || 0}</td>
+                                        <td className="px-6 py-3 text-right flex justify-end gap-2">
+                                            <button onClick={() => setEditingEvent(event)} className="text-blue-500 hover:text-blue-600 text-[10px] font-bold uppercase">Editar</button>
+                                            <button onClick={() => handleDeleteEvent(event.id)} className="text-red-500 hover:text-red-600 text-[10px] font-bold uppercase">Excluir</button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-            ))}
-            {state.events.length === 0 && <p className="col-span-full text-center py-10 text-gray-400 text-sm">Nenhum evento programado.</p>}
+            )}
         </div>
       )}
 
@@ -933,6 +1012,65 @@ export const AdminPanel: React.FC<{ state: AppState, onUpdateState: (newState: A
               </form>
            </div>
         </div>, document.body
+      )}
+
+      {/* MODAL: EDITAR MÉDICO */}
+      {editingDoctor && createPortal(
+          <div className="fixed inset-0 z-[120] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
+             <div className={`w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl animate-fade-in flex flex-col max-h-[85vh] ${isHospitalMode ? 'bg-[#212327] border border-gray-800' : 'bg-white'}`}>
+                <div className="bg-teal-600 p-6 text-white font-black flex justify-between items-center shrink-0"><span className="text-lg">{editingDoctor.id ? 'Editar Médico' : 'Novo Médico'}</span><button onClick={() => setEditingDoctor(null)} className="text-3xl leading-none">&times;</button></div>
+                <form onSubmit={handleSaveDoctor} className="p-8 space-y-4 flex-grow overflow-y-auto custom-scrollbar">
+                    <input required placeholder="Nome Completo" className={`w-full p-3 border rounded-xl ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingDoctor.name || ''} onChange={e => setEditingDoctor({...editingDoctor, name: e.target.value})} />
+                    <input placeholder="Especialidade" className={`w-full p-3 border rounded-xl ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingDoctor.specialty || ''} onChange={e => setEditingDoctor({...editingDoctor, specialty: e.target.value})} />
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                        <input placeholder="Cidade" className={`w-full p-3 border rounded-xl ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingDoctor.city || ''} onChange={e => setEditingDoctor({...editingDoctor, city: e.target.value})} />
+                        <input placeholder="Telefone" className={`w-full p-3 border rounded-xl ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingDoctor.phone || ''} onChange={e => setEditingDoctor({...editingDoctor, phone: e.target.value})} />
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className={`text-[10px] font-bold uppercase tracking-widest px-1 ${isHospitalMode ? 'text-gray-500' : 'text-gray-400'}`}>Hospitais Vinculados</label>
+                        <div className={`border rounded-xl p-3 max-h-40 overflow-y-auto custom-scrollbar space-y-1 ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                            {filteredHospitals.map(h => (
+                                <label key={h.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all ${isHospitalMode ? 'hover:bg-white/5' : 'hover:bg-white hover:shadow-sm'}`}>
+                                    <input 
+                                        type="checkbox"
+                                        className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 bg-transparent border-gray-400"
+                                        checked={editingDoctor.hospitalIds?.includes(h.id) || false}
+                                        onChange={(e) => {
+                                            const current = editingDoctor.hospitalIds || [];
+                                            if (e.target.checked) setEditingDoctor({...editingDoctor, hospitalIds: [...current, h.id]});
+                                            else setEditingDoctor({...editingDoctor, hospitalIds: current.filter(id => id !== h.id)});
+                                        }}
+                                    />
+                                    <span className={`text-sm ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>{h.name}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
+                    <select className={`w-full p-3 border rounded-xl ${isHospitalMode ? 'bg-[#1a1c1e] border-gray-700 text-white' : 'bg-gray-50'}`} value={editingDoctor.cooperationLevel || 'Unknown'} onChange={e => setEditingDoctor({...editingDoctor, cooperationLevel: e.target.value as any})}>
+                        <option value="Unknown">Nível de Cooperação Desconhecido</option>
+                        <option value="Low">Baixo</option>
+                        <option value="Medium">Médio</option>
+                        <option value="High">Alto (Cooperador)</option>
+                    </select>
+                    
+                    <div className="flex gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={editingDoctor.isConsultant || false} onChange={e => setEditingDoctor({...editingDoctor, isConsultant: e.target.checked})} />
+                            <span className={`text-sm ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Consultor</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={editingDoctor.treatsPediatric || false} onChange={e => setEditingDoctor({...editingDoctor, treatsPediatric: e.target.checked})} />
+                            <span className={`text-sm ${isHospitalMode ? 'text-gray-300' : 'text-gray-700'}`}>Pediatria</span>
+                        </label>
+                    </div>
+
+                    <div className="pt-4"><Button className="w-full rounded-xl py-4 bg-teal-600 hover:bg-teal-700" type="submit">Salvar Médico</Button></div>
+                </form>
+             </div>
+          </div>, document.body
       )}
 
       {/* MODAL: EDITAR HOSPITAL */}

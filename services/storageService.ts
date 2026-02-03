@@ -39,17 +39,24 @@ export const loadState = async (): Promise<AppState> => {
   try {
     const { data: { session } } = await supabase.auth.getSession();
 
+    // PERFORMANCE OPTIMIZATION:
+    // Limitar carregamento de visitas, logs e histórico antigo
+    const now = new Date();
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(now.getMonth() - 6);
+    const dateLimit = sixMonthsAgo.toISOString().split('T')[0];
+
     const fetchAll = await Promise.all([
       supabase.from('members').select('*'),
       supabase.from('hospitals').select('*'),
       supabase.from('routes').select('*'),
-      supabase.from('visits').select('*'),
-      supabase.from('social_worker_visits').select('*'),
-      supabase.from('patients').select('*'),
-      supabase.from('logs').select('*'),
+      supabase.from('visits').select('*').gte('date', dateLimit), // Load only recent visits
+      supabase.from('social_worker_visits').select('*').gte('date', dateLimit),
+      supabase.from('patients').select('*'), // Patients must load all to handle history correctly
+      supabase.from('logs').select('*').order('timestamp', { ascending: false }).limit(200), // Limit logs
       supabase.from('notifications').select('*'),
       supabase.from('doctors').select('*'),
-      supabase.from('colih_visits').select('*'),
+      supabase.from('colih_visits').select('*').gte('date', dateLimit),
       supabase.from('city_mappings').select('*'),
       supabase.from('documents').select('*'),
       supabase.from('events').select('*')
@@ -81,7 +88,8 @@ export const loadState = async (): Promise<AppState> => {
       visits: mapFromDb<any>(fetchAll[3].data).map(v => ({
           ...v,
           routeId: v.route_id ?? v.routeId,
-          memberIds: ensureArray(v.memberIds, (v as any).member_ids)
+          memberIds: ensureArray(v.memberIds, (v as any).member_ids),
+          onTheWayMemberIds: ensureArray(v.onTheWayMemberIds, (v as any).on_the_way_member_ids)
       }) as VisitSlot),
 
       socialWorkerVisits: mapFromDb<any>(fetchAll[4].data).map(v => ({
@@ -116,6 +124,7 @@ export const loadState = async (): Promise<AppState> => {
           
           assignedColihIds: ensureArray(p.assignedColihIds, p.assigned_colih_ids),
           isMedicalDischarge: p.is_medical_discharge ?? p.isMedicalDischarge ?? false,
+          pendingHlc7: p.pending_hlc7 ?? p.pendingHlc7 ?? false,
           gvpRequestPending: p.gvp_request_pending ?? p.gvpRequestPending ?? false,
           nonWitnessFamily: p.non_witness_family ?? p.nonWitnessFamily ?? false,
           elderPhone: p.elder_phone ?? p.elderPhone,
@@ -144,7 +153,8 @@ export const loadState = async (): Promise<AppState> => {
           isConsultant: d.is_consultant ?? d.isConsultant,
           treatsPediatric: d.treats_pediatric ?? d.treatsPediatric,
           responsibleMemberName: d.responsible_member_name ?? d.responsibleMemberName,
-          lastVisitDate: d.last_visit_date ?? d.lastVisitDate
+          lastVisitDate: d.last_visit_date ?? d.lastVisitDate,
+          assignedMemberIds: ensureArray(d.assignedMemberIds, d.assigned_member_ids)
       }) as Doctor),
 
       colihVisits: mapFromDb<any>(fetchAll[9].data).map(v => ({
@@ -203,6 +213,7 @@ const sanitizeForDb = (table: string, data: any) => {
     if (table === 'patients') {
         if (copy.assignedColihIds !== undefined) { copy.assigned_colih_ids = copy.assignedColihIds; delete copy.assignedColihIds; }
         if (copy.isMedicalDischarge !== undefined) { copy.is_medical_discharge = copy.isMedicalDischarge; delete copy.isMedicalDischarge; }
+        if (copy.pendingHlc7 !== undefined) { copy.pending_hlc7 = copy.pendingHlc7; delete copy.pendingHlc7; }
         if (copy.gvpRequestPending !== undefined) { copy.gvp_request_pending = copy.gvpRequestPending; delete copy.gvpRequestPending; }
         if (copy.nonWitnessFamily !== undefined) { copy.non_witness_family = copy.nonWitnessFamily; delete copy.nonWitnessFamily; }
         if (copy.elderPhone !== undefined) { copy.elder_phone = copy.elderPhone; delete copy.elderPhone; }
@@ -247,6 +258,7 @@ const sanitizeForDb = (table: string, data: any) => {
     if (table === 'visits') {
         if (copy.memberIds !== undefined) { copy.member_ids = copy.memberIds; delete copy.memberIds; }
         if (copy.routeId !== undefined) { copy.route_id = copy.routeId; delete copy.routeId; }
+        if (copy.onTheWayMemberIds !== undefined) { copy.on_the_way_member_ids = copy.onTheWayMemberIds; delete copy.onTheWayMemberIds; }
     }
 
     if (table === 'colih_visits') {
@@ -272,6 +284,7 @@ const sanitizeForDb = (table: string, data: any) => {
         if (copy.treatsPediatric !== undefined) { copy.treats_pediatric = copy.treatsPediatric; delete copy.treatsPediatric; }
         if (copy.responsibleMemberName !== undefined) { copy.responsible_member_name = copy.responsibleMemberName; delete copy.responsibleMemberName; }
         if (copy.lastVisitDate !== undefined) { copy.last_visit_date = copy.lastVisitDate; delete copy.lastVisitDate; }
+        if (copy.assignedMemberIds !== undefined) { copy.assigned_member_ids = copy.assignedMemberIds; delete copy.assignedMemberIds; }
     }
 
     // Mapeamento LOGS (Camel -> Snake)
@@ -301,21 +314,45 @@ const sanitizeForDb = (table: string, data: any) => {
     return copy;
 };
 
+// Retry logic to handle Schema Drift (Missing Columns)
+const attemptSaveWithFallback = async (table: string, payload: any, operation: 'insert' | 'upsert') => {
+    if (!supabase) return { error: { message: "Supabase not configured" } };
+
+    const { error } = await supabase.from(table)[operation](payload);
+
+    if (error) {
+        // Fallback para colunas novas que podem não existir no banco (Erro PGRST204 ou mensagem de schema cache)
+        if (error.code === 'PGRST204' || error.message?.includes('Could not find the') || error.message?.includes('schema cache')) {
+             console.warn(`[Storage] Schema desatualizado detectado para tabela '${table}'. Tentando salvar em modo de compatibilidade...`);
+             
+             // Lista de colunas recentes para remover do payload
+             const problemFields = [
+                 'pending_hlc7', 'is_medical_discharge', 'gvp_request_pending', 
+                 'request_date', 'is_external_request', 'regional', 
+                 'is_trainer', 'has_seen_onboarding', 'colih_classification',
+                 'attendees', 'hlc38_presented', 'collaborator_interest'
+             ];
+             
+             const legacyPayload = { ...payload };
+             problemFields.forEach(f => delete legacyPayload[f]);
+             
+             // Tenta novamente sem as colunas novas
+             return await supabase.from(table)[operation](legacyPayload);
+        }
+        return { error };
+    }
+    return { error: null };
+};
+
 export const atomicUpdate = async (table: string, record: any) => {
-    if (!supabase) return;
-    
-    // Aplica a sanitização/conversão baseada na tabela
     const sanitized = sanitizeForDb(table, record);
-    
-    const { error } = await supabase.from(table).upsert(sanitized);
+    const { error } = await attemptSaveWithFallback(table, sanitized, 'upsert');
     if (error) throw error;
 };
 
-// NEW: Specific insert function for public access to avoid upsert permissions issues
 export const atomicInsert = async (table: string, record: any) => {
-    if (!supabase) return;
     const sanitized = sanitizeForDb(table, record);
-    const { error } = await supabase.from(table).insert(sanitized);
+    const { error } = await attemptSaveWithFallback(table, sanitized, 'insert');
     if (error) throw error;
 };
 
