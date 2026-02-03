@@ -162,12 +162,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
           {patient.isMedicalDischarge && (
               <div className="bg-purple-100 border border-purple-200 p-4 rounded-xl text-purple-800 flex flex-col gap-2">
                   <p className="font-bold text-sm">🏥 Paciente com Alta Médica Informada</p>
-                  <p className="text-xs">O paciente já saiu do hospital. {patient.pendingHlc7 ? 'O registro aguarda o anexo do HLC-7.' : 'A solicitação GVP foi encerrada automaticamente.'}</p>
-                  {patient.pendingHlc7 && (
-                      <p className="text-xs font-bold mt-1 text-red-600 bg-red-100 p-1 rounded border border-red-200 text-center">
-                          {isColihUser ? 'AÇÃO NECESSÁRIA: Anexar HLC-7 e Arquivar' : 'Pendente: Envio de HLC-7 pela COLIH.'}
-                      </p>
-                  )}
+                  <p className="text-xs">O paciente já saiu do hospital. {patient.pendingHlc7 ? 'Anexe o HLC-7 abaixo para finalizar.' : 'A solicitação GVP foi encerrada automaticamente.'}</p>
               </div>
           )}
 
@@ -188,9 +183,14 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
             </div>
             
             {/* BOTÃO DE ALTA MÉDICA (GVP) */}
+            {/* FIX: Removed onClose() to allow continuous HLC-7 flow */}
             {patient.active && !patient.isMedicalDischarge && onDischarge && (canEdit || canDischarge) && (
                 <button 
-                    onClick={() => { onDischarge(patient.id, patient.name); onClose(); }}
+                    onClick={() => { 
+                        if(window.confirm("Confirmar a alta médica deste paciente? A tela de anexo do HLC-7 será exibida em seguida.")) {
+                            onDischarge(patient.id, patient.name); 
+                        }
+                    }}
                     className="bg-green-600 hover:bg-green-700 text-white text-[9px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg shadow-sm"
                 >
                     Informar Alta
@@ -199,9 +199,13 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
           </div>
 
           {/* BOTÃO DE ARQUIVAMENTO HLC-7 (COLIH) */}
+          {/* Aparece automaticamente assim que a alta é informada (pois o modal não fecha mais) */}
           {patient.active && patient.isMedicalDischarge && patient.pendingHlc7 && isColihUser && onHlc7Confirm && (
-              <div className="p-4 bg-white rounded-xl border-2 border-purple-200 shadow-sm space-y-3">
-                  <p className="text-xs font-bold text-gray-700">Encerrar Caso (Protocolo COLIH)</p>
+              <div className="p-4 bg-white rounded-xl border-2 border-purple-200 shadow-sm space-y-3 animate-fade-in">
+                  <div className="flex items-center gap-2 mb-2">
+                      <div className="w-2 h-2 rounded-full bg-purple-600 animate-pulse"></div>
+                      <p className="text-xs font-bold text-gray-700">Encerrar Caso (Protocolo COLIH)</p>
+                  </div>
                   
                   {/* SEÇÃO UPLOAD */}
                   <div className="flex flex-col gap-2">
@@ -228,7 +232,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
                   <button 
                       onClick={handleHlc7Action}
                       disabled={isUploading}
-                      className={`w-full text-white text-xs font-bold uppercase tracking-widest py-3 rounded-lg shadow-md transition-all flex items-center justify-center gap-2 ${uploadedHlc7Url ? 'bg-purple-600 hover:bg-purple-700 animate-pulse' : 'bg-gray-400 cursor-not-allowed'}`}
+                      className={`w-full text-white text-xs font-bold uppercase tracking-widest py-3 rounded-lg shadow-md transition-all flex items-center justify-center gap-2 ${uploadedHlc7Url ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-400 cursor-not-allowed'}`}
                   >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                       Encerrar o Caso
