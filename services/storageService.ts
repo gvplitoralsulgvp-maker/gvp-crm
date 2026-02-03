@@ -318,7 +318,14 @@ const sanitizeForDb = (table: string, data: any) => {
 const attemptSaveWithFallback = async (table: string, payload: any, operation: 'insert' | 'upsert') => {
     if (!supabase) return { error: { message: "Supabase not configured" } };
 
-    const { error } = await supabase.from(table)[operation](payload);
+    let query;
+    if (operation === 'insert') {
+        query = supabase.from(table).insert(payload);
+    } else {
+        query = supabase.from(table).upsert(payload);
+    }
+
+    const { error } = await query;
 
     if (error) {
         // Fallback para colunas novas que podem não existir no banco (Erro PGRST204 ou mensagem de schema cache)
@@ -337,7 +344,11 @@ const attemptSaveWithFallback = async (table: string, payload: any, operation: '
              problemFields.forEach(f => delete legacyPayload[f]);
              
              // Tenta novamente sem as colunas novas
-             return await supabase.from(table)[operation](legacyPayload);
+             if (operation === 'insert') {
+                 return await supabase.from(table).insert(legacyPayload);
+             } else {
+                 return await supabase.from(table).upsert(legacyPayload);
+             }
         }
         return { error };
     }
