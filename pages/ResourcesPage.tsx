@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { AppState, AppDocument, UserRole } from '../types';
 import { Button } from '../components/Button';
@@ -11,7 +12,8 @@ interface ResourcesPageProps {
 }
 
 export const ResourcesPage: React.FC<ResourcesPageProps> = ({ state, onUpdateState, isHospitalMode }) => {
-  const [activeTab, setActiveTab] = useState<'protocols' | 'training' | 'pauta'>('protocols');
+  // FIX: Type mismatch 'protocols' vs 'protocol'
+  const [activeTab, setActiveTab] = useState<'protocol' | 'training' | 'pauta'>('protocol');
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -203,7 +205,8 @@ NOTIFY pgrst, 'reload config';
         </div>
 
         <div className="flex gap-2 overflow-x-auto custom-scrollbar">
-            <button onClick={() => setActiveTab('protocols')} className={`px-4 py-2 rounded-xl text-xs font-bold uppercase whitespace-nowrap transition-all ${activeTab === 'protocols' ? 'bg-blue-600 text-white shadow-md' : isHospitalMode ? 'bg-[#212327] text-gray-400 border border-gray-800' : 'bg-white text-gray-500 border border-gray-200'}`}>Protocolos GVP</button>
+            {/* FIX: update value from 'protocols' to 'protocol' */}
+            <button onClick={() => setActiveTab('protocol')} className={`px-4 py-2 rounded-xl text-xs font-bold uppercase whitespace-nowrap transition-all ${activeTab === 'protocol' ? 'bg-blue-600 text-white shadow-md' : isHospitalMode ? 'bg-[#212327] text-gray-400 border border-gray-800' : 'bg-white text-gray-500 border border-gray-200'}`}>Protocolos GVP</button>
             <button onClick={() => setActiveTab('training')} className={`px-4 py-2 rounded-xl text-xs font-bold uppercase whitespace-nowrap transition-all ${activeTab === 'training' ? 'bg-blue-600 text-white shadow-md' : isHospitalMode ? 'bg-[#212327] text-gray-400 border border-gray-800' : 'bg-white text-gray-500 border border-gray-200'}`}>Treinamento</button>
             <button onClick={() => setActiveTab('pauta')} className={`px-4 py-2 rounded-xl text-xs font-bold uppercase whitespace-nowrap transition-all ${activeTab === 'pauta' ? 'bg-blue-600 text-white shadow-md' : isHospitalMode ? 'bg-[#212327] text-gray-400 border border-gray-800' : 'bg-white text-gray-500 border border-gray-200'}`}>Pautas de Reunião</button>
         </div>

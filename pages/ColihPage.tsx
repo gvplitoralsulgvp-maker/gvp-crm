@@ -443,11 +443,13 @@ export const ColihPage: React.FC<{
                     const updatedDoc = { ...doctor, lastVisitDate: newVisit.date };
                     await atomicUpdate('doctors', updatedDoc);
                     const updatedDocs = state.doctors.map(d => d.id === doctor.id ? updatedDoc : d);
-                    onUpdateState(prev => ({ ...prev, doctors: updatedDocs }));
+                    // FIX: Pass object directly instead of callback function
+                    onUpdateState({ ...state, doctors: updatedDocs });
                 }
             }
             const updatedVisits = editingVisit.id ? state.colihVisits.map(v => v.id === newVisit.id ? newVisit : v) : [...state.colihVisits, newVisit];
-            onUpdateState(prev => ({ ...prev, colihVisits: updatedVisits }));
+            // FIX: Pass object directly instead of callback function
+            onUpdateState({ ...state, colihVisits: updatedVisits });
             setEditingVisit(null);
             setIsExternalVisit(false);
             setCustomLocationName('');
