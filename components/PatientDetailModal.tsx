@@ -34,6 +34,8 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
   // Estado para upload de HLC-7
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedHlc7Url, setUploadedHlc7Url] = useState<string | null>(patient.hlc7FileUrl || null);
+  const [localDischargeMode, setLocalDischargeMode] = useState(false); // NOVO: Garante transição visual imediata
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -154,12 +156,19 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
       }
 
       if(window.confirm("Confirmar a alta médica deste paciente? A tela de anexo do HLC-7 será exibida em seguida.")) {
+          setLocalDischargeMode(true); // Força a atualização visual IMEDIATA
           onDischarge(patient.id, patient.name); 
           // Não fecha o modal, permitindo o fluxo contínuo
       }
   };
 
   const hasChanges = JSON.stringify(assignedIds.sort()) !== JSON.stringify((patient.assignedColihIds || []).sort());
+
+  // Lógica combinada para exibir o card de HLC-7
+  // Exibe se: (Já estava em alta no banco OU acabou de receber alta localmente) E (Está pendente HLC7 no banco OU acabou de receber alta localmente)
+  const showHlc7Card = (patient.isMedicalDischarge || localDischargeMode) && 
+                       (patient.pendingHlc7 || localDischargeMode) && 
+                       (isColihUser || canEdit);
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
@@ -175,10 +184,10 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
         <div className={`p-6 overflow-y-auto custom-scrollbar space-y-6 ${isHospitalMode ? 'bg-[#1a1c1e]' : 'bg-gray-50'}`}>
           
           {/* Banner de Alta Médica */}
-          {patient.isMedicalDischarge && (
-              <div className="bg-purple-100 border border-purple-200 p-4 rounded-xl text-purple-800 flex flex-col gap-2">
+          {(patient.isMedicalDischarge || localDischargeMode) && (
+              <div className="bg-purple-100 border border-purple-200 p-4 rounded-xl text-purple-800 flex flex-col gap-2 animate-fade-in">
                   <p className="font-bold text-sm">🏥 Paciente com Alta Médica Informada</p>
-                  <p className="text-xs">O paciente já saiu do hospital. {patient.pendingHlc7 ? 'Anexe o HLC-7 abaixo para finalizar.' : 'A solicitação GVP foi encerrada automaticamente.'}</p>
+                  <p className="text-xs">O paciente já saiu do hospital. {patient.pendingHlc7 || localDischargeMode ? 'Anexe o HLC-7 abaixo para finalizar.' : 'A solicitação GVP foi encerrada automaticamente.'}</p>
               </div>
           )}
 
@@ -199,8 +208,8 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
             </div>
             
             {/* BOTÃO DE ALTA MÉDICA (GVP) */}
-            {/* FIX: Usar handleDischargeRequest com validação */}
-            {patient.active && !patient.isMedicalDischarge && onDischarge && (canEdit || canDischarge) && (
+            {/* Oculta se já estiver em alta (banco) OU alta local */}
+            {patient.active && !patient.isMedicalDischarge && !localDischargeMode && onDischarge && (canEdit || canDischarge) && (
                 <button 
                     onClick={handleDischargeRequest}
                     className="bg-green-600 hover:bg-green-700 text-white text-[9px] font-bold uppercase tracking-widest px-3 py-2 rounded-lg shadow-sm"
@@ -211,8 +220,8 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
           </div>
 
           {/* BOTÃO DE ARQUIVAMENTO HLC-7 (COLIH) */}
-          {/* FIX: Lógica de exibição simplificada para garantir que apareça se pendente, mesmo que inativo */}
-          {patient.isMedicalDischarge && patient.pendingHlc7 && (isColihUser || canEdit) && onHlc7Confirm && (
+          {/* Lógica de exibição híbrida para persistência */}
+          {showHlc7Card && onHlc7Confirm && (
               <div className="p-4 bg-white rounded-xl border-2 border-purple-200 shadow-sm space-y-3 animate-fade-in">
                   <div className="flex items-center gap-2 mb-2">
                       <div className="w-2 h-2 rounded-full bg-purple-600 animate-pulse"></div>
@@ -253,7 +262,7 @@ export const PatientDetailModal: React.FC<PatientDetailModalProps> = ({
           )}
 
           {/* BOTÃO DE BANDEIRA (GVP REQUEST) */}
-          {patient.active && canEdit && onToggleGvp && !patient.isMedicalDischarge && (
+          {patient.active && canEdit && onToggleGvp && !patient.isMedicalDischarge && !localDischargeMode && (
              <div className="pt-2">
                 <button 
                     type="button"
